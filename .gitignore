@@ -1,0 +1,20 @@
+# 排除生成的执行文件和目录
+/dist/
+/build/
+*.exe
+*.spec
+
+# 排除 Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 排除 Excel 临时文件 (以 ~$ 开头的临时文件)
+~$*.xlsx
+
+# 排除虚拟环境 (如果你以后使用 venv)
+venv/
+.venv/
+
+# 排除 IDE 配置 (可选，如果你不想上传 VS Code 设置)
+.vscode/
