@@ -136,23 +136,46 @@ def generate_shangji_table(data):
 
 
 def generate_gaotao_table(data):
-    df_new = data["高套（政企提供sql）"].copy()
-    df_old = data["存量高套"].copy()
-    part1 = df_new[["sales_man_name", "disc_score_ratio"]].copy()
-    part1["sales_man_name"] = part1["sales_man_name"].astype(str).str.strip()
-    part1["disc_score_ratio"] = pd.to_numeric(part1["disc_score_ratio"], errors="coerce").fillna(0)
-    part1 = part1[part1["sales_man_name"].isin(names)]
-    part1_sum = part1.groupby("sales_man_name", as_index=False)["disc_score_ratio"].sum()
-    part2 = df_old[["sales_man_name", "tc_jf_xs"]].copy()
-    part2["sales_man_name"] = part2["sales_man_name"].astype(str).str.strip()
-    part2["tc_jf_xs"] = pd.to_numeric(part2["tc_jf_xs"], errors="coerce").fillna(0)
-    part2 = part2[part2["sales_man_name"].isin(names)]
-    part2_sum = part2.groupby("sales_man_name", as_index=False)["tc_jf_xs"].sum()
+    """
+    从完美一单揽装人维度（月累）中提取政企高套数据。
+    前5行为表头，E列(idx=4)为姓名，H列(idx=7)为新增高套，I列(idx=8)为存量升高套。
+    高套数 = 新增高套 + 存量升高套
+    """
+    df = data["揽装人维度（月累)"].copy()
+    temp = df.iloc[5:, [4, 7, 8]].copy()
+    temp.columns = ["姓名", "新增高套", "存量升高套"]
+    temp["姓名"] = temp["姓名"].astype(str).str.strip()
+    temp = temp[temp["姓名"].isin(names)].copy()
+    temp["新增高套"] = pd.to_numeric(temp["新增高套"], errors="coerce").fillna(0)
+    temp["存量升高套"] = pd.to_numeric(temp["存量升高套"], errors="coerce").fillna(0)
+    temp["高套数"] = temp["新增高套"] + temp["存量升高套"]
+    summary = temp.groupby("姓名")["高套数"].sum().reset_index()
     result = pd.DataFrame({"姓名": names})
-    result = result.merge(part1_sum.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    result = result.merge(part2_sum.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    result["高套数"] = result["disc_score_ratio"].fillna(0) + result["tc_jf_xs"].fillna(0)
+    result = result.merge(summary, on="姓名", how="left")
+    result["高套数"] = result["高套数"].fillna(0)
     return result[["姓名", "高套数"]]
+
+
+def generate_honghuangpai_gaotao_table(data):
+    """
+    从完美一单揽装人维度（月累）中提取红黄牌高套数据。
+    前5行为表头，E列(idx=4)为姓名，F列(idx=5)为新装高套，G列(idx=6)为存量升高套。
+    高套数 = 新装高套 + 存量升高套
+    """
+    df = data["揽装人维度（月累)"].copy()
+    temp = df.iloc[5:, [4, 5, 6]].copy()
+    temp.columns = ["姓名", "新装高套", "存量升高套"]
+    temp["姓名"] = temp["姓名"].astype(str).str.strip()
+    temp = temp[temp["姓名"].isin(names)].copy()
+    temp["新装高套"] = pd.to_numeric(temp["新装高套"], errors="coerce").fillna(0)
+    temp["存量升高套"] = pd.to_numeric(temp["存量升高套"], errors="coerce").fillna(0)
+    temp["高套数"] = temp["新装高套"] + temp["存量升高套"]
+    summary = temp.groupby("姓名")["高套数"].sum().reset_index()
+    result = pd.DataFrame({"姓名": names})
+    result = result.merge(summary, on="姓名", how="left")
+    result["高套数"] = result["高套数"].fillna(0)
+    return result[["姓名", "高套数"]]
+
 
 def get_gateway_count(package_name, key):
     if package_name not in GATEWAY_CONFIG:
@@ -213,23 +236,21 @@ gaozhuang_names = [
 ]
 
 def generate_gaozhuang_gaotao_table(data):
-    df_qd = data["高套清单"].copy()
-    df_cl = data["存量高套清单"].copy()
-    p1 = df_qd[df_qd["sales_man_name"].isin(gaozhuang_names)].groupby("sales_man_name")["xs"].sum().reset_index()
-    p2 = df_cl[df_cl["sales_man_name"].isin(gaozhuang_names)].groupby("sales_man_name")["tc_jf_xs"].sum().reset_index()
-    res = pd.DataFrame({"姓名": gaozhuang_names})
-    res = res.merge(p1.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    res = res.merge(p2.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    res["高套数"] = res["xs"].fillna(0) + res["tc_jf_xs"].fillna(0)
-    return res[["姓名", "高套数"]]
-
-def generate_honghuangpai_gaotao_table(data):
-    df_qd = data["高套清单"].copy()
-    df_cl = data["存量高套清单"].copy()
-    p1 = df_qd[df_qd["sales_man_name"].isin(names)].groupby("sales_man_name")["xs"].sum().reset_index()
-    p2 = df_cl[df_cl["sales_man_name"].isin(names)].groupby("sales_man_name")["tc_jf_xs"].sum().reset_index()
-    res = pd.DataFrame({"姓名": names})
-    res = res.merge(p1.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    res = res.merge(p2.rename(columns={"sales_man_name": "姓名"}), on="姓名", how="left")
-    res["高套数"] = res["xs"].fillna(0) + res["tc_jf_xs"].fillna(0)
-    return res[["姓名", "高套数"]]
+    """
+    从完美一单揽装人维度（月累）中提取高装高套数据。
+    前5行为表头，E列(idx=4)为姓名，F列(idx=5)为新装高套，G列(idx=6)为存量升高套。
+    高套数 = 新装高套 + 存量升高套
+    """
+    df = data["揽装人维度（月累)"].copy()
+    temp = df.iloc[5:, [4, 5, 6]].copy()
+    temp.columns = ["姓名", "新装高套", "存量升高套"]
+    temp["姓名"] = temp["姓名"].astype(str).str.strip()
+    temp = temp[temp["姓名"].isin(gaozhuang_names)].copy()
+    temp["新装高套"] = pd.to_numeric(temp["新装高套"], errors="coerce").fillna(0)
+    temp["存量升高套"] = pd.to_numeric(temp["存量升高套"], errors="coerce").fillna(0)
+    temp["高套数"] = temp["新装高套"] + temp["存量升高套"]
+    summary = temp.groupby("姓名")["高套数"].sum().reset_index()
+    result = pd.DataFrame({"姓名": gaozhuang_names})
+    result = result.merge(summary, on="姓名", how="left")
+    result["高套数"] = result["高套数"].fillna(0)
+    return result[["姓名", "高套数"]]

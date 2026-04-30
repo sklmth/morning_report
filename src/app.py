@@ -328,11 +328,8 @@ class App(tk.Tk):
 
     def _process(self):
         out_path = self.out_var.get()
-        tasks = [
-            (self.zone_gaotao,      "高套数据", generate_gaotao_table,             "高套"),
-            (self.zone_honghuangpai,"红黄牌",   generate_honghuangpai_gaotao_table, "红黄牌高套"),
-            (self.zone_honghuangpai,"红黄牌(高装高套)", generate_gaozhuang_gaotao_table, "高装高套"),
-        ]
+        # 高套、红黄牌高套、高装高套均从完美一单数据计算
+        tasks = []
 
         try:
             self.after(0, lambda: self._log("─" * 40, "dim"))
@@ -341,7 +338,7 @@ class App(tk.Tk):
             sheet_results = {}
             processed_count = 0
 
-            # 1. 循环处理普通表格（高套、红黄牌）
+            # 1. 循环处理高装高套（仍使用红黄牌 Excel）
             for zone, label, proc_func, sheet_name in tasks:
                 f_path = zone.get()
                 if not f_path: continue
@@ -352,7 +349,7 @@ class App(tk.Tk):
                 self.after(0, lambda: self._log(f"    ✓ 完成", "success"))
                 processed_count += 1
 
-            # 2. 处理完美一单（同时生成完美一单表和全光组网表）
+            # 2. 处理完美一单（同时生成：完美一单、全光组网、高套、红黄牌高套）
             wm_path = self.zone_wanmei.get()
             if wm_path:
                 self.after(0, lambda: (self._set_progress("计算 完美一单 & 全光组网…"), self._log("  ⚙  处理 完美一单数据…", "info")))
@@ -362,6 +359,15 @@ class App(tk.Tk):
                 self.after(0, lambda: self._log("  ⚙  处理 全光组网（来自完美一单数据）…", "info"))
                 sheet_results["全光组网"] = generate_quanguang_table(wm_data)
                 self.after(0, lambda: self._log("    ✓ 全光组网 完成", "success"))
+                self.after(0, lambda: self._log("  ⚙  处理 高套（来自完美一单数据）…", "info"))
+                sheet_results["高套"] = generate_gaotao_table(wm_data)
+                self.after(0, lambda: self._log("    ✓ 高套 完成", "success"))
+                self.after(0, lambda: self._log("  ⚙  处理 红黄牌高套（来自完美一单数据）…", "info"))
+                sheet_results["红黄牌高套"] = generate_honghuangpai_gaotao_table(wm_data)
+                self.after(0, lambda: self._log("    ✓ 红黄牌高套 完成", "success"))
+                self.after(0, lambda: self._log("  ⚙  处理 高装高套（来自完美一单数据）…", "info"))
+                sheet_results["高装高套"] = generate_gaozhuang_gaotao_table(wm_data)
+                self.after(0, lambda: self._log("    ✓ 高装高套 完成", "success"))
                 processed_count += 1
 
             # 3. 处理商机管控表
