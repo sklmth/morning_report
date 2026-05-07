@@ -34,15 +34,12 @@ def points_to_gaotao(points):
 
 
 def generate_shangji_table(data):
-    """处理政企商机管控表，支持 M-R 列特殊列名处理，新版 pandas 兼容"""
     sheets_to_load = [s for s in data.keys() if "政企商机管控表" in s]
     all_dfs = []
 
     for s in sheets_to_load:
         df_tmp = data[s].copy()
 
-        # --- 处理表头 ---
-        # 第一行作为基础列名
         row0 = df_tmp.iloc[0].tolist()
         row1 = df_tmp.iloc[1].tolist()
 
@@ -51,12 +48,20 @@ def generate_shangji_table(data):
             if i < len(row1) and pd.notna(row1[i]) and str(row1[i]).strip():
                 row0[i] = row1[i]
 
-        df_tmp.columns = row0
+        # ✅ 修复：对重复/空列名去重，避免 InvalidIndexError
+        seen = {}
+        unique_cols = []
+        for col in row0:
+            col_str = str(col) if pd.notna(col) else "__unnamed"
+            if col_str in seen:
+                seen[col_str] += 1
+                unique_cols.append(f"{col_str}_{seen[col_str]}")
+            else:
+                seen[col_str] = 0
+                unique_cols.append(col_str)
 
-        # 删除前两行表头行
+        df_tmp.columns = unique_cols
         df_tmp = df_tmp.iloc[2:].reset_index(drop=True)
-
-        # ✅ 关键修复：将处理好的 df 加入列表
         all_dfs.append(df_tmp)
 
     if not all_dfs:
@@ -154,7 +159,6 @@ def generate_gaotao_table(data):
     result = result.merge(summary, on="姓名", how="left")
     result["高套数"] = result["高套数"].fillna(0)
     return result[["姓名", "高套数"]]
-
 
 def generate_honghuangpai_gaotao_table(data):
     """
