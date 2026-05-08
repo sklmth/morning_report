@@ -8,6 +8,12 @@ names = [
     "潘观友", "李玉强", "张小敏", "具进康"
 ]
 
+gaozhuang_names = [
+    "陈梓铭", "程庆德", "刘奇峻", "龙家宝",
+    "罗紫杰", "莫健铭", "吴广仁", "王洪明"
+]
+
+
 GATEWAY_CONFIG = {
     "智企云包2.0 2年合约 _60元/月": {"主网关数": 1, "从网关数": 1},
     "智企云包2.0FTTR促销优惠2年合约（混搭型）_80元": {"主网关数": 1, "从网关数": 2},
@@ -223,21 +229,21 @@ def generate_quanguang_table(data):
     return result[["姓名", "主从网关数"]]
 
 def generate_wanmei_table(data):
+    """
+    从完美一单揽装人维度（月累）中生成完美一单汇总表。
+    包含 names 和 gaozhuang_names 两个名单的数据。
+    """
+    all_names = names + gaozhuang_names
     df = data["揽装人维度（月累)"].copy()
     temp = df.iloc[5:, [4, 5, 6, 13, 22]].copy()
     temp.columns = ["姓名", "新增高套", "存量升高套", "积分完成", "新增积分（全业务）"]
     temp["姓名"] = temp["姓名"].astype(str).str.strip()
-    temp = temp[temp["姓名"].isin(names)].copy()
+    temp = temp[temp["姓名"].isin(all_names)].copy()
     for col in temp.columns[1:]:
         temp[col] = pd.to_numeric(temp[col], errors="coerce").fillna(0)
     temp["高套"] = temp["新增高套"] + temp["存量升高套"]
     summary = temp.groupby("姓名")[["高套", "积分完成", "新增积分（全业务）"]].sum().reset_index()
-    return pd.DataFrame({"姓名": names}).merge(summary, on="姓名", how="left").fillna(0)
-
-gaozhuang_names = [
-    "陈梓铭", "程庆德", "刘奇峻", "龙家宝",
-    "罗紫杰", "莫健铭", "吴广仁", "王洪明"
-]
+    return pd.DataFrame({"姓名": all_names}).merge(summary, on="姓名", how="left").fillna(0)
 
 def generate_gaozhuang_gaotao_table(data):
     """
@@ -258,3 +264,23 @@ def generate_gaozhuang_gaotao_table(data):
     result = result.merge(summary, on="姓名", how="left")
     result["高套数"] = result["高套数"].fillna(0)
     return result[["姓名", "高套数"]]
+
+def generate_yingfu_table(data):
+    """
+    从营服报表中提取激励数据。
+    sheet: 071人员统计，前4行为表头（忽略），H列(idx=7)为姓名，Q列(idx=16)为激励金额。
+    返回 names 和 gaozhuang_names 对应的姓名与激励金额。
+    """
+    df = data["071人员统计"].copy()
+    # 前4行为表头，从第5行起取数据；H列=idx7，Q列=idx16
+    temp = df.iloc[4:, [7, 16]].copy()
+    temp.columns = ["姓名", "激励金额"]
+    temp["姓名"] = temp["姓名"].astype(str).str.strip()
+    all_names = names + gaozhuang_names
+    temp = temp[temp["姓名"].isin(all_names)].copy()
+    temp["激励金额"] = pd.to_numeric(temp["激励金额"], errors="coerce").fillna(0)
+    summary = temp.groupby("姓名")["激励金额"].sum().reset_index()
+    result = pd.DataFrame({"姓名": all_names})
+    result = result.merge(summary, on="姓名", how="left")
+    result["激励金额"] = result["激励金额"].fillna(0)
+    return result[["姓名", "激励金额"]]

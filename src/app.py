@@ -19,7 +19,7 @@ try:
         generate_gaotao_table, generate_quanguang_table,
         generate_wanmei_table, generate_honghuangpai_gaotao_table,
         generate_gaozhuang_gaotao_table, generate_shangji_table,
-        GatewayConfigError
+        generate_yingfu_table, GatewayConfigError
     )
 except ImportError:
     messagebox.showerror("运行错误", "无法加载 function.py，请确保该文件与程序在同一目录。")
@@ -222,8 +222,8 @@ class App(tk.Tk):
         # 第一行文件区
         row1 = tk.Frame(sec, bg=BG)
         row1.pack(fill="x", pady=(0, 6))
-        zones1 = [("高套数据", "📊"), ("完美一单数据", "✨")]
-        attrs1 = ["zone_gaotao", "zone_wanmei"]
+        zones1 = [("营服报表", "📊"), ("完美一单数据", "✨")]
+        attrs1 = ["zone_yingfu", "zone_wanmei"]
         for i, ((label, icon), attr) in enumerate(zip(zones1, attrs1)):
             z = DropZone(row1, label, icon, self._on_file_change)
             z.pack(side="left", fill="both", expand=True, padx=(0 if i == 0 else 6, 0))
@@ -289,7 +289,7 @@ class App(tk.Tk):
     # ══════════════════════════════════════════════════
     def _on_file_change(self):
         has_any_file = any([
-            self.zone_gaotao.get(), self.zone_wanmei.get(),
+            self.zone_yingfu.get(), self.zone_wanmei.get(),
             self.zone_honghuangpai.get(), self.zone_shangji.get()
         ])
         if has_any_file and self.out_var.get():
@@ -305,7 +305,7 @@ class App(tk.Tk):
             self._on_file_change()
 
     def _reset(self):
-        for z in (self.zone_gaotao, self.zone_wanmei, self.zone_honghuangpai, self.zone_shangji): z.reset()
+        for z in (self.zone_yingfu, self.zone_wanmei, self.zone_honghuangpai, self.zone_shangji): z.reset()
         self.out_var.set(""); self.path_entry.config(fg=TEXT3); self.run_btn.set_active(False)
         self._status_dot.config(text="● 就绪", fg=GREEN); self._prog_lbl.config(text="")
         self._log("─" * 40, "dim"); self._log("已重置。", "info")
@@ -328,7 +328,6 @@ class App(tk.Tk):
 
     def _process(self):
         out_path = self.out_var.get()
-        # 高套、红黄牌高套、高装高套均从完美一单数据计算
         tasks = []
 
         try:
@@ -338,7 +337,7 @@ class App(tk.Tk):
             sheet_results = {}
             processed_count = 0
 
-            # 1. 循环处理高装高套（仍使用红黄牌 Excel）
+            # 1. 循环处理其他任务（当前为空占位）
             for zone, label, proc_func, sheet_name in tasks:
                 f_path = zone.get()
                 if not f_path: continue
@@ -349,7 +348,16 @@ class App(tk.Tk):
                 self.after(0, lambda: self._log(f"    ✓ 完成", "success"))
                 processed_count += 1
 
-            # 2. 处理完美一单（同时生成：完美一单、全光组网、高套、红黄牌高套）
+            # 2. 处理营服报表（生成激励表）
+            yf_path = self.zone_yingfu.get()
+            if yf_path:
+                self.after(0, lambda: (self._set_progress("计算 激励…"), self._log("  ⚙  处理 营服报表数据…", "info")))
+                yf_data = pd.read_excel(yf_path, sheet_name=None, header=None)
+                sheet_results["激励"] = generate_yingfu_table(yf_data)
+                self.after(0, lambda: self._log("    ✓ 激励 完成", "success"))
+                processed_count += 1
+
+            # 3. 处理完美一单（同时生成：完美一单、全光组网、高套、红黄牌高套、高装高套）
             wm_path = self.zone_wanmei.get()
             if wm_path:
                 self.after(0, lambda: (self._set_progress("计算 完美一单 & 全光组网…"), self._log("  ⚙  处理 完美一单数据…", "info")))
@@ -370,7 +378,7 @@ class App(tk.Tk):
                 self.after(0, lambda: self._log("    ✓ 高装高套 完成", "success"))
                 processed_count += 1
 
-            # 3. 处理商机管控表
+            # 4. 处理商机管控表
             sj_path = self.zone_shangji.get()
             shangji_dfs = None
             if sj_path:
@@ -384,7 +392,7 @@ class App(tk.Tk):
             if not sheet_results and not shangji_dfs:
                 raise Exception("未检测到有效的输入文件。")
 
-            # 4. 写入文件
+            # 5. 写入文件
             self.after(0, lambda: (self._set_progress("写入文件…"), self._log("  📝 正在生成输出 Excel…", "info")))
             template_path = resource_path("早会五张表.xlsx")
 
