@@ -13,6 +13,23 @@ gaozhuang_names = [
     "罗紫杰", "莫健铭", "吴广仁", "王洪明"
 ]
 
+# 各分公司/区域全名 → 输出短名（取前两个字）
+BRANCH_NAMES = [
+    "端州分公司",
+    "高要分公司",
+    "四会分公司",
+    "鼎湖分公司",
+    "高新区(区县其它)",
+    "怀集分公司",
+    "广宁分公司",
+    "德庆分公司",
+    "封开分公司",
+]
+
+def get_branch_short_name(full_name: str) -> str:
+    """取分公司/区域名称的前两个汉字作为输出短名。"""
+    return full_name[:2]
+
 
 GATEWAY_CONFIG = {
     "智企云包2.0 2年合约 _60元/月": {"主网关数": 1, "从网关数": 1},
@@ -151,7 +168,12 @@ def generate_gaotao_table(data):
     从完美一单揽装人维度（月累）中提取政企高套数据。
     前5行为表头，E列(idx=4)为姓名，H列(idx=7)为新增高套，I列(idx=8)为存量升高套。
     高套数 = 新增高套 + 存量升高套
+
+    额外功能：从揽装局向维度（月累）sheet 中，按 BRANCH_NAMES 列表中的分公司/区域名称，
+    提取 J列(idx=9) 和 K列(idx=10) 的值相加得到各机构高套数，
+    以前两个字作为短名追加到结果末尾。
     """
+    # ── 个人维度：揽装人维度（月累）──
     df = data["揽装人维度（月累)"].copy()
     temp = df.iloc[5:, [4, 7, 8]].copy()
     temp.columns = ["姓名", "新增高套", "存量升高套"]
@@ -164,7 +186,31 @@ def generate_gaotao_table(data):
     result = pd.DataFrame({"姓名": names})
     result = result.merge(summary, on="姓名", how="left")
     result["高套数"] = result["高套数"].fillna(0)
+
+    # ── 机构维度：揽装局向维度（月累）──
+    # J列 = idx 9，K列 = idx 10；机构名称列根据实际位置，取首列（idx=0）匹配
+    df_jx = data["揽装局向维度（月累）"].copy()
+    # 取：机构名称列C(2)、J列(9)、K列(10)
+    temp_jx = df_jx.iloc[:, [2, 9, 10]].copy()
+    temp_jx.columns = ["机构", "J列高套", "K列高套"]
+    temp_jx["机构"] = temp_jx["机构"].astype(str).str.strip()
+    temp_jx["J列高套"] = pd.to_numeric(temp_jx["J列高套"], errors="coerce").fillna(0)
+    temp_jx["K列高套"] = pd.to_numeric(temp_jx["K列高套"], errors="coerce").fillna(0)
+    temp_jx["高套数"] = temp_jx["J列高套"] + temp_jx["K列高套"]
+
+    branch_rows = []
+    for branch_full in BRANCH_NAMES:
+        matched = temp_jx[temp_jx["机构"] == branch_full]
+        val = matched["高套数"].sum()
+        short_name = get_branch_short_name(branch_full)
+        branch_rows.append({"姓名": short_name, "高套数": val})
+
+    if branch_rows:
+        df_branch = pd.DataFrame(branch_rows)
+        result = pd.concat([result, df_branch], ignore_index=True)
+
     return result[["姓名", "高套数"]]
+
 
 def generate_honghuangpai_gaotao_table(data):
     """
