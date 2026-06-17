@@ -65,6 +65,10 @@ def load_config():
         "imap_port": int(_env_any(["QQ_IMAP_PORT", "QQ_MAIL_IMAP_PORT"], "993")),
         "mailbox": _env_any(["QQ_MAILBOX", "QQ_MAIL_MAILBOX"], "INBOX"),
         "poll_seconds": int(_env_any(["MAIL_POLL_SECONDS"], "300")),
+        "peak_poll_seconds": int(_env_any(["MAIL_PEAK_POLL_SECONDS"], "180")),
+        "offpeak_poll_seconds": int(_env_any(["MAIL_OFFPEAK_POLL_SECONDS"], "1800")),
+        "peak_start_hour": int(_env_any(["MAIL_PEAK_START_HOUR"], "17")),
+        "peak_end_hour": int(_env_any(["MAIL_PEAK_END_HOUR"], "19")),
         "font_path": _env_any(["REPORT_FONT_PATH"]) or None,
         "send_command": _env_any(
             ["OPENCLAW_SEND_COMMAND"],
@@ -74,6 +78,16 @@ def load_config():
             'openclaw message send --message "{caption}"'),
     }
     return cfg
+
+
+def current_poll_seconds(cfg, now=None):
+    """按当前本地时间选择轮询间隔。高峰时段为 [start, end)。"""
+    now = now or datetime.now()
+    start = cfg["peak_start_hour"]
+    end = cfg["peak_end_hour"]
+    in_peak = start <= now.hour < end if start < end else (
+        now.hour >= start or now.hour < end)
+    return cfg["peak_poll_seconds"] if in_peak else cfg["offpeak_poll_seconds"]
 
 
 def _load_dotenv(path):
@@ -233,7 +247,9 @@ def main():
         poll_once(cfg)
         return
 
-    log(f"服务启动，轮询间隔 {cfg['poll_seconds']}s，邮箱 {cfg['email']}。")
+    log(f"服务启动，邮箱 {cfg['email']}。高峰 {cfg['peak_start_hour']}:00-"
+        f"{cfg['peak_end_hour']}:00 每 {cfg['peak_poll_seconds']}s 轮询；"
+        f"其他时间每 {cfg['offpeak_poll_seconds']}s 轮询。")
     while True:
         try:
             poll_once(cfg)
@@ -243,7 +259,9 @@ def main():
         except Exception as e:
             log(f"[WARN] 轮询异常：{e}")
             traceback.print_exc()
-        time.sleep(cfg["poll_seconds"])
+        sleep_seconds = current_poll_seconds(cfg)
+        log(f"下一次轮询将在 {sleep_seconds}s 后执行。")
+        time.sleep(sleep_seconds)
 
 
 if __name__ == "__main__":
