@@ -75,7 +75,14 @@ IMAGE_DIR = os.path.join(RUNTIME_DIR, "images")
 
 def log(msg):
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] {msg}", flush=True)
+    line = f"[{ts}] {msg}"
+    try:
+        print(line, flush=True)
+    except UnicodeEncodeError:
+        # Windows GBK 控制台对部分字符（如 emoji）无法编码，降级输出
+        enc = (sys.stdout.encoding or "utf-8")
+        sys.stdout.buffer.write(line.encode(enc, errors="replace") + b"\n")
+        sys.stdout.flush()
 
 
 # ── 单批处理：从一组文件出图并发送 ────────────────────────────────────
@@ -109,7 +116,7 @@ def process_files(file_paths, cfg):
         sent = send_images(images, cfg["send_command"])
         log(f"已通过 OpenClaw 发送 {sent} 张图到微信。")
     except WeChatSendError as e:
-        log(f"⚠ 微信发送失败：{e}")
+        log(f"[WARN] 微信发送失败：{e}")
         log(f"  图片已保存在：{img_dir}，可手动发送或检查 OPENCLAW_SEND_COMMAND。")
 
 
@@ -123,7 +130,7 @@ def poll_once(cfg):
     try:
         batches = fetcher.fetch_unseen_attachments(INBOX_DIR)
     except Exception as e:
-        log(f"⚠ 收信失败：{e}")
+        log(f"[WARN] 收信失败：{e}")
         return
 
     if not batches:
@@ -136,7 +143,7 @@ def poll_once(cfg):
         try:
             process_files(b["files"], cfg)
         except Exception as e:
-            log(f"⚠ 处理出错：{e}")
+            log(f"[WARN] 处理出错：{e}")
             traceback.print_exc()
 
 
@@ -167,7 +174,7 @@ def main():
             log("收到中断，退出。")
             break
         except Exception as e:
-            log(f"⚠ 轮询异常：{e}")
+            log(f"[WARN] 轮询异常：{e}")
             traceback.print_exc()
         time.sleep(cfg["poll_seconds"])
 
