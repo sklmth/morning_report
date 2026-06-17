@@ -21,13 +21,10 @@ def send_image(image_path, caption, command_template, timeout=120):
             openclaw message send --media "{image}" --message "{caption}"
           支持占位符 {image} {caption}
     """
-    cmd_str = command_template.replace("{image}", image_path).replace(
-        "{caption}", caption or "")
-    # Windows 与 Linux 都用 shell 拆分，保留引号语义
-    try:
-        args = shlex.split(cmd_str, posix=(not _is_windows()))
-    except ValueError:
-        args = cmd_str
+    args = _build_args(command_template, {
+        "image": image_path,
+        "caption": caption or "",
+    })
     try:
         proc = subprocess.run(args, capture_output=True, text=True,
                               timeout=timeout)
@@ -60,11 +57,7 @@ def send_text(text, command_template, timeout=120):
     支持占位符 {caption}。文字通过临时文件传递以避免命令行长度/转义问题时，
     可在命令模板中使用 {caption}（此处直接替换）。
     """
-    cmd_str = command_template.replace("{caption}", text or "")
-    try:
-        args = shlex.split(cmd_str, posix=(not _is_windows()))
-    except ValueError:
-        args = cmd_str
+    args = _build_args(command_template, {"caption": text or ""})
     try:
         proc = subprocess.run(args, capture_output=True, text=True,
                               timeout=timeout)
@@ -81,3 +74,20 @@ def send_text(text, command_template, timeout=120):
 def _is_windows():
     import os
     return os.name == "nt"
+
+
+def _build_args(command_template, values):
+    """
+    先拆命令模板，再替换占位符。
+
+    这样 caption 中的换行、引号等字符不会破坏 shlex 对命令模板的解析，
+    subprocess.run(list) 也不会经过 shell 二次解释。
+    """
+    try:
+        parts = shlex.split(command_template, posix=(not _is_windows()))
+    except ValueError as e:
+        raise WeChatSendError(f"发送命令模板解析失败：{e}") from e
+    for key, value in values.items():
+        placeholder = "{" + key + "}"
+        parts = [p.replace(placeholder, value) for p in parts]
+    return parts

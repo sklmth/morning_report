@@ -97,7 +97,9 @@ def _load_dotenv(path):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, val = line.split("=", 1)
-            key, val = key.strip(), val.strip().strip('"').strip("'")
+            key, val = key.strip(), val.strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+                val = val[1:-1]
             os.environ.setdefault(key, val)
 
 
