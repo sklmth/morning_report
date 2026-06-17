@@ -28,28 +28,49 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import report_core
 import image_render
+import excel_to_image
+import text_report
 from mail_client import MailFetcher
-from wechat_sender import send_images, WeChatSendError
+from wechat_sender import send_images, send_text, WeChatSendError
 
 
 # ── 配置加载（优先 .env，回退环境变量）────────────────────────────────
-def load_config():
-    env_path = os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), ".env")
-    if os.path.exists(env_path):
-        _load_dotenv(env_path)
+def _env_any(keys, default=""):
+    """按优先级返回第一个非空环境变量。"""
+    for k in keys:
+        v = os.environ.get(k)
+        if v:
+            return v
+    return default
 
+
+def load_config():
+    # 优先加载项目根 .env；再尝试服务器 OpenClaw 的邮箱 .env
+    root_env = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), ".env")
+    if os.path.exists(root_env):
+        _load_dotenv(root_env)
+    # 服务器已配好的邮箱 .env（通过 MAIL_ENV_FILE 指向，或默认路径）
+    mail_env = os.environ.get(
+        "MAIL_ENV_FILE", "/root/.openclaw/tools/qq-mail-mcp/.env")
+    if mail_env and os.path.exists(mail_env):
+        _load_dotenv(mail_env)
+
+    # 兼容两套变量名：本项目 QQ_EMAIL* / 服务器 QQ_MAIL_*
     cfg = {
-        "email": os.environ.get("QQ_EMAIL", ""),
-        "password": os.environ.get("QQ_EMAIL_PASSWORD", ""),
-        "imap_host": os.environ.get("QQ_IMAP_HOST", "imap.qq.com"),
-        "imap_port": int(os.environ.get("QQ_IMAP_PORT", "993")),
-        "mailbox": os.environ.get("QQ_MAILBOX", "INBOX"),
-        "poll_seconds": int(os.environ.get("MAIL_POLL_SECONDS", "300")),
-        "font_path": os.environ.get("REPORT_FONT_PATH", "") or None,
-        "send_command": os.environ.get(
-            "OPENCLAW_SEND_COMMAND",
+        "email": _env_any(["QQ_EMAIL", "QQ_MAIL_USER"]),
+        "password": _env_any(["QQ_EMAIL_PASSWORD", "QQ_MAIL_PASS"]),
+        "imap_host": _env_any(["QQ_IMAP_HOST", "QQ_MAIL_IMAP_HOST"], "imap.qq.com"),
+        "imap_port": int(_env_any(["QQ_IMAP_PORT", "QQ_MAIL_IMAP_PORT"], "993")),
+        "mailbox": _env_any(["QQ_MAILBOX", "QQ_MAIL_MAILBOX"], "INBOX"),
+        "poll_seconds": int(_env_any(["MAIL_POLL_SECONDS"], "300")),
+        "font_path": _env_any(["REPORT_FONT_PATH"]) or None,
+        "send_command": _env_any(
+            ["OPENCLAW_SEND_COMMAND"],
             'openclaw message send --media "{image}" --message "{caption}"'),
+        "send_text_command": _env_any(
+            ["OPENCLAW_SEND_TEXT_COMMAND"],
+            'openclaw message send --message "{caption}"'),
     }
     return cfg
 
@@ -86,6 +107,10 @@ def log(msg):
 
 
 # ── 单批处理：从一组文件出图并发送 ────────────────────────────────────
+# 触发处理所需的关键附件：归类后至少含其中之一才处理
+REQUIRED_KINDS = {"wanmei", "yingfu"}
+
+
 def process_files(file_paths, cfg):
     if not file_paths:
         log("无可处理文件，跳过。")
@@ -94,6 +119,12 @@ def process_files(file_paths, cfg):
     inputs = report_core.classify_inputs(file_paths)
     if not inputs:
         log(f"附件未能归类（共 {len(file_paths)} 个），跳过：" +
+            ", ".join(os.path.basename(p) for p in file_paths))
+        return
+
+    # 触发条件：必须含完美一单 或 营服报表 之一（或全部），否则不处理
+    if not (REQUIRED_KINDS & set(inputs.keys())):
+        log("附件中无『完美一单』或『营服报表』，不触发处理，跳过：" +
             ", ".join(os.path.basename(p) for p in file_paths))
         return
 
@@ -107,17 +138,44 @@ def process_files(file_paths, cfg):
     written = report_core.build_report(inputs, out_xlsx)
     log(f"已生成结果 Excel：{out_xlsx}（写入 sheet：{', '.join(written)}）")
 
+    # 渲染四张图：优先 LibreOffice（样式与原 Excel 一致），失败回退 PIL 自绘
     img_dir = os.path.join(IMAGE_DIR, stamp)
-    images = image_render.render_all(out_xlsx, img_dir, font_path=cfg["font_path"])
-    log(f"已渲染 {len(images)} 张图：" +
-        ", ".join(os.path.basename(p) for _, p in images))
+    images = None
+    if excel_to_image.soffice_available():
+        try:
+            images = excel_to_image.export_regions(out_xlsx, img_dir)
+            log(f"已用 LibreOffice 导出 {len(images)} 张图：" +
+                ", ".join(os.path.basename(p) for _, p in images))
+        except Exception as e:
+            log(f"[WARN] LibreOffice 出图失败，回退 PIL：{e}")
+            images = None
+    if images is None:
+        images = image_render.render_all(out_xlsx, img_dir,
+                                         font_path=cfg["font_path"])
+        log(f"已用 PIL 渲染 {len(images)} 张图：" +
+            ", ".join(os.path.basename(p) for _, p in images))
 
+    # 生成文字通报
+    report_text = ""
+    try:
+        report_text = text_report.build_report_text(out_xlsx)
+        txt_path = os.path.join(img_dir, "通报.txt")
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(report_text)
+        log(f"已生成文字通报：{txt_path}")
+    except Exception as e:
+        log(f"[WARN] 文字通报生成失败：{e}")
+
+    # 发送：先发四张图，再发文字通报
     try:
         sent = send_images(images, cfg["send_command"])
         log(f"已通过 OpenClaw 发送 {sent} 张图到微信。")
+        if report_text:
+            send_text(report_text, cfg["send_text_command"])
+            log("已发送文字通报到微信。")
     except WeChatSendError as e:
         log(f"[WARN] 微信发送失败：{e}")
-        log(f"  图片已保存在：{img_dir}，可手动发送或检查 OPENCLAW_SEND_COMMAND。")
+        log(f"  图片/通报已保存在：{img_dir}，可手动发送或检查发送命令。")
 
 
 # ── 一轮邮件轮询 ──────────────────────────────────────────────────────

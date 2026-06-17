@@ -53,6 +53,31 @@ def send_images(images, command_template, timeout=120):
     return sent
 
 
+def send_text(text, command_template, timeout=120):
+    """
+    发送纯文字消息。command_template 形如
+        openclaw message send --message "{caption}"
+    支持占位符 {caption}。文字通过临时文件传递以避免命令行长度/转义问题时，
+    可在命令模板中使用 {caption}（此处直接替换）。
+    """
+    cmd_str = command_template.replace("{caption}", text or "")
+    try:
+        args = shlex.split(cmd_str, posix=(not _is_windows()))
+    except ValueError:
+        args = cmd_str
+    try:
+        proc = subprocess.run(args, capture_output=True, text=True,
+                              timeout=timeout)
+    except FileNotFoundError as e:
+        raise WeChatSendError(f"找不到发送命令：{e}") from e
+    except subprocess.TimeoutExpired as e:
+        raise WeChatSendError(f"发送超时：{e}") from e
+    if proc.returncode != 0:
+        raise WeChatSendError(
+            f"发送失败 (code={proc.returncode})：{proc.stderr or proc.stdout}")
+    return proc.stdout.strip()
+
+
 def _is_windows():
     import os
     return os.name == "nt"
