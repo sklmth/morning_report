@@ -83,15 +83,21 @@ pip install -r requirements.txt
 
 ```bash
 # Debian/Ubuntu
-apt-get install -y libreoffice-calc python3-uno fonts-wqy-microhei
+apt-get install -y libreoffice-calc python3-uno poppler-utils fonts-wqy-microhei
 # 或 Noto CJK 字体
 apt-get install -y fonts-noto-cjk
 ```
 
-> 出图通过 Python-UNO 连接 LibreOffice。务必安装 `python3-uno`，并确保运行
-> server.py 的 Python 能 `import uno`（通常系统 Python 装了 python3-uno 即可；
-> 若用虚拟环境，需让其能访问系统的 uno 模块，或直接用系统 Python 运行）。
-> 未装 LibreOffice 时会回退 PIL，此时需中文字体（`fonts-wqy-microhei` 等）。
+> **出图链路**：LibreOffice（headless+UNO）加载结果 Excel → 重算公式 →
+> 把「模板1」每个区域设为打印区域 → 导出单页 PDF → 用 `pdftoppm`(poppler-utils)
+> 转 PNG → 自动裁白边。比「复制到 Draw 再导出」稳定，且能正确渲染公式与样式。
+>
+> **重要：`_xlfn.XLOOKUP` 兼容**。模板用了 XLOOKUP，openpyxl 写出时带 `_xlfn.`
+> 前缀，部分 LibreOffice 版本求值会得 `#NAME?`。程序在出图前会自动用
+> `xlsx_fix.py` 把 `_xlfn.XLOOKUP` → `XLOOKUP`，使 LibreOffice 能正常求值。
+>
+> 务必装 `python3-uno`（确保运行 server.py 的 Python 能 `import uno`）与
+> `poppler-utils`（提供 pdftoppm）。未装 LibreOffice 时回退 PIL 自绘，此时需中文字体。
 
 ### 配置
 

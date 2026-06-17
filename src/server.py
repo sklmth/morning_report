@@ -29,6 +29,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import report_core
 import image_render
 import excel_to_image
+import xlsx_fix
 import text_report
 from mail_client import MailFetcher
 from wechat_sender import send_images, send_text, WeChatSendError
@@ -137,6 +138,14 @@ def process_files(file_paths, cfg):
 
     written = report_core.build_report(inputs, out_xlsx)
     log(f"已生成结果 Excel：{out_xlsx}（写入 sheet：{', '.join(written)}）")
+
+    # 修复 LibreOffice 无法识别的 _xlfn.XLOOKUP 等前缀（否则导图会出 #NAME?）
+    try:
+        n_fixed = xlsx_fix.fix_workbook_formulas(out_xlsx)
+        if n_fixed:
+            log(f"已修复 {n_fixed} 个 _xlfn 公式前缀（供 LibreOffice 求值）。")
+    except Exception as e:
+        log(f"[WARN] 公式前缀修复失败（不影响数据，仅可能影响LO出图）：{e}")
 
     # 渲染四张图：优先 LibreOffice（样式与原 Excel 一致），失败回退 PIL 自绘
     img_dir = os.path.join(IMAGE_DIR, stamp)
