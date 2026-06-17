@@ -1,20 +1,39 @@
-# 排除生成的执行文件和目录
+# Build artifacts
 /dist/
 /build/
 *.exe
-*.spec
 
-# 排除 Python 缓存
+# Python cache and packaging
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
 
-# 排除 Excel 临时文件 (以 ~$ 开头的临时文件)
-~$*.xlsx
-
-# 排除虚拟环境 (如果你以后使用 venv)
+# Virtual environments
 venv/
 .venv/
+.env
+.env.*
+!.env.example
 
-# 排除 IDE 配置 (可选，如果你不想上传 VS Code 设置)
+# Runtime data
+/tmp/
+/runtime/
+/logs/
+/output/
+*.log
+
+# Excel temporary files
+~$*.xlsx
+
+# IDE files
 .vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
