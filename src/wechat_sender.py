@@ -5,12 +5,25 @@
 命令可在 .env 的 OPENCLAW_SEND_COMMAND 中覆盖，便于适配不同部署。
 """
 
+import json
+import re
 import shlex
 import subprocess
 
 
 class WeChatSendError(Exception):
     pass
+
+
+class SendResult:
+    def __init__(self, stdout, stderr, message_id=None):
+        self.stdout = stdout.strip()
+        self.stderr = stderr.strip()
+        self.message_id = message_id
+
+    @property
+    def output(self):
+        return "\n".join(p for p in [self.stdout, self.stderr] if p).strip()
 
 
 def send_image(image_path, caption, command_template, timeout=120):
@@ -25,29 +38,19 @@ def send_image(image_path, caption, command_template, timeout=120):
         "image": image_path,
         "caption": caption or "",
     })
-    try:
-        proc = subprocess.run(args, capture_output=True, text=True,
-                              timeout=timeout)
-    except FileNotFoundError as e:
-        raise WeChatSendError(f"找不到发送命令：{e}") from e
-    except subprocess.TimeoutExpired as e:
-        raise WeChatSendError(f"发送超时：{e}") from e
-    if proc.returncode != 0:
-        raise WeChatSendError(
-            f"发送失败 (code={proc.returncode})：{proc.stderr or proc.stdout}")
-    return proc.stdout.strip()
+    result = _run_send(args, timeout=timeout)
+    return result
 
 
 def send_images(images, command_template, timeout=120):
     """
     批量发送。images: [(caption, image_path), ...]
-    返回成功发送的数量；任一失败抛出异常并附带已发送数。
+    返回成功发送的 SendResult 列表；任一失败抛出异常。
     """
-    sent = 0
+    results = []
     for caption, path in images:
-        send_image(path, caption, command_template, timeout=timeout)
-        sent += 1
-    return sent
+        results.append(send_image(path, caption, command_template, timeout=timeout))
+    return results
 
 
 def send_text(text, command_template, timeout=120):
@@ -58,6 +61,11 @@ def send_text(text, command_template, timeout=120):
     可在命令模板中使用 {caption}（此处直接替换）。
     """
     args = _build_args(command_template, {"caption": text or ""})
+    result = _run_send(args, timeout=timeout)
+    return result
+
+
+def _run_send(args, timeout=120):
     try:
         proc = subprocess.run(args, capture_output=True, text=True,
                               timeout=timeout)
@@ -65,10 +73,59 @@ def send_text(text, command_template, timeout=120):
         raise WeChatSendError(f"找不到发送命令：{e}") from e
     except subprocess.TimeoutExpired as e:
         raise WeChatSendError(f"发送超时：{e}") from e
+
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+    output = "\n".join(p for p in [stdout.strip(), stderr.strip()] if p)
     if proc.returncode != 0:
+        raise WeChatSendError(f"发送失败 (code={proc.returncode})：{output}")
+
+    message_id = _extract_message_id(output)
+    if not message_id:
         raise WeChatSendError(
-            f"发送失败 (code={proc.returncode})：{proc.stderr or proc.stdout}")
-    return proc.stdout.strip()
+            "发送命令返回成功，但未检测到 OpenClaw/微信 Message ID；"
+            f"为避免误判送达，按失败处理。输出：{output or '<empty>'}")
+    return SendResult(stdout, stderr, message_id=message_id)
+
+
+def _extract_message_id(output):
+    """从 OpenClaw CLI 输出中提取真实发送回执的 message id。"""
+    # Human output: ✅ Sent via openclaw-weixin. Message ID: openclaw-weixin:...
+    match = re.search(r"Message ID:\s*([^\s]+)", output)
+    if match:
+        return match.group(1).strip()
+
+    # JSON output variants, if command template later adds --json.
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(output):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(output[i:])
+        except json.JSONDecodeError:
+            continue
+        found = _find_message_id(obj)
+        if found:
+            return found
+    return None
+
+
+def _find_message_id(value):
+    if isinstance(value, dict):
+        for key in ("messageId", "message_id", "id"):
+            v = value.get(key)
+            if isinstance(v, str) and v:
+                return v
+        for v in value.values():
+            found = _find_message_id(v)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = _find_message_id(item)
+            if found:
+                return found
+    return None
 
 
 def _is_windows():

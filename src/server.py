@@ -193,11 +193,12 @@ def process_files(file_paths, cfg):
 
     # 发送：先发四张图，再发文字通报
     try:
-        sent = send_images(images, cfg["send_command"])
-        log(f"已通过 OpenClaw 发送 {sent} 张图到微信。")
+        image_results = send_images(images, cfg["send_command"])
+        image_ids = ", ".join(r.message_id for r in image_results)
+        log(f"已通过 OpenClaw 发送 {len(image_results)} 张图到微信。Message IDs: {image_ids}")
         if report_text:
-            send_text(report_text, cfg["send_text_command"])
-            log("已发送文字通报到微信。")
+            text_result = send_text(report_text, cfg["send_text_command"])
+            log(f"已发送文字通报到微信。Message ID: {text_result.message_id}")
     except WeChatSendError as e:
         log(f"[WARN] 微信发送失败：{e}")
         log(f"  图片/通报已保存在：{img_dir}，可手动发送或检查发送命令。")
