@@ -109,6 +109,32 @@ apt-get install -y fonts-noto-cjk
 发送命令 `OPENCLAW_SEND_COMMAND`（发图）与 `OPENCLAW_SEND_TEXT_COMMAND`
 （发文字）按实际 OpenClaw 部署调整。
 
+### 服务器部署 / 更新代码
+
+服务器已配置 systemd 常驻服务：`morning-report.service`。
+
+GitHub 有更新后，在服务器执行：
+
+```bash
+scripts/deploy_latest.sh
+```
+
+脚本会自动完成：
+
+1. 检查本地工作区是否有未提交改动（有则停止，避免覆盖）
+2. `git fetch` + `git pull --ff-only origin master`
+3. 如果 `requirements.txt` 有变化，自动安装依赖
+4. Python 语法编译检查
+5. 重启 `morning-report.service`
+6. 检查服务是否启动成功并输出最近日志
+
+可选环境变量：
+
+```bash
+BRANCH=master SERVICE_NAME=morning-report.service scripts/deploy_latest.sh
+INSTALL_DEPS=true scripts/deploy_latest.sh   # 强制重装 requirements.txt
+```
+
 ### 运行
 
 ```bash
