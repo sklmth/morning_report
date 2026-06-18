@@ -112,8 +112,10 @@ apt-get install -y fonts-noto-cjk
 发送配置：
 
 - `OPENCLAW_WEIXIN_TO`：目标微信用户 id，通常形如 `xxx@im.wechat`。
+- 注意：`OPENCLAW_WEIXIN_TO` 不能填当前 `openclaw-weixin` 登录账号自己的 `userId`；这不是可主动推送的收件人，Weixin 接口会拒收（常见业务返回 `ret:-2`）。
 - `OPENCLAW_SEND_COMMAND`（发图）与 `OPENCLAW_SEND_TEXT_COMMAND`（发文字）可按实际部署覆盖。
 - 默认使用 `node scripts/weixin_direct_send.js --json ...`，直接复用 `openclaw-weixin` 已登录账号、context token 与 Weixin HTTP API 发送。不要默认改回 `openclaw message send --channel openclaw-weixin`：该通用 CLI 可能只由 OpenClaw core 接收并返回 Message ID，但没有真正调用微信插件，微信端可能不可见。
+- 直连发送脚本会校验 HTTP 响应里的 `ret` / `errcode`；非 0 会按失败处理，不能只看本地生成的 `Message ID`。
 
 ### 服务器部署 / 更新代码
 
@@ -157,4 +159,3 @@ python src/server.py --local A.xlsx B.xlsx   # 跳过邮箱，直接处理本地
 ## 更新套餐配置
 
 编辑 `src/function.py` 中的 `GATEWAY_CONFIG` 字典即可（GUI 版需重新打包）。
-

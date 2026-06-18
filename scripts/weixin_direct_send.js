@@ -40,6 +40,7 @@ Options:
   --config <path>        OpenClaw config, default <state-dir>/openclaw.json
   --json                 Print JSON result (always enabled for success/failure)
   --dry-run              Validate account/context and print planned action only
+  --no-context           Do not send context_token to Weixin
 `);
   process.exit(2);
 }
@@ -50,6 +51,7 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--json') { out.json = true; continue; }
     if (a === '--dry-run') { out.dryRun = true; continue; }
+    if (a === '--no-context') { out.noContext = true; continue; }
     if (!a.startsWith('--')) usage();
     const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     const val = argv[++i];
@@ -100,6 +102,7 @@ function resolveAccount({ stateDir, cfg, accountId }) {
   if (accountCfg.enabled === false) throw new Error(`Weixin account disabled: ${id}`);
   return {
     accountId: id,
+    userId: String(accountData.userId || ''),
     token: String(accountData.token),
     baseUrl: accountData.baseUrl || DEFAULT_BASE_URL,
     cdnBaseUrl: accountCfg.cdnBaseUrl || CDN_BASE_URL,
@@ -144,7 +147,14 @@ async function postJson({ baseUrl, endpoint, token, body, timeoutMs = DEFAULT_AP
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`${label} ${res.status}: ${text}`);
-    return text ? JSON.parse(text) : {};
+    const parsed = text ? JSON.parse(text) : {};
+    if (parsed && typeof parsed === 'object') {
+      const ret = parsed.ret ?? parsed.errcode;
+      if (ret != null && Number(ret) !== 0) {
+        throw new Error(`${label} business error: ${JSON.stringify(parsed)}`);
+      }
+    }
+    return parsed;
   } finally {
     clearTimeout(timer);
   }
@@ -219,9 +229,10 @@ async function uploadMedia({ filePath, to, account, mediaType }) {
 
 async function sendMessage({ account, to, items, contextToken }) {
   let lastId = '';
+  const responses = [];
   for (const item of items) {
     lastId = generateId();
-    await postJson({
+    const response = await postJson({
       baseUrl: account.baseUrl,
       endpoint: 'ilink/bot/sendmessage',
       token: account.token,
@@ -239,8 +250,9 @@ async function sendMessage({ account, to, items, contextToken }) {
         base_info: baseInfo(),
       },
     });
+    responses.push(response);
   }
-  return lastId;
+  return { messageId: lastId, responses };
 }
 
 async function main() {
@@ -249,11 +261,19 @@ async function main() {
   const cfgPath = args.config || process.env.OPENCLAW_CONFIG || path.join(stateDir, 'openclaw.json');
   const cfg = loadOpenClawConfig(cfgPath);
   const account = resolveAccount({ stateDir, cfg, accountId: args.account });
-  const contextToken = loadContextToken(stateDir, account.accountId, args.to);
-  if (!contextToken) throw new Error(`missing context token for ${args.to}; ask the recipient to message the bot once, or wait for inbound polling`);
+  if (account.userId && args.to === account.userId) {
+    throw new Error(
+      `target ${args.to} is the logged-in Weixin account userId for ${account.accountId}; ` +
+      'use a recipient/peer id instead of the sender self id'
+    );
+  }
+  const contextToken = args.noContext ? undefined : loadContextToken(stateDir, account.accountId, args.to);
+  if (!args.noContext && !contextToken) {
+    throw new Error(`missing context token for ${args.to}; ask the recipient to message the bot once, or wait for inbound polling`);
+  }
 
   if (args.dryRun) {
-    console.log(JSON.stringify({ ok: true, dryRun: true, channel: 'openclaw-weixin', handledBy: 'weixin-direct', accountId: account.accountId, to: args.to, hasContextToken: true, media: args.media || null, messageLength: (args.message || '').length }));
+    console.log(JSON.stringify({ ok: true, dryRun: true, channel: 'openclaw-weixin', handledBy: 'weixin-direct', accountId: account.accountId, accountUserId: account.userId || null, to: args.to, hasContextToken: Boolean(contextToken), media: args.media || null, messageLength: (args.message || '').length }));
     return;
   }
 
@@ -273,8 +293,17 @@ async function main() {
       items.push({ type: ITEM_FILE, file_item: { media: { encrypt_query_param: uploaded.downloadEncryptedQueryParam, aes_key: Buffer.from(uploaded.aeskey).toString('base64'), encrypt_type: 1 }, file_name: path.basename(abs), len: String(uploaded.fileSize) } });
     }
   }
-  const messageId = await sendMessage({ account, to: args.to, items, contextToken });
-  console.log(JSON.stringify({ ok: true, channel: 'openclaw-weixin', handledBy: 'weixin-direct', via: 'weixin-http-api', accountId: account.accountId, to: args.to, messageId }));
+  const result = await sendMessage({ account, to: args.to, items, contextToken });
+  console.log(JSON.stringify({
+    ok: true,
+    channel: 'openclaw-weixin',
+    handledBy: 'weixin-direct',
+    via: 'weixin-http-api',
+    accountId: account.accountId,
+    to: args.to,
+    messageId: result.messageId,
+    apiResponses: result.responses,
+  }));
 }
 
 main().catch((err) => fail(err.message || String(err), err.stack));
