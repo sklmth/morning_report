@@ -1,7 +1,7 @@
 """
-通过 OpenClaw 把图片发到微信。
+通过 OpenClaw/微信插件凭据把图片发到微信。
 
-按配置的命令行模板调用（默认 `openclaw message send --media ... --message ...`），
+按配置的命令行模板调用（默认 `scripts/weixin_direct_send.js`），
 命令可在 .env 的 OPENCLAW_SEND_COMMAND 中覆盖，便于适配不同部署。
 """
 
@@ -16,17 +16,18 @@ class WeChatSendError(Exception):
 
 
 class SendResult:
-    def __init__(self, stdout, stderr, message_id=None):
+    def __init__(self, stdout, stderr, message_id=None, handled_by=None):
         self.stdout = stdout.strip()
         self.stderr = stderr.strip()
         self.message_id = message_id
+        self.handled_by = handled_by
 
     @property
     def output(self):
         return "\n".join(p for p in [self.stdout, self.stderr] if p).strip()
 
 
-def send_image(image_path, caption, command_template, timeout=120):
+def send_image(image_path, caption, command_template, timeout=120, to=""):
     """
     发送单张图片。
 
@@ -37,30 +38,32 @@ def send_image(image_path, caption, command_template, timeout=120):
     args = _build_args(command_template, {
         "image": image_path,
         "caption": caption or "",
+        "to": to or "",
     })
     result = _run_send(args, timeout=timeout)
     return result
 
 
-def send_images(images, command_template, timeout=120):
+def send_images(images, command_template, timeout=120, to=""):
     """
     批量发送。images: [(caption, image_path), ...]
     返回成功发送的 SendResult 列表；任一失败抛出异常。
     """
     results = []
     for caption, path in images:
-        results.append(send_image(path, caption, command_template, timeout=timeout))
+        results.append(send_image(path, caption, command_template,
+                                  timeout=timeout, to=to))
     return results
 
 
-def send_text(text, command_template, timeout=120):
+def send_text(text, command_template, timeout=120, to=""):
     """
     发送纯文字消息。command_template 形如
         openclaw message send --message "{caption}"
     支持占位符 {caption}。文字通过临时文件传递以避免命令行长度/转义问题时，
     可在命令模板中使用 {caption}（此处直接替换）。
     """
-    args = _build_args(command_template, {"caption": text or ""})
+    args = _build_args(command_template, {"caption": text or "", "to": to or ""})
     result = _run_send(args, timeout=timeout)
     return result
 
@@ -80,20 +83,28 @@ def _run_send(args, timeout=120):
     if proc.returncode != 0:
         raise WeChatSendError(f"发送失败 (code={proc.returncode})：{output}")
 
-    message_id = _extract_message_id(output)
+    message_id, handled_by = _extract_send_receipt(output)
     if not message_id:
         raise WeChatSendError(
             "发送命令返回成功，但未检测到 OpenClaw/微信 Message ID；"
             f"为避免误判送达，按失败处理。输出：{output or '<empty>'}")
-    return SendResult(stdout, stderr, message_id=message_id)
+
+    if handled_by == "core":
+        raise WeChatSendError(
+            "发送命令只被 OpenClaw core 接收，未确认调用微信插件；"
+            f"为避免误判微信可见，按失败处理。Message ID: {message_id}；"
+            f"输出：{output or '<empty>'}")
+
+    return SendResult(stdout, stderr, message_id=message_id,
+                      handled_by=handled_by)
 
 
-def _extract_message_id(output):
-    """从 OpenClaw CLI 输出中提取真实发送回执的 message id。"""
+def _extract_send_receipt(output):
+    """从发送命令输出中提取 message id 与真实处理方。"""
     # Human output: ✅ Sent via openclaw-weixin. Message ID: openclaw-weixin:...
     match = re.search(r"Message ID:\s*([^\s]+)", output)
     if match:
-        return match.group(1).strip()
+        return match.group(1).strip(), None
 
     # JSON output variants, if command template later adds --json.
     decoder = json.JSONDecoder()
@@ -104,28 +115,29 @@ def _extract_message_id(output):
             obj, _ = decoder.raw_decode(output[i:])
         except json.JSONDecodeError:
             continue
-        found = _find_message_id(obj)
-        if found:
-            return found
-    return None
+        message_id, handled_by = _find_send_receipt(obj)
+        if message_id:
+            return message_id, handled_by
+    return None, None
 
 
-def _find_message_id(value):
+def _find_send_receipt(value):
     if isinstance(value, dict):
+        handled_by = value.get("handledBy") or value.get("handled_by")
         for key in ("messageId", "message_id", "id"):
             v = value.get(key)
             if isinstance(v, str) and v:
-                return v
+                return v, handled_by
         for v in value.values():
-            found = _find_message_id(v)
-            if found:
-                return found
+            message_id, nested_handled_by = _find_send_receipt(v)
+            if message_id:
+                return message_id, nested_handled_by or handled_by
     elif isinstance(value, list):
         for item in value:
-            found = _find_message_id(item)
-            if found:
-                return found
-    return None
+            message_id, handled_by = _find_send_receipt(item)
+            if message_id:
+                return message_id, handled_by
+    return None, None
 
 
 def _is_windows():

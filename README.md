@@ -17,8 +17,11 @@ morning_report/
 │   ├── image_render.py   # 服务器版：PIL 自绘四张图（LibreOffice 不可用时回退）
 │   ├── text_report.py    # 服务器版：按模板1 口径动态生成文字通报
 │   ├── mail_client.py    # 服务器版：QQ 邮箱 IMAP 收件、下载附件
-│   ├── wechat_sender.py  # 服务器版：调 OpenClaw 发图/发文字到微信
+│   ├── wechat_sender.py  # 服务器版：调发送命令发图/发文字到微信
 │   └── server.py         # 服务器版主程序（轮询邮件 → 处理 → 出图+通报 → 发送）
+├── scripts/
+│   ├── deploy_latest.sh       # 服务器拉取 GitHub 最新代码并重启服务
+│   └── weixin_direct_send.js  # 直连 openclaw-weixin 凭据/API 发送，避免 core fallback 误判
 ├── assets/
 │   └── 早会五张表.xlsx    # ⚠️ 模板文件（带公式），必须放在这里
 ├── requirements.txt      # 服务器版依赖
@@ -106,8 +109,11 @@ apt-get install -y fonts-noto-cjk
 `.env`（默认 `/root/.openclaw/tools/qq-mail-mcp/.env`）读取
 `QQ_MAIL_USER` / `QQ_MAIL_PASS` / `QQ_MAIL_IMAP_HOST` / `QQ_MAIL_IMAP_PORT`。
 
-发送命令 `OPENCLAW_SEND_COMMAND`（发图）与 `OPENCLAW_SEND_TEXT_COMMAND`
-（发文字）按实际 OpenClaw 部署调整。
+发送配置：
+
+- `OPENCLAW_WEIXIN_TO`：目标微信用户 id，通常形如 `xxx@im.wechat`。
+- `OPENCLAW_SEND_COMMAND`（发图）与 `OPENCLAW_SEND_TEXT_COMMAND`（发文字）可按实际部署覆盖。
+- 默认使用 `node scripts/weixin_direct_send.js --json ...`，直接复用 `openclaw-weixin` 已登录账号、context token 与 Weixin HTTP API 发送。不要默认改回 `openclaw message send --channel openclaw-weixin`：该通用 CLI 可能只由 OpenClaw core 接收并返回 Message ID，但没有真正调用微信插件，微信端可能不可见。
 
 ### 服务器部署 / 更新代码
 

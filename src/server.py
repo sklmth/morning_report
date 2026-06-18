@@ -70,12 +70,13 @@ def load_config():
         "peak_start_hour": int(_env_any(["MAIL_PEAK_START_HOUR"], "17")),
         "peak_end_hour": int(_env_any(["MAIL_PEAK_END_HOUR"], "19")),
         "font_path": _env_any(["REPORT_FONT_PATH"]) or None,
+        "weixin_to": _env_any(["OPENCLAW_WEIXIN_TO"]),
         "send_command": _env_any(
             ["OPENCLAW_SEND_COMMAND"],
-            'openclaw message send --media "{image}" --message "{caption}"'),
+            'node scripts/weixin_direct_send.js --json --to "{to}" --media "{image}" --message "{caption}"'),
         "send_text_command": _env_any(
             ["OPENCLAW_SEND_TEXT_COMMAND"],
-            'openclaw message send --message "{caption}"'),
+            'node scripts/weixin_direct_send.js --json --to "{to}" --message "{caption}"'),
     }
     return cfg
 
@@ -193,11 +194,13 @@ def process_files(file_paths, cfg):
 
     # 发送：先发四张图，再发文字通报
     try:
-        image_results = send_images(images, cfg["send_command"])
+        image_results = send_images(images, cfg["send_command"],
+                                    to=cfg["weixin_to"])
         image_ids = ", ".join(r.message_id for r in image_results)
         log(f"已通过 OpenClaw 发送 {len(image_results)} 张图到微信。Message IDs: {image_ids}")
         if report_text:
-            text_result = send_text(report_text, cfg["send_text_command"])
+            text_result = send_text(report_text, cfg["send_text_command"],
+                                    to=cfg["weixin_to"])
             log(f"已发送文字通报到微信。Message ID: {text_result.message_id}")
     except WeChatSendError as e:
         log(f"[WARN] 微信发送失败：{e}")
