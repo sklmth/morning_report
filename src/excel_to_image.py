@@ -45,6 +45,13 @@ _SOFFICE_CANDIDATES = [
 # PDF 转 PNG 的渲染 DPI（越大越清晰、文件越大）
 PDF_DPI = int(os.environ.get("REPORT_PDF_DPI", "200"))
 
+# 自动裁白边时保留的安全边距，默认不保留，避免发图四周出现白框。
+# 如个别渠道裁切过紧，可通过 REPORT_AUTOCROP_PAD=2/4 临时加回少量边距。
+AUTOCROP_PAD = int(os.environ.get("REPORT_AUTOCROP_PAD", "0"))
+
+# 把接近白色的像素也视为背景，避免 PDF 抗锯齿产生的浅灰边缘影响裁剪。
+AUTOCROP_WHITE_THRESHOLD = int(os.environ.get("REPORT_AUTOCROP_WHITE_THRESHOLD", "248"))
+
 
 def _find_soffice():
     for c in _SOFFICE_CANDIDATES:
@@ -246,13 +253,15 @@ def _pdf_to_png(pdf_path, png_path):
 def _autocrop(png_path):
     """去掉 PNG 四周多余白边。失败则保持原样。"""
     try:
-        from PIL import Image, ImageChops
+        from PIL import Image
         im = Image.open(png_path).convert("RGB")
-        bg = Image.new("RGB", im.size, (255, 255, 255))
-        diff = ImageChops.difference(im, bg)
-        bbox = diff.getbbox()
+        mask = im.point(
+            lambda v: 255 if v < AUTOCROP_WHITE_THRESHOLD else 0,
+            mode="1",
+        )
+        bbox = mask.getbbox()
         if bbox:
-            pad = 8
+            pad = max(0, AUTOCROP_PAD)
             l = max(0, bbox[0] - pad)
             t = max(0, bbox[1] - pad)
             r = min(im.width, bbox[2] + pad)
