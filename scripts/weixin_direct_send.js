@@ -41,6 +41,9 @@ Options:
   --json                 Print JSON result (always enabled for success/failure)
   --dry-run              Validate account/context and print planned action only
   --no-context           Do not send context_token to Weixin
+  --allow-account-user   Allow --to to equal account userId; useful because the
+                         plugin stores ilink_user_id here and may also use it
+                         as the inbound reply target
 `);
   process.exit(2);
 }
@@ -52,6 +55,7 @@ function parseArgs(argv) {
     if (a === '--json') { out.json = true; continue; }
     if (a === '--dry-run') { out.dryRun = true; continue; }
     if (a === '--no-context') { out.noContext = true; continue; }
+    if (a === '--allow-account-user') { out.allowAccountUser = true; continue; }
     if (!a.startsWith('--')) usage();
     const key = a.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
     const val = argv[++i];
@@ -261,10 +265,11 @@ async function main() {
   const cfgPath = args.config || process.env.OPENCLAW_CONFIG || path.join(stateDir, 'openclaw.json');
   const cfg = loadOpenClawConfig(cfgPath);
   const account = resolveAccount({ stateDir, cfg, accountId: args.account });
-  if (account.userId && args.to === account.userId) {
+  const toEqualsAccountUser = Boolean(account.userId && args.to === account.userId);
+  if (toEqualsAccountUser && !args.allowAccountUser) {
     throw new Error(
-      `target ${args.to} is the logged-in Weixin account userId for ${account.accountId}; ` +
-      'use a recipient/peer id instead of the sender self id'
+      `target ${args.to} equals stored account userId for ${account.accountId}; ` +
+      'pass --allow-account-user to test/send anyway, because openclaw-weixin may use this ilink_user_id as the inbound reply target'
     );
   }
   const contextToken = args.noContext ? undefined : loadContextToken(stateDir, account.accountId, args.to);
@@ -273,7 +278,7 @@ async function main() {
   }
 
   if (args.dryRun) {
-    console.log(JSON.stringify({ ok: true, dryRun: true, channel: 'openclaw-weixin', handledBy: 'weixin-direct', accountId: account.accountId, accountUserId: account.userId || null, to: args.to, hasContextToken: Boolean(contextToken), media: args.media || null, messageLength: (args.message || '').length }));
+    console.log(JSON.stringify({ ok: true, dryRun: true, channel: 'openclaw-weixin', handledBy: 'weixin-direct', accountId: account.accountId, accountUserId: account.userId || null, to: args.to, toEqualsAccountUser, hasContextToken: Boolean(contextToken), media: args.media || null, messageLength: (args.message || '').length }));
     return;
   }
 
@@ -300,7 +305,9 @@ async function main() {
     handledBy: 'weixin-direct',
     via: 'weixin-http-api',
     accountId: account.accountId,
+    accountUserId: account.userId || null,
     to: args.to,
+    toEqualsAccountUser,
     messageId: result.messageId,
     apiResponses: result.responses,
   }));
