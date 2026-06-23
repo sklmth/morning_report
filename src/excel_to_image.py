@@ -43,7 +43,7 @@ _SOFFICE_CANDIDATES = [
 ]
 
 # PDF 转 PNG 的渲染 DPI（越大越清晰、文件越大）
-PDF_DPI = int(os.environ.get("REPORT_PDF_DPI", "200"))
+PDF_DPI = int(os.environ.get("REPORT_PDF_DPI", "300"))
 
 # 自动裁白边时保留的安全边距，默认不保留，避免发图四周出现白框。
 # 如个别渠道裁切过紧，可通过 REPORT_AUTOCROP_PAD=2/4 临时加回少量边距。
@@ -201,7 +201,7 @@ def _uno_export_pdf(result_xlsx, out_dir, port, timeout):
 
 
 def _fit_one_page(doc, sheet, pv):
-    """把当前 sheet 的页面样式设为「缩放到 1 页宽 1 页高」，避免区域被分页切断。"""
+    """把当前 sheet 的页面样式设为「缩放到 1 页宽 1 页高」，边距清零，避免白边。"""
     try:
         style_name = sheet.PageStyle
         page_styles = doc.StyleFamilies.getByName("PageStyles")
@@ -209,12 +209,17 @@ def _fit_one_page(doc, sheet, pv):
             ps = page_styles.getByName(style_name)
             ps.setPropertyValue("ScaleToPagesX", 1)
             ps.setPropertyValue("ScaleToPagesY", 1)
-            # 关掉页眉页脚，减少留白
-            try:
-                ps.setPropertyValue("HeaderIsOn", False)
-                ps.setPropertyValue("FooterIsOn", False)
-            except Exception:
-                pass
+            for prop in ("HeaderIsOn", "FooterIsOn"):
+                try:
+                    ps.setPropertyValue(prop, False)
+                except Exception:
+                    pass
+            # 清零四个边距，彻底消除 PDF 白框
+            for prop in ("TopMargin", "BottomMargin", "LeftMargin", "RightMargin"):
+                try:
+                    ps.setPropertyValue(prop, 0)
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -251,15 +256,14 @@ def _pdf_to_png(pdf_path, png_path):
 
 
 def _autocrop(png_path):
-    """去掉 PNG 四周多余白边。失败则保持原样。"""
+    """去掉 PNG 四周多余白边。用 ImageChops.difference 精确识别内容边界。"""
     try:
-        from PIL import Image
+        from PIL import Image, ImageChops
         im = Image.open(png_path).convert("RGB")
-        mask = im.point(
-            lambda v: 255 if v < AUTOCROP_WHITE_THRESHOLD else 0,
-            mode="1",
-        )
-        bbox = mask.getbbox()
+        # 与纯白背景做差值，差值 > 阈值的像素为内容
+        diff = ImageChops.difference(im, Image.new("RGB", im.size, (255, 255, 255)))
+        diff = diff.point(lambda x: 255 if x > (255 - AUTOCROP_WHITE_THRESHOLD) else 0)
+        bbox = diff.getbbox()
         if bbox:
             pad = max(0, AUTOCROP_PAD)
             l = max(0, bbox[0] - pad)

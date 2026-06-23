@@ -94,12 +94,12 @@ h2{font-size:1rem;color:#8b949e;margin-bottom:12px}
 .badge-error{background:#3d1a1a;color:#f85149}
 .badge-skipped{background:#1f2937;color:#8b949e}
 .meta{font-size:.8rem;color:#8b949e;margin:6px 0 10px}
-.btn{display:inline-block;padding:8px 18px;border-radius:6px;border:none;
-  background:#21262d;color:#e6edf3;cursor:pointer;font-size:.9rem}
+.btn{display:inline-block;padding:10px 20px;border-radius:6px;border:none;
+  background:#21262d;color:#e6edf3;cursor:pointer;font-size:.9rem;touch-action:manipulation}
 .btn-primary{background:#c8a96e;color:#0d1117;font-weight:600}
 .btn:hover{opacity:.85}
 .upload-zone{border:2px dashed #30363d;border-radius:8px;padding:24px;text-align:center;margin-bottom:16px}
-.upload-zone input[type=file]{display:block;margin:12px auto;color:#8b949e}
+.upload-zone input[type=file]{display:block;margin:12px auto;color:#8b949e;max-width:100%}
 .img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
 .img-grid img{width:100%;border-radius:6px;border:1px solid #30363d}
 .img-caption{font-size:.75rem;color:#8b949e;margin-top:4px;text-align:center}
@@ -107,7 +107,40 @@ pre{white-space:pre-wrap;word-break:break-all;background:#0d1117;border:1px soli
   border-radius:6px;padding:14px;font-size:.8rem;line-height:1.6;color:#c9d1d9;margin-top:10px}
 .row-link{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
 .no-records{color:#8b949e;text-align:center;padding:40px 0;font-size:.9rem}
-@media(max-width:500px){h1{font-size:1.1rem}.btn{font-size:.85rem;padding:7px 14px}}
+/* 加载遮罩 */
+#loading{display:none;position:fixed;inset:0;background:rgba(13,17,23,.88);
+  z-index:999;flex-direction:column;align-items:center;justify-content:center;gap:18px}
+#loading.show{display:flex}
+.spinner{width:44px;height:44px;border:4px solid #30363d;border-top-color:#c8a96e;
+  border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{color:#c8a96e;font-size:.95rem}
+/* 移动端 */
+@media(max-width:600px){
+  h1{font-size:1.1rem}
+  .btn{font-size:.85rem;padding:9px 14px}
+  .btn-primary,.btn-poll{width:100%;text-align:center;display:block}
+  .row-link{flex-direction:column;align-items:flex-start}
+  .row-link .btn{width:100%;text-align:center;margin-top:8px}
+  .img-grid{grid-template-columns:1fr}
+  .container{padding:12px}
+}
+"""
+
+_JS = """
+(function(){
+  var overlay=document.getElementById('loading');
+  function showLoading(msg){
+    overlay.querySelector('.loading-text').textContent=msg||'处理中，请稍候…';
+    overlay.classList.add('show');
+  }
+  document.querySelectorAll('form').forEach(function(f){
+    f.addEventListener('submit',function(){
+      var isUpload=f.action&&f.action.indexOf('/upload')>-1;
+      showLoading(isUpload?'正在处理文件，请稍候…':'正在收取邮件…');
+    });
+  });
+})();
 """
 
 
@@ -118,10 +151,13 @@ def _page(title, body, extra_head=""):
 <title>{title}</title>
 <style>{_CSS}</style>{extra_head}
 </head><body>
+<div id="loading"><div class="spinner"></div><div class="loading-text">处理中，请稍候…</div></div>
 <div class="container">
 <h1>早会数据处理系统</h1>
 {body}
-</div></body></html>"""
+</div>
+<script>{_JS}</script>
+</body></html>"""
 
 
 def _badge(status):
