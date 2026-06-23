@@ -118,12 +118,15 @@ pre{white-space:pre-wrap;word-break:break-all;background:#0d1117;border:1px soli
 /* 移动端 */
 @media(max-width:600px){
   h1{font-size:1.1rem}
-  .btn{font-size:.85rem;padding:9px 14px}
-  .btn-primary,.btn-poll{width:100%;text-align:center;display:block}
+  .btn{font-size:.9rem;padding:12px 16px}
+  .btn-primary,.btn-poll{width:100%;text-align:center;display:block;margin-top:8px}
   .row-link{flex-direction:column;align-items:flex-start}
   .row-link .btn{width:100%;text-align:center;margin-top:8px}
   .img-grid{grid-template-columns:1fr}
   .container{padding:12px}
+  .upload-zone{padding:20px 12px}
+  .upload-zone input[type=file]{font-size:.9rem;width:100%}
+  .card{padding:12px}
 }
 """
 
@@ -246,7 +249,7 @@ class Handler(BaseHTTPRequestHandler):
 
         poll_form = """<div style="margin-bottom:14px">
   <form method="post" action="/poll" style="display:inline">
-    <button type="submit" class="btn">立即收取邮件</button>
+    <button type="submit" class="btn btn-poll">立即收取邮件</button>
   </form>
 </div>"""
 

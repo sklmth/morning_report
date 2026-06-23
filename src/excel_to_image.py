@@ -50,7 +50,7 @@ PDF_DPI = int(os.environ.get("REPORT_PDF_DPI", "300"))
 AUTOCROP_PAD = int(os.environ.get("REPORT_AUTOCROP_PAD", "0"))
 
 # 把接近白色的像素也视为背景，避免 PDF 抗锯齿产生的浅灰边缘影响裁剪。
-AUTOCROP_WHITE_THRESHOLD = int(os.environ.get("REPORT_AUTOCROP_WHITE_THRESHOLD", "248"))
+AUTOCROP_WHITE_THRESHOLD = int(os.environ.get("REPORT_AUTOCROP_WHITE_THRESHOLD", "230"))
 
 
 def _find_soffice():
