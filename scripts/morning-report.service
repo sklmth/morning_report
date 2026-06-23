@@ -1,0 +1,15 @@
+[Unit]
+Description=早会数据处理系统 Web 服务
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/.openclaw/workspace/morning_report
+ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python src/web_server.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

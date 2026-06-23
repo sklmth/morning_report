@@ -117,11 +117,48 @@ apt-get install -y fonts-noto-cjk
 - 默认使用 `node scripts/weixin_direct_send.js --json ...`，直接复用 `openclaw-weixin` 已登录账号、context token 与 Weixin HTTP API 发送。不要默认改回 `openclaw message send --channel openclaw-weixin`：该通用 CLI 可能只由 OpenClaw core 接收并返回 Message ID，但没有真正调用微信插件，微信端可能不可见。
 - 直连发送脚本会校验 HTTP 响应里的 `ret` / `errcode`；非 0 会按失败处理，不能只看本地生成的 `Message ID`。
 
+### Web 界面（端口 8990）
+
+新增网页版，可在手机或浏览器中查看所有处理记录、通报图片、文字通报，以及手动上传 Excel 处理。
+
+**启动方式（推荐，替代原 `server.py` 常驻）：**
+
+```bash
+python src/web_server.py              # Web 服务 + 后台自动收信轮询
+python src/web_server.py --no-poll    # 仅 Web，不轮询邮件
+python src/web_server.py --once       # 启动时立刻收一次邮件
+```
+
+浏览器打开 `http://服务器IP:8990/` 即可访问，手机同样可用。
+
+**`.env` 相关配置项：**
+
+```
+WEB_HOST=0.0.0.0   # 监听地址
+WEB_PORT=8990      # 监听端口
+REPORT_DB_PATH=    # SQLite 路径，默认 runtime/morning_report.db
+```
+
+**处理结果说明：**
+- 邮件自动触发处理后，微信发送仍正常执行，同时入库供网页查看
+- 网页手动上传触发处理时，**不发送微信**，仅入库展示
+
+---
+
 ### 服务器部署 / 更新代码
 
 服务器已配置 systemd 常驻服务：`morning-report.service`。
 
-GitHub 有更新后，在服务器执行：
+**首次部署**：将 `scripts/morning-report.service` 复制到 systemd 并启用：
+
+```bash
+cp scripts/morning-report.service /etc/systemd/system/morning-report.service
+# 按实际路径修改 WorkingDirectory 和 ExecStart
+systemctl daemon-reload
+systemctl enable --now morning-report.service
+```
+
+**更新代码**：GitHub 有更新后，在服务器执行：
 
 ```bash
 scripts/deploy_latest.sh
@@ -143,12 +180,16 @@ BRANCH=master SERVICE_NAME=morning-report.service scripts/deploy_latest.sh
 INSTALL_DEPS=true scripts/deploy_latest.sh   # 强制重装 requirements.txt
 ```
 
-### 运行
+### 命令行运行
 
 ```bash
-python src/server.py              # 持续轮询（推荐配合 systemd / supervisor 常驻）
-python src/server.py --once       # 只跑一轮后退出（适合定时任务 cron）
-python src/server.py --local A.xlsx B.xlsx   # 跳过邮箱，直接处理本地文件（调试用）
+# Web 服务（包含后台轮询，推荐）
+python src/web_server.py
+
+# 原命令行模式（不含 Web）
+python src/server.py              # 持续轮询
+python src/server.py --once       # 只跑一轮后退出
+python src/server.py --local A.xlsx B.xlsx   # 跳过邮箱，直接处理本地文件
 ```
 
 中间产物（附件、结果 Excel、四张图、`通报.txt`）保存在 `runtime/`（已忽略）。
