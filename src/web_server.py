@@ -18,6 +18,7 @@ import threading
 import time
 import traceback
 import urllib.parse
+import zipfile
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -33,6 +34,7 @@ import server as _srv
 _cfg: dict = {}
 _store: ReportStore = None  # type: ignore
 _upload_dir = os.path.join(_ROOT, "runtime", "uploads")
+_PAGE_SIZE = 20
 
 # ── 辅助 ─────────────────────────────────────────────────────────────
 
@@ -115,6 +117,9 @@ pre{white-space:pre-wrap;word-break:break-all;background:#0d1117;border:1px soli
   border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-text{color:#c8a96e;font-size:.95rem}
+.pagination{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:16px;flex-wrap:wrap}
+.pagination .btn{min-width:36px;text-align:center;padding:8px 12px}
+.pagination .cur{background:#c8a96e;color:#0d1117;font-weight:600}
 /* 移动端 */
 @media(max-width:600px){
   h1{font-size:1.1rem}
@@ -203,6 +208,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/files/"):
             rel = path[len("/files/"):]
             self._handle_file(rel)
+        elif path.startswith("/download_zip/"):
+            rid = path[len("/download_zip/"):]
+            self._handle_download_zip(rid)
         elif path == "/api/reports":
             self._handle_api_reports()
         else:
@@ -219,7 +227,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # ── GET / ──
     def _handle_index(self):
-        reports = [_report_to_web(r) for r in _store.list_reports(50)]
+        parsed = urllib.parse.urlparse(self.path)
+        qs = urllib.parse.parse_qs(parsed.query)
+        try:
+            page = max(1, int(qs.get("page", ["1"])[0]))
+        except (ValueError, TypeError):
+            page = 1
+        total = _store.count_reports()
+        import math
+        total_pages = max(1, math.ceil(total / _PAGE_SIZE))
+        page = min(page, total_pages)
+        offset = (page - 1) * _PAGE_SIZE
+        reports = [_report_to_web(r) for r in _store.list_reports(_PAGE_SIZE, offset)]
         cards = ""
         if reports:
             for r in reports:
@@ -253,7 +272,24 @@ class Handler(BaseHTTPRequestHandler):
   </form>
 </div>"""
 
-        body = upload_form + poll_form + cards
+        # 分页导航
+        pagination = ""
+        if total_pages > 1:
+            parts = []
+            if page > 1:
+                parts.append(f'<a class="btn" href="/?page={page-1}">‹ 上一页</a>')
+            # 显示最多 7 个页码
+            start = max(1, page - 3)
+            end = min(total_pages, start + 6)
+            start = max(1, end - 6)
+            for p in range(start, end + 1):
+                cls = 'btn cur' if p == page else 'btn'
+                parts.append(f'<a class="{cls}" href="/?page={p}">{p}</a>')
+            if page < total_pages:
+                parts.append(f'<a class="btn" href="/?page={page+1}">下一页 ›</a>')
+            pagination = f'<div class="pagination">{"".join(parts)}<span style="color:#8b949e;font-size:.8rem">共 {total} 条</span></div>'
+
+        body = upload_form + poll_form + cards + pagination
         self._send(200, _page("早会数据处理系统", body))
 
     # ── GET /report/<id> ──
@@ -284,6 +320,10 @@ class Handler(BaseHTTPRequestHandler):
         sheets = "、".join(r["written_sheets"]) if r["written_sheets"] else "—"
         src_label = {"mail": "邮件", "upload": "上传", "local": "本地"}.get(r["source"], r["source"])
 
+        zip_link = ""
+        if r["images"]:
+            zip_link = f'<p style="margin-top:10px"><a href="/download_zip/{r["id"]}" class="btn btn-primary">⬇ 一键下载全部图片</a></p>'
+
         body = f"""<p><a href="/" class="btn" style="margin-bottom:12px">← 返回列表</a></p>
 <div class="card">
   <div style="margin-bottom:8px">{_badge(r['status'])} <b style="margin-left:8px">{r['subject'] or '（无标题）'}</b></div>
@@ -293,6 +333,7 @@ class Handler(BaseHTTPRequestHandler):
     {r['message']}
   </div>
   {img_html}
+  {zip_link}
   {xlsx_link}
   {text_html}
 </div>"""
@@ -310,6 +351,36 @@ class Handler(BaseHTTPRequestHandler):
         with open(abs_path, "rb") as f:
             data = f.read()
         self._send(200, data, mime)
+
+    # ── GET /download_zip/<id> ──
+    def _handle_download_zip(self, rid):
+        try:
+            r = _store.get_report(int(rid))
+        except (ValueError, TypeError):
+            r = None
+        if not r:
+            self._send(404, "Not Found")
+            return
+        r = _report_to_web(r)
+        buf = io.BytesIO()
+        base = os.path.join(_ROOT, "runtime")
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for img in r["images"]:
+                url = img["url"]
+                if not url.startswith("/files/"):
+                    continue
+                rel = urllib.parse.unquote(url[len("/files/"):])
+                abs_path = _safe_runtime_path(rel)
+                if abs_path:
+                    zf.write(abs_path, os.path.basename(abs_path))
+        data = buf.getvalue()
+        fname = f"report_{rid}_images.zip"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/zip")
+        self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     # ── GET /api/reports ──
     def _handle_api_reports(self):

@@ -76,11 +76,15 @@ class ReportStore:
             )
             return cur.lastrowid
 
-    def list_reports(self, limit=50):
+    def count_reports(self):
+        with self._connect() as conn:
+            return conn.execute("SELECT COUNT(*) FROM reports").fetchone()[0]
+
+    def list_reports(self, limit=50, offset=0):
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM reports ORDER BY created_at DESC LIMIT ?",
-                (int(limit),),
+                "SELECT * FROM reports ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (int(limit), int(offset)),
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
