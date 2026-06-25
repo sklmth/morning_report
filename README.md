@@ -190,6 +190,12 @@ python src/web_server.py
 python src/server.py              # 持续轮询
 python src/server.py --once       # 只跑一轮后退出
 python src/server.py --local A.xlsx B.xlsx   # 跳过邮箱，直接处理本地文件
+
+# OpenClaw 桥接
+python src/openclaw_bridge.py latest               # 返回最新一条处理记录
+python src/openclaw_bridge.py date 2026-06-25      # 返回指定日期最新记录
+python src/openclaw_bridge.py inspect A.xlsx       # 仅识别附件是否该触发处理
+python src/openclaw_bridge.py ingest A.xlsx B.xlsx # 先识别，再处理并入库
 ```
 
 中间产物（附件、结果 Excel、四张图、`通报.txt`）保存在 `runtime/`（已忽略）。
