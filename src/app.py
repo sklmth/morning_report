@@ -19,7 +19,8 @@ try:
         generate_gaotao_table, generate_quanguang_table,
         generate_wanmei_table, generate_honghuangpai_gaotao_table,
         generate_gaozhuang_gaotao_table, generate_shangji_table,
-        generate_yingfu_table, GatewayConfigError
+        generate_yingfu_table, generate_yingfu_gaotao_for_gaozhuang,
+        generate_jifen_table, GatewayConfigError
     )
 except ImportError:
     messagebox.showerror("运行错误", "无法加载 function.py，请确保该文件与程序在同一目录。")
@@ -350,10 +351,12 @@ class App(tk.Tk):
 
             # 2. 处理营服报表（生成激励表）
             yf_path = self.zone_yingfu.get()
+            yf_gaotao = {}
             if yf_path:
                 self.after(0, lambda: (self._set_progress("计算 激励…"), self._log("  ⚙  处理 营服报表数据…", "info")))
                 yf_data = pd.read_excel(yf_path, sheet_name=None, header=None)
                 sheet_results["激励"] = generate_yingfu_table(yf_data)
+                yf_gaotao = generate_yingfu_gaotao_for_gaozhuang(yf_data)
                 self.after(0, lambda: self._log("    ✓ 激励 完成", "success"))
                 processed_count += 1
 
@@ -376,7 +379,22 @@ class App(tk.Tk):
                 self.after(0, lambda: self._log("  ⚙  处理 高装高套（来自完美一单数据）…", "info"))
                 sheet_results["高装高套"] = generate_gaozhuang_gaotao_table(wm_data)
                 self.after(0, lambda: self._log("    ✓ 高装高套 完成", "success"))
+                sheet_results["积分"] = generate_jifen_table(wm_path)
                 processed_count += 1
+
+            # 兜底：完美一单无数据的高装人员从营服报表补充
+            if yf_gaotao:
+                gz_df = sheet_results.get("高装高套")
+                if gz_df is not None:
+                    for i, row in gz_df.iterrows():
+                        if row["高套数"] == 0 and row["姓名"] in yf_gaotao:
+                            gz_df.at[i, "高套数"] = yf_gaotao[row["姓名"]]["高套数"]
+                wm_df = sheet_results.get("完美一单")
+                if wm_df is not None:
+                    from function import gaozhuang_names
+                    for i, row in wm_df.iterrows():
+                        if row["姓名"] in gaozhuang_names and row["积分完成"] == 0 and row["姓名"] in yf_gaotao:
+                            wm_df.at[i, "积分完成"] = yf_gaotao[row["姓名"]]["积分"]
 
             # 4. 处理商机管控表
             sj_path = self.zone_shangji.get()
@@ -399,8 +417,9 @@ class App(tk.Tk):
             if os.path.exists(template_path):
                 shutil.copy2(template_path, out_path)
 
-            # 将「高装高套」从普通写入列表中分离出来，单独用单元格方式写入
+            # 将「高装高套」「积分」从普通写入列表中分离出来，单独用单元格方式写入
             gaozhuang_df = sheet_results.pop("高装高套", None)
+            jifen_vals   = sheet_results.pop("积分", None)
 
             with pd.ExcelWriter(out_path, engine="openpyxl",
                                 mode="a" if os.path.exists(template_path) else "w",
@@ -418,6 +437,15 @@ class App(tk.Tk):
                     for r_idx, row_vals in enumerate(gaozhuang_df[["姓名", "高套数"]].values.tolist()):
                         ws_gz.cell(row=2 + r_idx, column=1, value=row_vals[0])  # 姓名 → A列
                         ws_gz.cell(row=2 + r_idx, column=2, value=row_vals[1])  # 高套数 → B列
+
+                # 写入积分：A2=净增积分, B2=基本面, C2=双线, D2=增量积分落格率
+                if jifen_vals is not None:
+                    if "积分" not in writer.book.sheetnames:
+                        writer.book.create_sheet("积分")
+                    ws_jf = writer.book["积分"]
+                    for c_idx, val in enumerate(jifen_vals):
+                        if val is not None:
+                            ws_jf.cell(row=2, column=1 + c_idx, value=val)
 
                 # 写入商机统计：两个表写入同一 sheet，用 openpyxl 直接操作单元格避免覆盖
                 if shangji_dfs:

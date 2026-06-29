@@ -311,6 +311,55 @@ def generate_gaozhuang_gaotao_table(data):
     result["高套数"] = result["高套数"].fillna(0)
     return result[["姓名", "高套数"]]
 
+def generate_jifen_table(wm_path):
+    """
+    从完美一单提取积分 sheet 数据（A2:D2），用绝对单元格地址读取：
+    区县责任田积分(月): D5=净增积分, E5=基本面, N5=双线
+    揽装局向维度（月累）: G8=增量积分落格率
+    """
+    sheets = pd.read_excel(
+        wm_path,
+        sheet_name=["区县责任田积分(月）", "揽装局向维度（月累）"],
+        header=None,
+    )
+    def _v(df, r, c):  # Excel 1-based 行列 → iloc[r-1, c-1]
+        try:
+            return pd.to_numeric(df.iloc[r - 1, c - 1], errors="coerce")
+        except (IndexError, KeyError):
+            return None
+    zx = sheets["区县责任田积分(月）"]
+    lz = sheets["揽装局向维度（月累）"]
+    return [_v(zx, 5, 4), _v(zx, 5, 5), _v(zx, 5, 14), _v(lz, 8, 7)]
+
+
+def generate_yingfu_gaotao_for_gaozhuang(yf_data):
+    """
+    从营服业务通报表提取高装人员的高套数和积分（完美一单无数据时的兜底）。
+    高套清单:    AM(38)=姓名,  BL(63)=积分, BR(69)=高套数
+    存量高套清单: BX(75)=揽装人, AK(36)=积分, CS(96)=高套数
+    """
+    result = {}
+    for sheet, name_col, score_col, cnt_col in [
+        ("高套清单",    38, 63, 69),
+        ("存量高套清单", 75, 36, 96),
+    ]:
+        if sheet not in yf_data:
+            continue
+        t = yf_data[sheet].iloc[1:, [name_col, score_col, cnt_col]].copy()
+        t.columns = ["姓名", "积分", "高套数"]
+        t["姓名"] = t["姓名"].astype(str).str.strip()
+        t = t[t["姓名"].isin(gaozhuang_names)]
+        t["积分"]  = pd.to_numeric(t["积分"],  errors="coerce").fillna(0)
+        t["高套数"] = pd.to_numeric(t["高套数"], errors="coerce").fillna(0)
+        for _, row in t.iterrows():
+            name = row["姓名"]
+            if name not in result:
+                result[name] = {"积分": 0, "高套数": 0}
+            result[name]["积分"]  += row["积分"]
+            result[name]["高套数"] += row["高套数"]
+    return result
+
+
 def generate_yingfu_table(data):
     """
     从营服报表中提取激励数据。

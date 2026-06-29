@@ -26,7 +26,8 @@ from function import (  # noqa: E402
     generate_gaotao_table, generate_quanguang_table,
     generate_wanmei_table, generate_honghuangpai_gaotao_table,
     generate_gaozhuang_gaotao_table, generate_shangji_table,
-    generate_yingfu_table, GatewayConfigError,
+    generate_yingfu_table, generate_yingfu_gaotao_for_gaozhuang,
+    generate_jifen_table, GatewayConfigError,
 )
 
 # 模板文件名（位于 assets/ 或打包内嵌目录）
@@ -108,11 +109,13 @@ def build_report(inputs, out_path):
     shangji_dfs = None
     written = {}
 
-    # 1. 营服报表 → 激励
+    # 1. 营服报表 → 激励；同时提取高装人员兜底数据
     yf_path = inputs.get("yingfu")
+    yf_gaotao = {}
     if yf_path:
         yf_data = pd.read_excel(yf_path, sheet_name=None, header=None)
         sheet_results["激励"] = generate_yingfu_table(yf_data)
+        yf_gaotao = generate_yingfu_gaotao_for_gaozhuang(yf_data)
         written["激励"] = True
 
     # 2. 完美一单 → 完美一单/全光组网/高套/红黄牌高套/高装高套
@@ -124,8 +127,23 @@ def build_report(inputs, out_path):
         sheet_results["高套"] = generate_gaotao_table(wm_data)
         sheet_results["红黄牌高套"] = generate_honghuangpai_gaotao_table(wm_data)
         sheet_results["高装高套"] = generate_gaozhuang_gaotao_table(wm_data)
-        for k in ("完美一单", "全光组网", "高套", "红黄牌高套", "高装高套"):
+        sheet_results["积分"] = generate_jifen_table(wm_path)
+        for k in ("完美一单", "全光组网", "高套", "红黄牌高套", "高装高套", "积分"):
             written[k] = True
+
+    # 兜底：完美一单无数据的高装人员从营服报表补充
+    if yf_gaotao:
+        gz_df = sheet_results.get("高装高套")
+        if gz_df is not None:
+            for i, row in gz_df.iterrows():
+                if row["高套数"] == 0 and row["姓名"] in yf_gaotao:
+                    gz_df.at[i, "高套数"] = yf_gaotao[row["姓名"]]["高套数"]
+        wm_df = sheet_results.get("完美一单")
+        if wm_df is not None:
+            from function import gaozhuang_names
+            for i, row in wm_df.iterrows():
+                if row["姓名"] in gaozhuang_names and row["积分完成"] == 0 and row["姓名"] in yf_gaotao:
+                    wm_df.at[i, "积分完成"] = yf_gaotao[row["姓名"]]["积分"]
 
     # 3. 商机管控
     sj_path = inputs.get("shangji")
@@ -142,13 +160,22 @@ def build_report(inputs, out_path):
     template_path = find_template()
     shutil.copy2(template_path, out_path)
 
-    # 高装高套单独按单元格写（保留 sheet 中目标/完成率等列）
+    # 高装高套、积分单独按单元格写（保留模板公式列）
     gaozhuang_df = sheet_results.pop("高装高套", None)
+    jifen_vals   = sheet_results.pop("积分", None)
 
     with pd.ExcelWriter(out_path, engine="openpyxl", mode="a",
                         if_sheet_exists="replace") as writer:
         for s_name, df in sheet_results.items():
             df.to_excel(writer, sheet_name=s_name, index=False)
+
+        if jifen_vals is not None:
+            if "积分" not in writer.book.sheetnames:
+                writer.book.create_sheet("积分")
+            ws_jf = writer.book["积分"]
+            for c_idx, val in enumerate(jifen_vals):
+                if val is not None:
+                    ws_jf.cell(row=2, column=1 + c_idx, value=val)
 
         if gaozhuang_df is not None:
             if "高装高套" not in writer.book.sheetnames:
