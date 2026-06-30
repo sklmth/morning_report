@@ -4,31 +4,57 @@
 
 - **本机 GUI / exe 版**：人工选文件、出结果 Excel（`src/app.py`）
 - **云服务器无界面版**：收邮件 → 自动处理 → 出四张图 → 微信推送（`src/server.py`）
+- **经营分析系统**（端口 8991，新增）：积分结构、人员效能、进度预测、风险预警、县分横向对比、历史趋势，独立部署，不影响 8990
+
+---
 
 ## 项目结构
 
 ```
 morning_report/
 ├── src/
-│   ├── app.py            # 本机 GUI 主程序
-│   ├── function.py       # 数据处理逻辑（两版共用）
-│   ├── report_core.py    # 输入归类 + 写模板生成结果 Excel（两版共用）
-│   ├── excel_to_image.py # 服务器版：LibreOffice 按模板1 四区域导出四张 PNG（首选）
-│   ├── image_render.py   # 服务器版：PIL 自绘四张图（LibreOffice 不可用时回退）
-│   ├── text_report.py    # 服务器版：按模板1 口径动态生成文字通报
-│   ├── mail_client.py    # 服务器版：QQ 邮箱 IMAP 收件、下载附件
-│   ├── wechat_sender.py  # 服务器版：调发送命令发图/发文字到微信
-│   └── server.py         # 服务器版主程序（轮询邮件 → 处理 → 出图+通报 → 发送）
+│   ├── app.py              # 本机 GUI 主程序
+│   ├── function.py         # 数据处理逻辑（两版共用）
+│   ├── report_core.py      # 输入归类 + 写模板生成结果 Excel
+│   ├── excel_to_image.py   # 服务器版：LibreOffice 导出四张 PNG（首选）
+│   ├── image_render.py     # 服务器版：PIL 自绘（LibreOffice 不可用时回退）
+│   ├── text_report.py      # 服务器版：动态生成文字通报
+│   ├── mail_client.py      # 服务器版：QQ 邮箱 IMAP 收件
+│   ├── wechat_sender.py    # 服务器版：OpenClaw 微信发送
+│   ├── storage.py          # SQLite 存储（runtime/morning_report.db）
+│   └── server.py / web_server.py
+├── analytics/              # ── 经营分析后端 ──────────────────────
+│   ├── config.py           # 人员名单、预警阈值
+│   ├── db.py               # SQLite schema（7张表）+ CRUD
+│   ├── pipeline.py         # 文件识别 → 提取 → 入库调度
+│   ├── watcher.py          # 监听 8990 DB，自动触发分析（每30秒）
+│   ├── excel_export.py     # 导出分析结果 Excel（6个Sheet）
+│   ├── extractor/
+│   │   ├── wanmei.py       # 完美一单：5个Sheet全量提取
+│   │   └── yingfu.py       # 营服报表：效能/CP对/包区/激励档位
+│   ├── analyzer/
+│   │   ├── metrics.py      # 积分结构/人员效能/风险/横向对比/总览
+│   │   └── forecast.py     # 进度预测（日均/月末/人员状态）
+│   └── api/
+│       └── server.py       # FastAPI（11个端点，内部端口 8992）
+├── analytics-frontend/     # ── 经营分析前端 ──────────────────────
+│   ├── index.html          # 8个Tab单页应用
+│   ├── css/style.css
+│   └── js/
+│       ├── api.js          # API封装
+│       ├── charts.js       # ECharts 14种图表
+│       └── app.js          # Tab切换、数据加载、上传弹窗
+├── nginx/
+│   └── analytics.conf      # nginx server块配置（8991端口）
 ├── scripts/
-│   ├── deploy_latest.sh       # 服务器拉取 GitHub 最新代码并重启服务
-│   └── weixin_direct_send.js  # 直连 openclaw-weixin 凭据/API 发送，避免 core fallback 误判
+│   ├── deploy_latest.sh    # 拉最新代码并重启服务
+│   └── weixin_direct_send.js
 ├── assets/
-│   └── 早会五张表.xlsx    # ⚠️ 模板文件（带公式），必须放在这里
-├── requirements.txt      # 服务器版依赖
-├── .env.example          # 服务器版配置样例（复制为 .env 填写）
-├── morning_report.spec   # PyInstaller 打包配置（GUI 版）
-├── build_windows.bat     # 一键打包脚本（Windows）
-└── README.md
+│   └── 早会五张表.xlsx      # ⚠️ 模板文件（带公式），必须放在这里
+├── requirements.txt            # 8990 服务依赖
+├── analytics_requirements.txt  # 经营分析额外依赖（fastapi/uvicorn）
+├── run_analytics.py            # 经营分析启动入口
+└── .env.example
 ```
 
 ---
@@ -37,7 +63,7 @@ morning_report/
 
 ### 打包成 exe
 
-双击运行 `build_windows.bat`，完成后 exe 位于 `dist/早会数据处理系统.exe`，可直接分发给同事，无需安装 Python。
+双击运行 `build_windows.bat`，完成后 exe 位于 `dist/早会数据处理系统.exe`，可直接分发，无需安装 Python。
 
 ### 功能
 
@@ -47,162 +73,300 @@ morning_report/
 
 ---
 
-## 二、云服务器无界面版
-
-无 GUI，部署在已配好 QQ 邮箱（IMAP/SMTP 已连通）的服务器上，全自动运行。
+## 二、云服务器日报服务（端口 8990）
 
 ### 流程
 
 ```
 轮询 QQ 邮箱未读邮件
-  → 下载 Excel 附件（1 个或多个均可，按文件名/内容自动归类）
-  → 仅当附件含『完美一单』或『营服报表』之一/全部时才触发处理
+  → 下载 Excel 附件（按文件名/内容自动归类）
   → 写入模板生成结果 Excel
-  → 从结果 Excel「模板1」sheet 导出四张通报图：
-       ① 完美一单积分完成通报（A1:R21）
-       ② 高装高套目标完成情况（A33:F43）
-       ③ 全光任务完成情况（J33:N46）
-       ④ 区县目标完成情况（P33:T44）
-  → 动态生成文字通报（数值按「模板1」公式口径实时重算）
-  → 通过 OpenClaw 先发四张图、再发文字通报到微信
+  → LibreOffice 导出四张通报图（回退 PIL 自绘）
+  → 动态生成文字通报
+  → OpenClaw 发四张图 + 文字通报到微信
 ```
-
-> **出图方式**：四张图对应「模板1」中的四块区域。优先用 **LibreOffice**（headless）
-> 加载结果 Excel、求值公式并按原样式导出 PNG —— 颜色/边框/合并/数字格式/数据条
-> 与原 Excel 完全一致。若服务器无 LibreOffice，自动回退到 `image_render.py` 的
-> PIL 自绘方案（样式简化，数值口径一致）。
->
-> **文字通报**：`text_report.py` 按「模板1」大表（完美一单积分完成通报区域）的
-> 公式口径动态重算各数值后填入固定话术模板。已与真实通报逐项核对一致
-> （含邱海燕 6 月特批 +2500、团队对标全光贡献率等口径）。
 
 ### 安装依赖
 
 ```bash
 pip install -r requirements.txt
+
+# LibreOffice（强烈推荐，精确出图）
+apt-get install -y libreoffice-calc python3-uno poppler-utils fonts-noto-cjk
 ```
-
-**LibreOffice（强烈推荐，用于精确出图）**：
-
-```bash
-# Debian/Ubuntu
-apt-get install -y libreoffice-calc python3-uno poppler-utils fonts-wqy-microhei
-# 或 Noto CJK 字体
-apt-get install -y fonts-noto-cjk
-```
-
-> **出图链路**：LibreOffice（headless+UNO）加载结果 Excel → 重算公式 →
-> 把「模板1」每个区域设为打印区域 → 导出单页 PDF → 用 `pdftoppm`(poppler-utils)
-> 转 PNG → 自动裁白边。比「复制到 Draw 再导出」稳定，且能正确渲染公式与样式。
->
-> **重要：`_xlfn.XLOOKUP` 兼容**。模板用了 XLOOKUP，openpyxl 写出时带 `_xlfn.`
-> 前缀，部分 LibreOffice 版本求值会得 `#NAME?`。程序在出图前会自动用
-> `xlsx_fix.py` 把 `_xlfn.XLOOKUP` → `XLOOKUP`，使 LibreOffice 能正常求值。
->
-> 务必装 `python3-uno`（确保运行 server.py 的 Python 能 `import uno`）与
-> `poppler-utils`（提供 pdftoppm）。未装 LibreOffice 时回退 PIL 自绘，此时需中文字体。
 
 ### 配置
 
-复制 `.env.example` 为 `.env` 并按注释填写。**若服务器已用 OpenClaw 的
-`QQ_MAIL_*` 邮箱配置**，无需重填账号——程序会自动从 `MAIL_ENV_FILE` 指向的
-`.env`（默认 `/root/.openclaw/tools/qq-mail-mcp/.env`）读取
-`QQ_MAIL_USER` / `QQ_MAIL_PASS` / `QQ_MAIL_IMAP_HOST` / `QQ_MAIL_IMAP_PORT`。
+复制 `.env.example` 为 `.env` 并填写邮箱账号、微信发送目标等参数。若服务器已有 OpenClaw 的 `QQ_MAIL_*` 配置，无需重复填写。
 
-发送配置：
-
-- `OPENCLAW_WEIXIN_TO`：目标微信用户 id，通常形如 `xxx@im.wechat`。
-- 注意：当前插件会把登录返回的 `ilink_user_id` 保存为账号 `userId`，入站回复目标也可能是同一个 `xxx@im.wechat`。如果 `OPENCLAW_WEIXIN_TO` 等于该值，需要在直连命令中显式加 `--allow-account-user`，并以 Weixin API 返回的 `ret` / `errcode` 判断真实成败。
-- `OPENCLAW_SEND_COMMAND`（发图）与 `OPENCLAW_SEND_TEXT_COMMAND`（发文字）可按实际部署覆盖。
-- 默认使用 `node scripts/weixin_direct_send.js --json ...`，直接复用 `openclaw-weixin` 已登录账号、context token 与 Weixin HTTP API 发送。不要默认改回 `openclaw message send --channel openclaw-weixin`：该通用 CLI 可能只由 OpenClaw core 接收并返回 Message ID，但没有真正调用微信插件，微信端可能不可见。
-- 直连发送脚本会校验 HTTP 响应里的 `ret` / `errcode`；非 0 会按失败处理，不能只看本地生成的 `Message ID`。
-
-### Web 界面（端口 8990）
-
-新增网页版，可在手机或浏览器中查看所有处理记录、通报图片、文字通报，以及手动上传 Excel 处理。
-
-**启动方式（推荐，替代原 `server.py` 常驻）：**
+### 启动
 
 ```bash
-python src/web_server.py              # Web 服务 + 后台自动收信轮询
-python src/web_server.py --no-poll    # 仅 Web，不轮询邮件
-python src/web_server.py --once       # 启动时立刻收一次邮件
+# 推荐：Web 服务 + 后台轮询一体
+python src/web_server.py
+
+# 其他选项
+python src/web_server.py --no-poll   # 仅 Web，不轮询邮件
+python src/web_server.py --once      # 启动时立刻收一次
+python src/server.py --local A.xlsx B.xlsx  # 跳过邮箱，直接处理本地文件
 ```
 
-浏览器打开 `http://服务器IP:8990/` 即可访问，手机同样可用。
+浏览器访问 `http://服务器IP:8990/` 查看处理记录和通报图片。
 
-**`.env` 相关配置项：**
+### 用 systemd 管理
 
-```
-WEB_HOST=0.0.0.0   # 监听地址
-WEB_PORT=8990      # 监听端口
-REPORT_DB_PATH=    # SQLite 路径，默认 runtime/morning_report.db
-```
-
-**处理结果说明：**
-- 邮件自动触发处理后，微信发送仍正常执行，同时入库供网页查看
-- 网页手动上传触发处理时，**不发送微信**，仅入库展示
-
----
-
-### 服务器部署 / 更新代码
-
-服务器已配置 systemd 常驻服务：`morning-report.service`。
-
-**首次部署**：将 `scripts/morning-report.service` 复制到 systemd 并启用：
+参考 `scripts/morning-report.service`：
 
 ```bash
-cp scripts/morning-report.service /etc/systemd/system/morning-report.service
+cp scripts/morning-report.service /etc/systemd/system/
 # 按实际路径修改 WorkingDirectory 和 ExecStart
 systemctl daemon-reload
 systemctl enable --now morning-report.service
 ```
 
-**更新代码**：GitHub 有更新后，在服务器执行：
+---
+
+## 三、经营分析系统（端口 8991）
+
+基于完美一单报表 + 营服业务通报表，对端州分公司政企部进行多维经营分析。
+
+### 分析能力
+
+| 页面 | 内容 |
+|---|---|
+| 🏠 总览 | KPI卡片 + 积分来源构成饼图 + 高套人员分布 |
+| 📈 积分结构 | 基本面/双线/其他构成 + 健康度仪表盘（拆机/降值/到期占比）+ 全市县分对比 |
+| 🎯 完成进度 | 时间进度对比 + 人员积分进度条（绿/黄/红三色）+ 月末线性预测 |
+| 👥 人员效能 | 揽装积分×高套散点图 + 激励档位分布（129/169/199+）+ CP对完成率 |
+| 🏆 县分对比 | 全市净增积分排名 + 基本面/双线/其他多维对比柱图 |
+| ⚠️ 风险预警 | 自动触发拆机/降值/净增为负预警 + 历史趋势 |
+| 📉 历史趋势 | 月度积分/高套趋势折线（随数据积累逐月丰富）|
+| 🗄 数据快照 | 已入库的文件记录，支持手动上传历史月份数据 |
+
+### 数据更新机制
+
+- **自动**：8990 每处理一次报表，后台 `watcher` 在 30 秒内自动解析入库，8991 随即更新
+- **手动**：点击右上角「⬆ 上传数据」，上传任意月份的完美一单 / 营服报表，自动识别类型并解析
+
+---
+
+## 部署指南
+
+### 前置条件
+
+服务器已安装：Python 3.10+、nginx、git
+
+### 拉取代码
+
+```bash
+git clone git@github.com:sklmth/morning_report.git
+cd morning_report
+```
+
+### 安装依赖
+
+```bash
+# 8990 日报服务依赖（已装可跳过）
+pip install -r requirements.txt
+
+# 经营分析额外依赖
+pip install -r analytics_requirements.txt
+```
+
+### 配置 8990 服务
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写邮箱账号、微信发送目标等
+```
+
+---
+
+### 配置 nginx（新增 8991 端口）
+
+> **已有 nginx 且部署了其他页面**：只需新增一个 `server {}` 块，完全不影响其他服务。
+
+**第一步：编辑 nginx 配置文件**
+
+推荐把配置单独存为一个文件（便于维护）：
+
+```bash
+cp nginx/analytics.conf /etc/nginx/conf.d/analytics.conf
+nano /etc/nginx/conf.d/analytics.conf
+```
+
+找到 **两处** `root` 行，把占位路径改为服务器上的实际绝对路径：
+
+```nginx
+# 改前
+root /path/to/morning_report/analytics-frontend;
+
+# 改后（示例）
+root /home/ubuntu/morning_report/analytics-frontend;
+```
+
+> 如果你的 nginx 不 include `conf.d/*.conf`，也可以直接把下面这段内容追加到 `nginx.conf` 的 `http {}` 块末尾：
+>
+> ```nginx
+> server {
+>     listen 8991;
+>     server_name _;
+>     charset utf-8;
+>
+>     location / {
+>         root /home/ubuntu/morning_report/analytics-frontend;  # ← 改为实际路径
+>         try_files $uri $uri/ /index.html;
+>         add_header Cache-Control "no-cache";
+>     }
+>
+>     location ~* \.(js|css|png|ico)$ {
+>         root /home/ubuntu/morning_report/analytics-frontend;  # ← 改为实际路径
+>         expires 1h;
+>     }
+>
+>     location /api/ {
+>         proxy_pass         http://127.0.0.1:8992/api/;
+>         proxy_http_version 1.1;
+>         proxy_set_header   Host $host;
+>         proxy_set_header   X-Real-IP $remote_addr;
+>         proxy_read_timeout 120s;
+>         client_max_body_size 50m;
+>     }
+>
+>     location /health {
+>         proxy_pass http://127.0.0.1:8992/health;
+>     }
+> }
+> ```
+
+**第二步：测试配置语法并热重载**
+
+```bash
+nginx -t           # 语法检查，有 error 不要继续
+nginx -s reload    # 热重载，不中断现有连接和其他页面
+```
+
+**验证 nginx 是否生效：**
+
+```bash
+curl http://127.0.0.1:8991/health   # 此时 8992 还没启动，会 502，属正常
+```
+
+---
+
+### 启动经营分析服务
+
+```bash
+# 临时后台运行（测试用）
+nohup python run_analytics.py > runtime/analytics.log 2>&1 &
+```
+
+**用 systemd 管理（推荐，开机自启）：**
+
+新建 `/etc/systemd/system/morning-report-analytics.service`：
+
+```ini
+[Unit]
+Description=Morning Report Analytics Service (port 8992)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/ubuntu/morning_report
+ExecStart=/usr/bin/python3 run_analytics.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/ubuntu/morning_report/runtime/analytics.log
+StandardError=append:/home/ubuntu/morning_report/runtime/analytics.log
+Environment=ANALYTICS_HOST=127.0.0.1
+Environment=ANALYTICS_PORT=8992
+
+[Install]
+WantedBy=multi-user.target
+```
+
+> ⚠️ `WorkingDirectory` 和日志路径改为服务器实际路径。
+
+```bash
+systemctl daemon-reload
+systemctl enable --now morning-report-analytics.service
+
+# 查看状态
+systemctl status morning-report-analytics.service
+
+# 实时日志
+journalctl -u morning-report-analytics.service -f
+```
+
+**验证完整链路：**
+
+```bash
+# API 健康检查
+curl http://127.0.0.1:8992/health
+# → {"status":"ok"}
+
+# 通过 nginx 访问前端
+curl -I http://127.0.0.1:8991/
+# → HTTP/1.1 200 OK
+```
+
+浏览器打开 `http://服务器IP:8991` 即可看到经营分析界面。
+
+---
+
+### 更新代码
+
+**常规更新**（8990 日报服务）：
 
 ```bash
 scripts/deploy_latest.sh
 ```
 
-脚本会自动完成：
-
-1. 检查本地工作区是否有未提交改动（有则停止，避免覆盖）
-2. `git fetch` + `git pull --ff-only origin master`
-3. 如果 `requirements.txt` 有变化，自动安装依赖
-4. Python 语法编译检查
-5. 重启 `morning-report.service`
-6. 检查服务是否启动成功并输出最近日志
-
-可选环境变量：
+**同时更新经营分析服务**，在 `deploy_latest.sh` 执行后额外运行：
 
 ```bash
-BRANCH=master SERVICE_NAME=morning-report.service scripts/deploy_latest.sh
-INSTALL_DEPS=true scripts/deploy_latest.sh   # 强制重装 requirements.txt
+pip install -r analytics_requirements.txt
+systemctl restart morning-report-analytics.service
+systemctl status morning-report-analytics.service
 ```
-
-### 命令行运行
-
-```bash
-# Web 服务（包含后台轮询，推荐）
-python src/web_server.py
-
-# 原命令行模式（不含 Web）
-python src/server.py              # 持续轮询
-python src/server.py --once       # 只跑一轮后退出
-python src/server.py --local A.xlsx B.xlsx   # 跳过邮箱，直接处理本地文件
-
-# OpenClaw 桥接
-python src/openclaw_bridge.py latest               # 返回最新一条处理记录
-python src/openclaw_bridge.py date 2026-06-25      # 返回指定日期最新记录
-python src/openclaw_bridge.py inspect A.xlsx       # 仅识别附件是否该触发处理
-python src/openclaw_bridge.py ingest A.xlsx B.xlsx # 先识别，再处理并入库
-```
-
-中间产物（附件、结果 Excel、四张图、`通报.txt`）保存在 `runtime/`（已忽略）。
-若微信发送失败，图片与通报仍保留在 `runtime/images/<时间戳>/`，可手动补发。
 
 ---
 
-## 更新套餐配置
+### 历史数据导入
 
-编辑 `src/function.py` 中的 `GATEWAY_CONFIG` 字典即可（GUI 版需重新打包）。
+如需导入历史月份（如5月数据），在网页界面操作即可：
+
+1. 打开 `http://服务器IP:8991`
+2. 点击右上角「⬆ 上传数据」
+3. 上传5月份的完美一单报表 + 营服业务通报表（两个文件一起上传）
+4. 系统自动识别月份、解析入库，历史趋势图立即生效
+
+---
+
+## 命令行工具
+
+```bash
+# 直接处理本地文件（不收邮件）
+python src/server.py --local A.xlsx B.xlsx
+
+# OpenClaw 桥接
+python src/openclaw_bridge.py latest               # 返回最新处理记录
+python src/openclaw_bridge.py date 2026-06-25      # 返回指定日期记录
+python src/openclaw_bridge.py ingest A.xlsx B.xlsx # 识别并处理入库
+```
+
+---
+
+## 配置维护
+
+| 配置项 | 文件 |
+|---|---|
+| 全光网关套餐配置 | `src/function.py` → `GATEWAY_CONFIG` |
+| 政企客户经理名单 | `src/function.py` → `names`（同步更新 `analytics/config.py` → `NAMES`）|
+| 高装人员名单 | `src/function.py` → `gaozhuang_names`（同步更新 `analytics/config.py` → `GAOZHUANG_NAMES`）|
+| 积分预警阈值 | `analytics/config.py` → `RISK_THRESHOLDS` |
+| 经营分析服务端口 | 环境变量 `ANALYTICS_PORT`（默认 8992）|
+| watcher 检查间隔 | 环境变量 `WATCHER_INTERVAL`（默认 30 秒）|
+
+> **人员名单说明**：`src/function.py` 控制日报生成，`analytics/config.py` 控制经营分析，两处需同步修改。
