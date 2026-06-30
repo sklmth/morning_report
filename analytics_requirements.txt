@@ -1,0 +1,6 @@
+# 经营分析服务额外依赖（在已有 requirements.txt 基础上追加安装）
+# pip install -r analytics_requirements.txt
+
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12   # FastAPI 文件上传所需
