@@ -289,6 +289,21 @@ def init_db(db_path: Optional[str] = None) -> None:
     """创建所有表（若不存在）"""
     with get_connection(db_path) as conn:
         conn.executescript(SCHEMA_SQL)
+        ensure_schema_migrations(conn)
+
+
+def ensure_schema_migrations(conn: sqlite3.Connection) -> None:
+    """补齐旧库缺失字段。"""
+    columns = {
+        row["name"]
+        for row in conn.execute("PRAGMA table_info(district_monthly_metrics)").fetchall()
+    }
+    if "pts_completion_rate" not in columns:
+        conn.execute(
+            "ALTER TABLE district_monthly_metrics "
+            "ADD COLUMN pts_completion_rate REAL DEFAULT 0"
+        )
+        conn.commit()
 
 
 # ── CRUD helpers ──────────────────────────────────────────────────────────────
