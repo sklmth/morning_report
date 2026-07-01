@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional
 import sqlite3
 
-from analytics.db import get_connection, query_json
+from analytics.db import get_connection, get_latest_snapshot_date, get_latest_snapshot_id, query_json
 from analytics.config import DUANZHOU_DISTRICT_ALIASES, RISK_THRESHOLDS, NAMES
 
 _NAMES_PLACEHOLDERS = ",".join(f"'{n}'" for n in NAMES)
@@ -54,11 +54,9 @@ def get_progress_forecast(month: str, conn: Optional[sqlite3.Connection] = None)
         close = True
 
     try:
-        # 获取最新数据日期
-        row = conn.execute(
-            "SELECT MAX(data_date) as d FROM data_snapshots WHERE month=?", (month,)
-        ).fetchone()
-        latest_date = row["d"] if row and row["d"] else None
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        yingfu_snapshot_id = get_latest_snapshot_id(conn, month, "yingfu")
+        latest_date = get_latest_snapshot_date(conn, month)
 
         if not latest_date:
             return {"month": month, "has_data": False}
@@ -74,39 +72,36 @@ def get_progress_forecast(month: str, conn: Optional[sqlite3.Connection] = None)
         dz_pts = query_json(conn, f"""
             SELECT net_pts, inc_pts, base_pts, twin_pts
             FROM district_monthly_metrics
-            WHERE month=? AND {duanzhou_filter}
+            WHERE snapshot_id=? AND {duanzhou_filter}
             ORDER BY data_date DESC
             LIMIT 1
-        """, (month,))
+        """, (wanmei_snapshot_id,)) if wanmei_snapshot_id else []
 
         # 人员月累完成情况（仅14人，使用政企认领口径高套 col7+col8）
         person_data = query_json(conn, f"""
             SELECT pm.name,
-                MAX(pm.new_gaotao_zq + pm.stock_gaotao_zq) as total_gaotao,
-                MAX(pm.inc_pts_total) as inc_pts,
-                MAX(pm.new_pts_total) as new_pts,
+                pm.new_gaotao_zq + pm.stock_gaotao_zq as total_gaotao,
+                pm.inc_pts_total as inc_pts,
+                pm.new_pts_total as new_pts,
                 se.predicted_incentive
             FROM person_monthly_metrics pm
             LEFT JOIN (
-                SELECT name, MAX(predicted_incentive) as predicted_incentive
-                FROM staff_efficiency WHERE month=? AND {_NAMES_FILTER}
-                GROUP BY name
+                SELECT name, predicted_incentive
+                FROM staff_efficiency WHERE snapshot_id=? AND {_NAMES_FILTER}
             ) se ON pm.name = se.name
-            WHERE pm.month=? AND pm.{_NAMES_FILTER}
-            GROUP BY pm.name
+            WHERE pm.snapshot_id=? AND pm.{_NAMES_FILTER}
             ORDER BY inc_pts DESC
-        """, (month, month))
+        """, (yingfu_snapshot_id, wanmei_snapshot_id)) if wanmei_snapshot_id else []
 
         # 人员高套档位情况（最新）
         tier_data = query_json(conn, f"""
             SELECT name,
-                SUM(tier_129_pts) as tier_129,
-                SUM(tier_169_pts) as tier_169,
-                SUM(tier_199_pts) as tier_199
+                tier_129_pts as tier_129,
+                tier_169_pts as tier_169,
+                tier_199_pts as tier_199
             FROM staff_incentive_tier
-            WHERE month=? AND {_NAMES_FILTER}
-            GROUP BY name
-        """, (month,))
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
+        """, (yingfu_snapshot_id,)) if yingfu_snapshot_id else []
         tier_map = {t['name']: t for t in tier_data}
 
         # 积分预测

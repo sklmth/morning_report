@@ -371,6 +371,30 @@ def get_available_months(conn: sqlite3.Connection) -> list[str]:
     return [r["month"] for r in rows]
 
 
+def get_latest_snapshot_id(conn: sqlite3.Connection, month: str, source_type: str) -> Optional[int]:
+    """获取指定月份、指定来源的最新快照。"""
+    row = conn.execute(
+        """
+        SELECT id
+        FROM data_snapshots
+        WHERE month=? AND source_type=?
+        ORDER BY data_date DESC, processed_at DESC, id DESC
+        LIMIT 1
+        """,
+        (month, source_type),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def get_latest_snapshot_date(conn: sqlite3.Connection, month: str) -> Optional[str]:
+    """获取指定月份最新数据日期。"""
+    row = conn.execute(
+        "SELECT MAX(data_date) as d FROM data_snapshots WHERE month=?",
+        (month,),
+    ).fetchone()
+    return row["d"] if row and row["d"] else None
+
+
 from contextlib import contextmanager
 
 @contextmanager

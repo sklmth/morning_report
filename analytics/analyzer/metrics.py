@@ -5,7 +5,7 @@
 
 from typing import Optional
 import sqlite3
-from analytics.db import get_connection, query_json
+from analytics.db import get_connection, get_latest_snapshot_date, get_latest_snapshot_id, query_json
 from analytics.config import DUANZHOU_DISTRICT_ALIASES, BRANCH_NAMES, RISK_THRESHOLDS, NAMES
 
 # SQL 片段：仅分析14个政企客户经理
@@ -28,50 +28,33 @@ def get_score_structure(month: str, conn: Optional[sqlite3.Connection] = None) -
         close = True
 
     try:
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        if not wanmei_snapshot_id:
+            return {"month": month, "duanzhou": {}, "all_districts": [], "health": {}, "warnings": []}
+
         # 端州积分结构
         duanzhou_filter = "(" + " OR ".join(f"district='{d}'" for d in DUANZHOU_DISTRICT_ALIASES) + ")"
         dz_rows = query_json(conn, f"""
             SELECT
-                AVG(net_pts) as net_pts,
-                AVG(base_pts) as base_pts,
-                AVG(base_mobile) as base_mobile,
-                AVG(base_bb) as base_bb,
-                AVG(base_phone) as base_phone,
-                AVG(base_itv) as base_itv,
-                AVG(base_smart) as base_smart,
-                AVG(base_expire) as base_expire,
-                AVG(base_decline) as base_decline,
-                AVG(base_churn) as base_churn,
-                AVG(twin_pts) as twin_pts,
-                AVG(twin_inet) as twin_inet,
-                AVG(twin_net) as twin_net,
-                AVG(twin_decline) as twin_decline,
-                AVG(twin_churn) as twin_churn,
-                AVG(other_pts) as other_pts,
-                AVG(inc_pts) as inc_pts,
+                net_pts, base_pts, base_mobile, base_bb, base_phone, base_itv, base_smart,
+                base_expire, base_decline, base_churn, twin_pts, twin_inet, twin_net,
+                twin_decline, twin_churn, other_pts, inc_pts,
                 COUNT(*) as snapshot_count
             FROM district_monthly_metrics
-            WHERE month=? AND {duanzhou_filter}
-        """, (month,))
+            WHERE snapshot_id=? AND {duanzhou_filter}
+        """, (wanmei_snapshot_id,))
 
         dz = dz_rows[0] if dz_rows else {}
 
         # 全市各县分积分
         all_districts = query_json(conn, """
-            SELECT district,
-                AVG(net_pts) as net_pts,
-                AVG(inc_pts) as inc_pts,
-                AVG(base_pts) as base_pts,
-                AVG(twin_pts) as twin_pts,
-                AVG(other_pts) as other_pts,
-                AVG(base_churn) as base_churn,
-                AVG(base_decline) as base_decline,
-                AVG(base_expire) as base_expire
+            SELECT district, net_pts, inc_pts, base_pts, twin_pts, other_pts,
+                base_churn, base_decline, base_expire
             FROM district_monthly_metrics
-            WHERE month=?
+            WHERE snapshot_id=?
             GROUP BY district
             ORDER BY net_pts DESC
-        """, (month,))
+        """, (wanmei_snapshot_id,))
 
         # 健康度计算
         inc = dz.get('inc_pts') or 1  # 避免除零
@@ -135,35 +118,30 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
         close = True
 
     try:
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        yingfu_snapshot_id = get_latest_snapshot_id(conn, month, "yingfu")
+
         # 营服人员效能（最新快照，仅14人）
         staff = query_json(conn, f"""
             SELECT name, center, role,
-                MAX(predicted_incentive) as predicted_incentive,
-                MAX(total_gaotao) as total_gaotao,
-                MAX(new_gaotao) as new_gaotao,
-                MAX(stock_gaotao) as stock_gaotao,
-                MAX(device_pts) as device_pts,
-                MAX(incentive_pts) as incentive_pts,
-                MAX(fttr) as fttr,
-                MAX(mobile) as mobile
+                predicted_incentive, total_gaotao, new_gaotao, stock_gaotao,
+                device_pts, incentive_pts, fttr, mobile
             FROM staff_efficiency
-            WHERE month=? AND {_NAMES_FILTER}
-            GROUP BY name
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
             ORDER BY predicted_incentive DESC
-        """, (month,))
+        """, (yingfu_snapshot_id,)) if yingfu_snapshot_id else []
 
         # 高套档位分布（仅14人）
         tiers = query_json(conn, f"""
             SELECT name, center,
-                SUM(tier_129_pts) as tier_129,
-                SUM(tier_169_pts) as tier_169,
-                SUM(tier_199_pts) as tier_199,
-                SUM(dev_incentive) as dev_incentive
+                tier_129_pts as tier_129,
+                tier_169_pts as tier_169,
+                tier_199_pts as tier_199,
+                dev_incentive
             FROM staff_incentive_tier
-            WHERE month=? AND {_NAMES_FILTER}
-            GROUP BY name
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
             ORDER BY dev_incentive DESC
-        """, (month,))
+        """, (yingfu_snapshot_id,)) if yingfu_snapshot_id else []
 
         # CP对效能（最新快照）
         cp_pairs = query_json(conn, """
@@ -174,25 +152,20 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
                      THEN ROUND(cp_pts_total * 100.0 / cp_target, 1)
                      ELSE 0 END as completion_rate
             FROM cp_pair_metrics
-            WHERE month=?
+            WHERE snapshot_id=?
             ORDER BY completion_rate DESC
-        """, (month,))
+        """, (yingfu_snapshot_id,)) if yingfu_snapshot_id else []
 
         # 完美一单人员数据（仅14人，使用政企认领口径高套 col7+col8）
         wanmei_staff = query_json(conn, f"""
             SELECT name,
-                MAX(new_gaotao_zq)  as new_gaotao,
-                MAX(stock_gaotao_zq) as stock_gaotao,
-                MAX(inc_pts_total) as inc_pts_total,
-                MAX(inc_pts_base)  as inc_pts_base,
-                MAX(inc_pts_twin)  as inc_pts_twin,
-                MAX(new_pts_total) as new_pts_total,
-                MAX(gateway_count) as gateway_count
+                new_gaotao_zq as new_gaotao,
+                stock_gaotao_zq as stock_gaotao,
+                inc_pts_total, inc_pts_base, inc_pts_twin, new_pts_total, gateway_count
             FROM person_monthly_metrics
-            WHERE month=? AND {_NAMES_FILTER}
-            GROUP BY name
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
             ORDER BY inc_pts_total DESC
-        """, (month,))
+        """, (wanmei_snapshot_id,)) if wanmei_snapshot_id else []
 
         return {
             "month": month,
@@ -221,6 +194,10 @@ def get_risk_alerts(month: str, conn: Optional[sqlite3.Connection] = None) -> di
         close = True
 
     try:
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        if not wanmei_snapshot_id:
+            return {"month": month, "duanzhou_risk": {}, "historical_trend": [], "person_stock": [], "alerts": []}
+
         # 端州区县层级风险
         duanzhou_filter = "(" + " OR ".join(f"district='{d}'" for d in DUANZHOU_DISTRICT_ALIASES) + ")"
         dz_risk = query_json(conn, f"""
@@ -235,38 +212,37 @@ def get_risk_alerts(month: str, conn: Optional[sqlite3.Connection] = None) -> di
                      THEN ROUND(ABS(base_decline) * 100.0 / ABS(inc_pts), 1)
                      ELSE 0 END as decline_ratio
             FROM district_monthly_metrics
-            WHERE month=? AND {duanzhou_filter}
+            WHERE snapshot_id=? AND {duanzhou_filter}
             ORDER BY data_date DESC
             LIMIT 1
-        """, (month,))
+        """, (wanmei_snapshot_id,))
 
         # 按月份趋势（历史对比）
         historical = query_json(conn, f"""
-            SELECT month,
-                AVG(net_pts) as net_pts,
-                AVG(base_churn) as base_churn,
-                AVG(base_decline) as base_decline,
-                AVG(base_expire) as base_expire,
-                AVG(inc_pts) as inc_pts
-            FROM district_monthly_metrics
+            SELECT dm.month,
+                dm.net_pts, dm.base_churn, dm.base_decline, dm.base_expire, dm.inc_pts
+            FROM district_monthly_metrics dm
+            JOIN (
+                SELECT month, MAX(id) as snapshot_id
+                FROM data_snapshots
+                WHERE source_type='wanmei'
+                GROUP BY month
+            ) latest ON latest.snapshot_id = dm.snapshot_id
             WHERE {duanzhou_filter}
-            GROUP BY month
-            ORDER BY month DESC
+            GROUP BY dm.month
+            ORDER BY dm.month DESC
             LIMIT 6
         """)
 
         # 人员层级存量积分（仅14人）
         person_stock = query_json(conn, f"""
             SELECT name, month,
-                MAX(stock_pts_total) as stock_pts,
-                MAX(new_gaotao) as new_gaotao,
-                MAX(stock_gaotao) as stock_gaotao,
-                MAX(inc_pts_total) as inc_pts
+                stock_pts_total as stock_pts,
+                new_gaotao, stock_gaotao, inc_pts_total as inc_pts
             FROM person_monthly_metrics
-            WHERE month=? AND {_NAMES_FILTER}
-            GROUP BY name
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
             ORDER BY stock_pts ASC
-        """, (month,))
+        """, (wanmei_snapshot_id,))
 
         # 生成预警列表
         alerts = []
@@ -318,20 +294,18 @@ def get_branch_compare(month: str, conn: Optional[sqlite3.Connection] = None) ->
         close = True
 
     try:
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        if not wanmei_snapshot_id:
+            return {"month": month, "branches": [], "total_branches": 0, "duanzhou_rank": None}
+
         branches = query_json(conn, """
             SELECT district,
-                AVG(net_pts) as net_pts,
-                AVG(inc_pts) as inc_pts,
-                AVG(base_pts) as base_pts,
-                AVG(twin_pts) as twin_pts,
-                AVG(other_pts) as other_pts,
-                AVG(base_churn) as base_churn,
-                AVG(base_expire) as base_expire
+                net_pts, inc_pts, base_pts, twin_pts, other_pts, base_churn, base_expire
             FROM district_monthly_metrics
-            WHERE month=?
+            WHERE snapshot_id=?
             GROUP BY district
             ORDER BY net_pts DESC
-        """, (month,))
+        """, (wanmei_snapshot_id,))
 
         # 找端州排名
         duanzhou_rank = None
@@ -373,11 +347,9 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
         if not month:
             return {"month": None, "has_data": False}
 
-        # 最新数据日期
-        row = conn.execute(
-            "SELECT MAX(data_date) as d FROM data_snapshots WHERE month=?", (month,)
-        ).fetchone()
-        latest_date = row["d"] if row else None
+        wanmei_snapshot_id = get_latest_snapshot_id(conn, month, "wanmei")
+        yingfu_snapshot_id = get_latest_snapshot_id(conn, month, "yingfu")
+        latest_date = get_latest_snapshot_date(conn, month)
 
         # 端州积分 + 落格率
         duanzhou_filter = "(" + " OR ".join(f"district='{d}'" for d in DUANZHOU_DISTRICT_ALIASES) + ")"
@@ -388,8 +360,8 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
                    AVG(other_pts) as other_pts,
                    AVG(pts_completion_rate) as completion_rate
             FROM district_monthly_metrics
-            WHERE month=? AND {duanzhou_filter}
-        """, (month,))
+            WHERE snapshot_id=? AND {duanzhou_filter}
+        """, (wanmei_snapshot_id,)) if wanmei_snapshot_id else []
 
         # 总高套（政企认领口径 col7+col8，仅14人）
         gaotao = query_json(conn, f"""
@@ -397,8 +369,8 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
                    SUM(inc_pts_total) as team_pts_done,
                    COUNT(DISTINCT name) as person_count
             FROM person_monthly_metrics
-            WHERE month=? AND {_NAMES_FILTER}
-        """, (month,))
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
+        """, (wanmei_snapshot_id,)) if wanmei_snapshot_id else []
 
         # 人均激励（仅14人）
         incentive = query_json(conn, f"""
@@ -406,8 +378,8 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
                    SUM(predicted_incentive) as total_incentive,
                    COUNT(*) as person_count
             FROM staff_efficiency
-            WHERE month=? AND {_NAMES_FILTER}
-        """, (month,))
+            WHERE snapshot_id=? AND {_NAMES_FILTER}
+        """, (yingfu_snapshot_id,)) if yingfu_snapshot_id else []
 
         # 快照数量
         snap_count = conn.execute(
@@ -453,39 +425,53 @@ def get_trend(months: int = 6, conn: Optional[sqlite3.Connection] = None) -> dic
 
         # 端州积分月度趋势
         pts_trend = query_json(conn, f"""
-            SELECT month,
-                AVG(net_pts) as net_pts,
-                AVG(inc_pts) as inc_pts,
-                AVG(base_pts) as base_pts,
-                AVG(twin_pts) as twin_pts,
-                AVG(other_pts) as other_pts
-            FROM district_monthly_metrics
+            SELECT dm.month,
+                dm.net_pts, dm.inc_pts, dm.base_pts, dm.twin_pts, dm.other_pts
+            FROM district_monthly_metrics dm
+            JOIN (
+                SELECT month, MAX(id) as snapshot_id
+                FROM data_snapshots
+                WHERE source_type='wanmei'
+                GROUP BY month
+            ) latest ON latest.snapshot_id = dm.snapshot_id
             WHERE {duanzhou_filter}
-            GROUP BY month
-            ORDER BY month ASC
+            GROUP BY dm.month
+            ORDER BY dm.month ASC
             LIMIT ?
         """, (months,))
 
         # 人员高套月度趋势
         gaotao_trend = query_json(conn, """
-            SELECT month,
-                SUM(new_gaotao) as new_gaotao,
-                SUM(stock_gaotao) as stock_gaotao,
+            SELECT pm.month,
+                SUM(pm.new_gaotao) as new_gaotao,
+                SUM(pm.stock_gaotao) as stock_gaotao,
                 COUNT(DISTINCT name) as person_count
-            FROM person_monthly_metrics
-            GROUP BY month
-            ORDER BY month ASC
+            FROM person_monthly_metrics pm
+            JOIN (
+                SELECT month, MAX(id) as snapshot_id
+                FROM data_snapshots
+                WHERE source_type='wanmei'
+                GROUP BY month
+            ) latest ON latest.snapshot_id = pm.snapshot_id
+            GROUP BY pm.month
+            ORDER BY pm.month ASC
             LIMIT ?
         """, (months,))
 
         # 激励月度趋势
         incentive_trend = query_json(conn, """
-            SELECT month,
-                AVG(predicted_incentive) as avg_incentive,
-                SUM(predicted_incentive) as total_incentive
-            FROM staff_efficiency
-            GROUP BY month
-            ORDER BY month ASC
+            SELECT se.month,
+                AVG(se.predicted_incentive) as avg_incentive,
+                SUM(se.predicted_incentive) as total_incentive
+            FROM staff_efficiency se
+            JOIN (
+                SELECT month, MAX(id) as snapshot_id
+                FROM data_snapshots
+                WHERE source_type='yingfu'
+                GROUP BY month
+            ) latest ON latest.snapshot_id = se.snapshot_id
+            GROUP BY se.month
+            ORDER BY se.month ASC
             LIMIT ?
         """, (months,))
 
