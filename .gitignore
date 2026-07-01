@@ -23,6 +23,7 @@ venv/
 # Runtime data
 /tmp/
 /runtime/
+/analytics/runtime/
 /logs/
 /output/
 *.log
