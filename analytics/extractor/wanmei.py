@@ -152,24 +152,44 @@ def extract_wanmei(file_path: str) -> dict:
         result['person_daily'] = records
 
     # ── 区县责任田积分（月）────────────────────────────────────────────────────
+    # 列索引（pandas 0-based）:
+    #   col3=净增积分全业务, col4=基本面, col5-12=基本面分项(移动/宽带/固话/ITV/智家/到期/降值/拆机)
+    #   col13=双线, col14=互专, col15=组网, col16=双线降值, col17=双线拆机
+    #   col18=其他业务, col19=云, col20=物, col21=其他拆机
     sheet_dist_month = "区县责任田积分(月）"
     if sheet_dist_month in all_sheets:
         df = all_sheets[sheet_dist_month]
-        # 前3行是表头，数据从第4行(index=3)开始
         data_rows = df.iloc[3:].reset_index(drop=True)
         date_str = _parse_data_date(df.iloc[3, 0] if len(df) > 3 else None)
         if date_str and not result['data_date']:
             result['data_date'] = date_str
+
+        # 读揽装局向维度G列（落格率），找端州行 col6=增量积分落格率
+        g_rate_map = {}   # {district: 落格率}
+        lxjx_sheet = "揽装局向维度（月累）"
+        if lxjx_sheet in all_sheets:
+            df_lx = all_sheets[lxjx_sheet]
+            for idx in range(len(df_lx)):
+                r = df_lx.iloc[idx]
+                dist_name = str(r.iloc[2]).strip() if pd.notna(r.iloc[2]) else ""
+                if dist_name and dist_name not in ("nan", "区县", "序号"):
+                    rate_val = _safe(r.iloc[6]) if len(r) > 6 else 0  # col6=G列=落格率
+                    g_rate_map[dist_name] = rate_val
 
         records = []
         for _, row in data_rows.iterrows():
             district = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ""
             if not district or district in ("nan", "全市"):
                 continue
+            net = _safe(row.iloc[3])
+            base = _safe(row.iloc[4])
+            twin = _safe(row.iloc[13]) if len(row) > 13 else 0
+            other = _safe(row.iloc[18]) if len(row) > 18 else 0
             records.append({
                 'district': district,
-                'net_pts': _safe(row.iloc[3]),
-                'base_pts': _safe(row.iloc[4]),
+                'net_pts': net,
+                'inc_pts': net,           # 净增积分就是各业务净贡献之和
+                'base_pts': base,
                 'base_mobile': _safe(row.iloc[5]) if len(row) > 5 else 0,
                 'base_bb': _safe(row.iloc[6]) if len(row) > 6 else 0,
                 'base_phone': _safe(row.iloc[7]) if len(row) > 7 else 0,
@@ -178,21 +198,15 @@ def extract_wanmei(file_path: str) -> dict:
                 'base_expire': _safe(row.iloc[10]) if len(row) > 10 else 0,
                 'base_decline': _safe(row.iloc[11]) if len(row) > 11 else 0,
                 'base_churn': _safe(row.iloc[12]) if len(row) > 12 else 0,
-                'twin_pts': _safe(row.iloc[13]) if len(row) > 13 else 0,
+                'twin_pts': twin,
                 'twin_inet': _safe(row.iloc[14]) if len(row) > 14 else 0,
                 'twin_net': _safe(row.iloc[15]) if len(row) > 15 else 0,
                 'twin_decline': _safe(row.iloc[16]) if len(row) > 16 else 0,
                 'twin_churn': _safe(row.iloc[17]) if len(row) > 17 else 0,
-                'other_pts': _safe(row.iloc[18]) if len(row) > 18 else 0,
+                'other_pts': other,
                 'other_cloud': _safe(row.iloc[19]) if len(row) > 19 else 0,
                 'other_iot': _safe(row.iloc[20]) if len(row) > 20 else 0,
-                # 增量积分 = 净增 + |到期| + |拆机| + |降值| (反推)
-                'inc_pts': (
-                    _safe(row.iloc[3]) -
-                    _safe(row.iloc[10] if len(row) > 10 else 0) -
-                    _safe(row.iloc[11] if len(row) > 11 else 0) -
-                    _safe(row.iloc[12] if len(row) > 12 else 0)
-                ),
+                'pts_completion_rate': g_rate_map.get(district, 0.0),
             })
         result['district_monthly'] = records
 

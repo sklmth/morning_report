@@ -40,25 +40,31 @@ const Charts = (() => {
   window.addEventListener('resize', () => Object.values(_inst).forEach(c => c?.resize()));
 
   // ══════════════════════════════════════
-  // 1. 总览：积分来源构成
+  // 1. 总览：端州政企净增积分构成
+  //    data = overview API 返回的对象（含 net_pts/base_pts/twin_pts/other_pts）
   // ══════════════════════════════════════
   function renderOverviewPts(id, data) {
     const c = _init(id); if (!c) return;
-    const dz = data?.duanzhou || {};
-    const items = [
-      { name:'基本面', value: Math.max(0, dz.base_pts||0) },
-      { name:'双线', value: Math.max(0, dz.twin_pts||0) },
-      { name:'其他业务', value: Math.max(0, dz.other_pts||0) },
-    ].filter(d => d.value > 0);
+    // 优先用overview数据，退回score结构数据
+    const net   = data?.net_pts   ?? data?.duanzhou?.net_pts   ?? 0;
+    const base  = data?.base_pts  ?? data?.duanzhou?.base_pts  ?? 0;
+    const twin  = data?.twin_pts  ?? data?.duanzhou?.twin_pts  ?? 0;
+    const other = data?.other_pts ?? data?.duanzhou?.other_pts ?? 0;
+
     c.setOption({
-      title: _T('端州积分来源构成'),
-      tooltip: { ..._tip('item'), formatter: p => `${p.name}<br/>积分：${p.value.toFixed(1)} 分<br/>占比：${p.percent}%` },
+      title: _T('端州政企净增积分', `合计 ${(+net).toFixed(2)} 分`),
+      tooltip: { ..._tip('item'), formatter: p => `${p.name}<br/>积分：${(+p.value).toFixed(2)} 分<br/>占比：${p.percent}%` },
       legend: { bottom:8, textStyle:{ fontSize:11, color:C.sub } },
       series:[{
         type:'pie', radius:['40%','68%'], center:['50%','52%'],
-        data: items, color:[C.primary, C.accent, C.success],
+        data:[
+          { name:'基本面', value: base },
+          { name:'双线', value: twin },
+          { name:'其他业务', value: other },
+        ].filter(d => d.value > 0),
+        color:[C.primary, C.accent, C.success],
         emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(0,0,0,.2)' } },
-        label:{ formatter:'{b}\n{d}%', fontSize:11, color:C.text },
+        label:{ formatter: p => `${p.name}\n${p.percent}%\n${(+p.value).toFixed(0)}分`, fontSize:11, color:C.text },
         labelLine:{ length:10, length2:6 },
       }]
     });
@@ -109,6 +115,7 @@ const Charts = (() => {
 
     c.setOption({
       title: _T('14人激励排名', '激励来源：071人员统计 · 计件激励金额'),
+      legend: { bottom: 4, textStyle: { fontSize: 11 } },
       tooltip: { ..._tip('axis'), formatter: params => {
         const p = people[params[0].dataIndex];
         return `<b>${p.name}</b><br/>
@@ -179,9 +186,14 @@ const Charts = (() => {
           +(d.predicted_incentive||0).toFixed(0),
           d.name,
         ]),
-        symbolSize: d => Math.min(50, Math.max(12, Math.sqrt(d[2] / 50))),
-        itemStyle:{ opacity:.8 },
-        color: C.mid,
+        // 气泡大小按激励金额线性映射，确保范围可见
+        symbolSize: (function() {
+          const allVals = people.map(d => d.predicted_incentive || 0);
+          const minV = Math.min(...allVals), maxV = Math.max(...allVals);
+          const span = maxV - minV || 1;
+          return d => 14 + (d[2] - minV) / span * 36;  // 映射到 [14, 50]
+        })(),
+        itemStyle:{ opacity:.85, color: C.mid },
         label:{ show:true, formatter: p => p.data[3], position:'top', fontSize:10, color:C.sub },
       }]
     });
@@ -224,22 +236,29 @@ const Charts = (() => {
   function renderScorePie(id, data) {
     const c = _init(id); if (!c) return;
     const dz = data?.duanzhou || {};
+    // 优先用端州直接数据（overview格式）
+    const base_mobile = dz.base_mobile ?? 0;
+    const base_bb     = dz.base_bb ?? 0;
+    const base_phone  = dz.base_phone ?? 0;
+    const twin_inet   = dz.twin_inet ?? 0;
+    const twin_net    = dz.twin_net ?? 0;
+    const other_pts   = dz.other_pts ?? data?.other_pts ?? 0;
     c.setOption({
-      title: _T('积分详细结构分析（端州）'),
+      title: _T('端州政企净增积分结构详解', '来源：完美一单 · 区县责任田积分(月）端州行'),
       tooltip: { ..._tip('item'), formatter: '{b}: {c} 分 ({d}%)' },
       legend: { bottom:8, textStyle:{ fontSize:10 } },
       series:[{
         type:'pie', radius:['35%','65%'], center:['50%','50%'],
         data:[
-          { name:'移动', value: Math.max(0,dz.base_mobile||0) },
-          { name:'宽带', value: Math.max(0,dz.base_bb||0) },
-          { name:'固话', value: Math.max(0,Math.abs(dz.base_phone||0)) },
-          { name:'双线(互专)', value: Math.max(0,dz.twin_inet||0) },
-          { name:'双线(组网)', value: Math.max(0,dz.twin_net||0) },
-          { name:'其他', value: Math.max(0,dz.other_pts||0) },
+          { name:'移动', value: Math.max(0, base_mobile) },
+          { name:'宽带', value: Math.max(0, base_bb) },
+          { name:'固话', value: Math.abs(base_phone) > 0 ? 0 : 0 }, // 固话通常为负，不展示
+          { name:'双线(互专)', value: Math.max(0, twin_inet) },
+          { name:'双线(组网)', value: Math.max(0, twin_net) > 0 ? 0 : 0 }, // 组网若为负不展示
+          { name:'其他业务', value: Math.max(0, other_pts) },
         ].filter(d=>d.value>0),
         color: C.palette,
-        label:{ formatter:'{b}\n{d}%', fontSize:10 },
+        label:{ formatter: p => `${p.name}\n${p.percent}%\n${(+p.value).toFixed(0)}分`, fontSize:10 },
       }]
     });
   }

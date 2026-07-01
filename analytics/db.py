@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS district_monthly_metrics (
     other_pts             REAL DEFAULT 0,
     other_cloud           REAL DEFAULT 0,  -- 云
     other_iot             REAL DEFAULT 0,  -- 物联网
+    pts_completion_rate   REAL DEFAULT 0,  -- 增量积分落格率（揽装局向维度G8）
     UNIQUE(month, district, snapshot_id)
 );
 

@@ -79,18 +79,16 @@ def get_progress_forecast(month: str, conn: Optional[sqlite3.Connection] = None)
             LIMIT 1
         """, (month,))
 
-        # 人员月累完成情况（仅14人）
+        # 人员月累完成情况（仅14人，使用政企认领口径高套 col7+col8）
         person_data = query_json(conn, f"""
             SELECT pm.name,
-                MAX(pm.new_gaotao + pm.stock_gaotao) as total_gaotao,
+                MAX(pm.new_gaotao_zq + pm.stock_gaotao_zq) as total_gaotao,
                 MAX(pm.inc_pts_total) as inc_pts,
                 MAX(pm.new_pts_total) as new_pts,
-                se.predicted_incentive,
-                se.total_gaotao as eff_gaotao
+                se.predicted_incentive
             FROM person_monthly_metrics pm
             LEFT JOIN (
-                SELECT name, MAX(predicted_incentive) as predicted_incentive,
-                       MAX(total_gaotao) as total_gaotao
+                SELECT name, MAX(predicted_incentive) as predicted_incentive
                 FROM staff_efficiency WHERE month=? AND {_NAMES_FILTER}
                 GROUP BY name
             ) se ON pm.name = se.name

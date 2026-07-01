@@ -178,14 +178,14 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
             ORDER BY completion_rate DESC
         """, (month,))
 
-        # 完美一单人员数据（仅14人）
+        # 完美一单人员数据（仅14人，使用政企认领口径高套 col7+col8）
         wanmei_staff = query_json(conn, f"""
             SELECT name,
-                MAX(new_gaotao) as new_gaotao,
-                MAX(stock_gaotao) as stock_gaotao,
+                MAX(new_gaotao_zq)  as new_gaotao,
+                MAX(stock_gaotao_zq) as stock_gaotao,
                 MAX(inc_pts_total) as inc_pts_total,
-                MAX(inc_pts_base) as inc_pts_base,
-                MAX(inc_pts_twin) as inc_pts_twin,
+                MAX(inc_pts_base)  as inc_pts_base,
+                MAX(inc_pts_twin)  as inc_pts_twin,
                 MAX(new_pts_total) as new_pts_total,
                 MAX(gateway_count) as gateway_count
             FROM person_monthly_metrics
@@ -379,17 +379,22 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
         ).fetchone()
         latest_date = row["d"] if row else None
 
-        # 端州积分
+        # 端州积分 + 落格率
         duanzhou_filter = "(" + " OR ".join(f"district='{d}'" for d in DUANZHOU_DISTRICT_ALIASES) + ")"
         dz_pts = query_json(conn, f"""
-            SELECT AVG(net_pts) as net_pts, AVG(inc_pts) as inc_pts
+            SELECT AVG(net_pts) as net_pts,
+                   AVG(base_pts) as base_pts,
+                   AVG(twin_pts) as twin_pts,
+                   AVG(other_pts) as other_pts,
+                   AVG(pts_completion_rate) as completion_rate
             FROM district_monthly_metrics
             WHERE month=? AND {duanzhou_filter}
         """, (month,))
 
-        # 总高套（仅14人）
+        # 总高套（政企认领口径 col7+col8，仅14人）
         gaotao = query_json(conn, f"""
-            SELECT SUM(new_gaotao + stock_gaotao) as total_gaotao,
+            SELECT SUM(new_gaotao_zq + stock_gaotao_zq) as total_gaotao,
+                   SUM(inc_pts_total) as team_pts_done,
                    COUNT(DISTINCT name) as person_count
             FROM person_monthly_metrics
             WHERE month=? AND {_NAMES_FILTER}
@@ -409,15 +414,22 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
             "SELECT COUNT(*) as c FROM data_snapshots WHERE month=?", (month,)
         ).fetchone()
 
+        dz = dz_pts[0] if dz_pts else {}
+        gt = gaotao[0] if gaotao else {}
+        inc = incentive[0] if incentive else {}
         return {
             "month": month,
             "latest_date": latest_date,
             "has_data": True,
-            "net_pts": round((dz_pts[0].get('net_pts') or 0) if dz_pts else 0, 2),
-            "inc_pts": round((dz_pts[0].get('inc_pts') or 0) if dz_pts else 0, 2),
-            "total_gaotao": round((gaotao[0].get('total_gaotao') or 0) if gaotao else 0, 0),
-            "avg_incentive": round((incentive[0].get('avg_incentive') or 0) if incentive else 0, 0),
-            "total_incentive": round((incentive[0].get('total_incentive') or 0) if incentive else 0, 0),
+            "net_pts": round(dz.get('net_pts') or 0, 2),
+            "base_pts": round(dz.get('base_pts') or 0, 2),
+            "twin_pts": round(dz.get('twin_pts') or 0, 2),
+            "other_pts": round(dz.get('other_pts') or 0, 2),
+            "completion_rate": round((dz.get('completion_rate') or 0) * 100, 1),  # 转为百分比
+            "team_pts_done": round(gt.get('team_pts_done') or 0, 2),   # 积分完成（14人col13合计）
+            "total_gaotao": round(gt.get('total_gaotao') or 0, 1),     # 政企认领口径
+            "avg_incentive": round(inc.get('avg_incentive') or 0, 0),
+            "total_incentive": round(inc.get('total_incentive') or 0, 0),
             "snapshot_count": snap_count["c"] if snap_count else 0,
         }
     finally:

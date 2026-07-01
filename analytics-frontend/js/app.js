@@ -73,8 +73,9 @@
       renderKpiCards('kpi-cards', [
         { label: '数据截至', value: ov.latest_date || '-' },
         { label: '团队净增积分', value: fmt(ov.net_pts, 0), sub: '分（端州政企）', color: ov.net_pts >= 0 ? 'success' : 'danger' },
-        { label: '团队增量积分', value: fmt(ov.inc_pts, 0), sub: '分' },
-        { label: '团队总高套', value: fmt(ov.total_gaotao, 0), sub: '户（14人合计）' },
+        { label: '积分完成（14人）', value: fmt(ov.team_pts_done, 0), sub: '分（col13合计）' },
+        { label: '积分落格率', value: (ov.completion_rate || 0) + '%', sub: '相对时间进度', color: ov.completion_rate >= 90 ? 'success' : ov.completion_rate >= 70 ? '' : 'danger' },
+        { label: '团队总高套', value: fmt(ov.total_gaotao, 1), sub: '户（政企认领口径）' },
         { label: '人均激励', value: '¥' + fmt(ov.avg_incentive, 0), sub: '元/人', color: 'accent' },
         { label: '团队总激励', value: '¥' + fmt(ov.total_incentive, 0), sub: '元（14人合计）', color: 'accent' },
       ]);
@@ -107,10 +108,13 @@
   async function loadScore() {
     if (!currentMonth) return;
     try {
-      const data = await Api.getScoreStructure(currentMonth);
-      Charts.renderScorePie('score-pie-chart', data);
-      Charts.renderScoreHealth('score-health-chart', data.health);
-      Charts.renderScoreDistrictBar('score-district-bar', data.all_districts || []);
+      const [scoreData, overviewData] = await Promise.all([
+        Api.getScoreStructure(currentMonth),
+        Api.getOverview(currentMonth),
+      ]);
+      // 积分饼图优先用overview的直接数据（更准确的净增积分分项）
+      Charts.renderScorePie('score-pie-chart', { ...scoreData, ...overviewData });
+      Charts.renderScoreDistrictBar('score-district-bar', scoreData.all_districts || []);
     } catch (e) { showToast('积分结构加载失败'); }
   }
 
