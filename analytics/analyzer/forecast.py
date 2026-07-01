@@ -9,7 +9,10 @@ from typing import Optional
 import sqlite3
 
 from analytics.db import get_connection, query_json
-from analytics.config import DUANZHOU_DISTRICT_ALIASES, RISK_THRESHOLDS
+from analytics.config import DUANZHOU_DISTRICT_ALIASES, RISK_THRESHOLDS, NAMES
+
+_NAMES_PLACEHOLDERS = ",".join(f"'{n}'" for n in NAMES)
+_NAMES_FILTER = f"name IN ({_NAMES_PLACEHOLDERS})"
 
 
 def _get_month_days(year: int, month: int) -> int:
@@ -76,8 +79,8 @@ def get_progress_forecast(month: str, conn: Optional[sqlite3.Connection] = None)
             LIMIT 1
         """, (month,))
 
-        # 人员月累完成情况（最新快照）
-        person_data = query_json(conn, """
+        # 人员月累完成情况（仅14人）
+        person_data = query_json(conn, f"""
             SELECT pm.name,
                 MAX(pm.new_gaotao + pm.stock_gaotao) as total_gaotao,
                 MAX(pm.inc_pts_total) as inc_pts,
@@ -88,22 +91,22 @@ def get_progress_forecast(month: str, conn: Optional[sqlite3.Connection] = None)
             LEFT JOIN (
                 SELECT name, MAX(predicted_incentive) as predicted_incentive,
                        MAX(total_gaotao) as total_gaotao
-                FROM staff_efficiency WHERE month=?
+                FROM staff_efficiency WHERE month=? AND {_NAMES_FILTER}
                 GROUP BY name
             ) se ON pm.name = se.name
-            WHERE pm.month=?
+            WHERE pm.month=? AND pm.{_NAMES_FILTER}
             GROUP BY pm.name
             ORDER BY inc_pts DESC
         """, (month, month))
 
         # 人员高套档位情况（最新）
-        tier_data = query_json(conn, """
+        tier_data = query_json(conn, f"""
             SELECT name,
                 SUM(tier_129_pts) as tier_129,
                 SUM(tier_169_pts) as tier_169,
                 SUM(tier_199_pts) as tier_199
             FROM staff_incentive_tier
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
             GROUP BY name
         """, (month,))
         tier_map = {t['name']: t for t in tier_data}

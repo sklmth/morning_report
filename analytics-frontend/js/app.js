@@ -55,9 +55,9 @@
     if (!el) return;
     el.innerHTML = cards.map(({ label, value, sub, color }) => `
       <div class="kpi-card ${color || ''}">
-        <div class="label">${label}</div>
-        <div class="value">${value}</div>
-        ${sub ? `<div class="sub">${sub}</div>` : ''}
+        <div class="kpi-label">${label}</div>
+        <div class="kpi-value">${value}</div>
+        ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
       </div>
     `).join('');
   }
@@ -80,11 +80,11 @@
 
       renderKpiCards('kpi-cards', [
         { label: '数据截至', value: overviewData.latest_date || '-', color: '' },
-        { label: '净增积分', value: fmt(overviewData.net_pts, 0), sub: '分', color: overviewData.net_pts >= 0 ? 'green' : 'red' },
+        { label: '净增积分', value: fmt(overviewData.net_pts, 0), sub: '分', color: overviewData.net_pts >= 0 ? 'success' : 'danger' },
         { label: '增量积分', value: fmt(overviewData.inc_pts, 0), sub: '分', color: '' },
-        { label: '总高套数', value: fmt(overviewData.total_gaotao, 0), sub: '户', color: '' },
-        { label: '人均激励', value: '¥' + fmt(overviewData.avg_incentive, 0), sub: '元/人', color: 'orange' },
-        { label: '总激励', value: '¥' + fmt(overviewData.total_incentive, 0), sub: '元', color: '' },
+        { label: '总高套数', value: fmt(overviewData.total_gaotao, 0), sub: '户（14人合计）', color: '' },
+        { label: '人均激励', value: '¥' + fmt(overviewData.avg_incentive, 0), sub: '元/人', color: 'accent' },
+        { label: '总激励', value: '¥' + fmt(overviewData.total_incentive, 0), sub: '元', color: 'accent' },
         { label: '数据快照', value: overviewData.snapshot_count, sub: '次', color: '' },
       ]);
 
@@ -125,7 +125,7 @@
       renderKpiCards('progress-kpi-cards', [
         { label: '时间进度', value: data.time_progress + '%', color: '' },
         { label: '剩余天数', value: data.remaining_days + '天', color: '' },
-        { label: '当前净增积分', value: fmt(fc.current, 0), color: fc.current >= 0 ? 'green' : 'red' },
+        { label: '当前净增积分', value: fmt(fc.current, 0), color: fc.current >= 0 ? 'success' : 'danger' },
         { label: '日均积分', value: fmt(fc.daily_avg_actual, 1), sub: '分/天', color: '' },
         { label: '预测月末净增', value: fmt(fc.projected_month_end, 0), sub: '分（线性外推）', color: '' },
       ]);

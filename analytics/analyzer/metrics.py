@@ -6,7 +6,11 @@
 from typing import Optional
 import sqlite3
 from analytics.db import get_connection, query_json
-from analytics.config import DUANZHOU_DISTRICT_ALIASES, BRANCH_NAMES, RISK_THRESHOLDS
+from analytics.config import DUANZHOU_DISTRICT_ALIASES, BRANCH_NAMES, RISK_THRESHOLDS, NAMES
+
+# SQL 片段：仅分析14个政企客户经理
+_NAMES_PLACEHOLDERS = ",".join(f"'{n}'" for n in NAMES)
+_NAMES_FILTER = f"name IN ({_NAMES_PLACEHOLDERS})"
 
 
 # ─── 积分结构分析 ──────────────────────────────────────────────────────────────
@@ -131,8 +135,8 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
         close = True
 
     try:
-        # 营服人员效能（最新快照）
-        staff = query_json(conn, """
+        # 营服人员效能（最新快照，仅14人）
+        staff = query_json(conn, f"""
             SELECT name, center, role,
                 MAX(predicted_incentive) as predicted_incentive,
                 MAX(total_gaotao) as total_gaotao,
@@ -143,20 +147,20 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
                 MAX(fttr) as fttr,
                 MAX(mobile) as mobile
             FROM staff_efficiency
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
             GROUP BY name
             ORDER BY predicted_incentive DESC
         """, (month,))
 
-        # 高套档位分布
-        tiers = query_json(conn, """
+        # 高套档位分布（仅14人）
+        tiers = query_json(conn, f"""
             SELECT name, center,
                 SUM(tier_129_pts) as tier_129,
                 SUM(tier_169_pts) as tier_169,
                 SUM(tier_199_pts) as tier_199,
                 SUM(dev_incentive) as dev_incentive
             FROM staff_incentive_tier
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
             GROUP BY name
             ORDER BY dev_incentive DESC
         """, (month,))
@@ -174,8 +178,8 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
             ORDER BY completion_rate DESC
         """, (month,))
 
-        # 完美一单人员数据（包含更多字段）
-        wanmei_staff = query_json(conn, """
+        # 完美一单人员数据（仅14人）
+        wanmei_staff = query_json(conn, f"""
             SELECT name,
                 MAX(new_gaotao) as new_gaotao,
                 MAX(stock_gaotao) as stock_gaotao,
@@ -185,7 +189,7 @@ def get_person_efficiency(month: str, conn: Optional[sqlite3.Connection] = None)
                 MAX(new_pts_total) as new_pts_total,
                 MAX(gateway_count) as gateway_count
             FROM person_monthly_metrics
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
             GROUP BY name
             ORDER BY inc_pts_total DESC
         """, (month,))
@@ -251,15 +255,15 @@ def get_risk_alerts(month: str, conn: Optional[sqlite3.Connection] = None) -> di
             LIMIT 6
         """)
 
-        # 人员层级存量积分（从完美一单）
-        person_stock = query_json(conn, """
+        # 人员层级存量积分（仅14人）
+        person_stock = query_json(conn, f"""
             SELECT name, month,
                 MAX(stock_pts_total) as stock_pts,
                 MAX(new_gaotao) as new_gaotao,
                 MAX(stock_gaotao) as stock_gaotao,
                 MAX(inc_pts_total) as inc_pts
             FROM person_monthly_metrics
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
             GROUP BY name
             ORDER BY stock_pts ASC
         """, (month,))
@@ -383,21 +387,21 @@ def get_overview(month: Optional[str] = None, conn: Optional[sqlite3.Connection]
             WHERE month=? AND {duanzhou_filter}
         """, (month,))
 
-        # 总高套
-        gaotao = query_json(conn, """
+        # 总高套（仅14人）
+        gaotao = query_json(conn, f"""
             SELECT SUM(new_gaotao + stock_gaotao) as total_gaotao,
                    COUNT(DISTINCT name) as person_count
             FROM person_monthly_metrics
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
         """, (month,))
 
-        # 人均激励
-        incentive = query_json(conn, """
+        # 人均激励（仅14人）
+        incentive = query_json(conn, f"""
             SELECT AVG(predicted_incentive) as avg_incentive,
                    SUM(predicted_incentive) as total_incentive,
                    COUNT(*) as person_count
             FROM staff_efficiency
-            WHERE month=?
+            WHERE month=? AND {_NAMES_FILTER}
         """, (month,))
 
         # 快照数量

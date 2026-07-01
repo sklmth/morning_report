@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>端州政企部经营分析</title>
+  <title>端州政企部 · 经营分析</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
@@ -11,16 +11,19 @@
 
 <!-- 顶栏 -->
 <header class="topbar">
-  <div class="topbar-left">
-    <span class="logo">📊</span>
-    <h1>端州分公司政企部 · 经营分析</h1>
+  <div class="topbar-brand">
+    <div class="brand-icon">📊</div>
+    <div>
+      <h1>端州分公司政企部 · 经营分析</h1>
+      <div class="brand-sub">Business Analytics Dashboard</div>
+    </div>
   </div>
-  <div class="topbar-right">
-    <label for="month-select">月份</label>
-    <select id="month-select"></select>
-    <button id="refresh-btn" class="btn btn-primary">↻ 刷新</button>
-    <button id="export-btn" class="btn btn-outline">⬇ 导出Excel</button>
-    <button id="upload-btn" class="btn btn-outline">⬆ 上传数据</button>
+  <div class="topbar-controls">
+    <label for="month-select">数据月份</label>
+    <select id="month-select" class="select-month"></select>
+    <button id="refresh-btn" class="btn btn-ghost">↻ 刷新</button>
+    <button id="export-btn" class="btn btn-ghost">⬇ 导出</button>
+    <button id="upload-btn" class="btn btn-accent">⬆ 上传数据</button>
   </div>
 </header>
 
@@ -28,10 +31,10 @@
 <div id="upload-modal" class="modal hidden">
   <div class="modal-box">
     <h2>上传历史数据</h2>
-    <p class="hint">支持：完美一单报表 / 营服业务通报表（xlsx 格式）<br/>系统自动识别文件类型并解析入库</p>
+    <p class="hint">支持完美一单报表 / 营服业务通报表（xlsx 格式）<br/>系统自动识别文件类型并解析入库，支持多月份数据混合上传</p>
     <div class="upload-drop" id="drop-zone">
       <span>拖拽文件到此处，或</span>
-      <label class="btn btn-primary" style="margin-top:8px;cursor:pointer;">
+      <label class="btn btn-accent" style="margin-top:10px;cursor:pointer;">
         选择文件
         <input type="file" id="file-input" multiple accept=".xlsx,.xls" style="display:none" />
       </label>
@@ -43,18 +46,22 @@
   </div>
 </div>
 
-<!-- 侧边导航 -->
+<!-- 主布局 -->
 <div class="layout">
   <nav class="sidebar">
-    <ul>
-      <li class="nav-item active" data-tab="overview">🏠 总览</li>
-      <li class="nav-item" data-tab="score">📈 积分结构</li>
-      <li class="nav-item" data-tab="progress">🎯 完成进度</li>
-      <li class="nav-item" data-tab="person">👥 人员效能</li>
-      <li class="nav-item" data-tab="compare">🏆 县分对比</li>
-      <li class="nav-item" data-tab="risk">⚠️ 风险预警</li>
-      <li class="nav-item" data-tab="trend">📉 历史趋势</li>
-      <li class="nav-item" data-tab="snapshots">🗄 数据快照</li>
+    <div class="sidebar-section-label">分析</div>
+    <ul style="list-style:none">
+      <li class="nav-item active" data-tab="overview"><span class="nav-icon">🏠</span><span>总览</span></li>
+      <li class="nav-item" data-tab="score"><span class="nav-icon">📈</span><span>积分结构</span></li>
+      <li class="nav-item" data-tab="progress"><span class="nav-icon">🎯</span><span>完成进度</span></li>
+      <li class="nav-item" data-tab="person"><span class="nav-icon">👥</span><span>人员效能</span></li>
+      <li class="nav-item" data-tab="compare"><span class="nav-icon">🏆</span><span>县分对比</span></li>
+      <li class="nav-item" data-tab="risk"><span class="nav-icon">⚠️</span><span>风险预警</span></li>
+    </ul>
+    <div class="sidebar-section-label">历史</div>
+    <ul style="list-style:none">
+      <li class="nav-item" data-tab="trend"><span class="nav-icon">📉</span><span>趋势分析</span></li>
+      <li class="nav-item" data-tab="snapshots"><span class="nav-icon">🗄</span><span>数据快照</span></li>
     </ul>
   </nav>
 
@@ -64,33 +71,33 @@
     <section id="tab-overview" class="tab-panel active">
       <div class="kpi-grid" id="kpi-cards"></div>
       <div class="charts-row">
-        <div class="chart-card half" id="overview-pts-chart" style="height:300px"></div>
-        <div class="chart-card half" id="overview-gaotao-chart" style="height:300px"></div>
+        <div class="chart-card half" id="overview-pts-chart" style="height:320px"></div>
+        <div class="chart-card half" id="overview-gaotao-chart" style="height:320px"></div>
       </div>
     </section>
 
     <!-- 积分结构 -->
     <section id="tab-score" class="tab-panel hidden">
       <div class="charts-row">
-        <div class="chart-card half" id="score-pie-chart" style="height:360px"></div>
-        <div class="chart-card half" id="score-health-chart" style="height:360px"></div>
+        <div class="chart-card half" id="score-pie-chart" style="height:380px"></div>
+        <div class="chart-card half" id="score-health-chart" style="height:380px"></div>
       </div>
-      <div class="chart-card full" id="score-district-bar" style="height:320px"></div>
+      <div class="chart-card full" id="score-district-bar" style="height:340px"></div>
     </section>
 
     <!-- 完成进度 -->
     <section id="tab-progress" class="tab-panel hidden">
       <div class="kpi-grid" id="progress-kpi-cards"></div>
-      <div class="chart-card full" id="progress-bar-chart" style="height:400px"></div>
+      <div class="chart-card full" id="progress-bar-chart" style="height:450px"></div>
     </section>
 
     <!-- 人员效能 -->
     <section id="tab-person" class="tab-panel hidden">
       <div class="charts-row">
-        <div class="chart-card half" id="person-scatter-chart" style="height:380px"></div>
-        <div class="chart-card half" id="person-tier-chart" style="height:380px"></div>
+        <div class="chart-card half" id="person-scatter-chart" style="height:400px"></div>
+        <div class="chart-card half" id="person-tier-chart" style="height:400px"></div>
       </div>
-      <div class="chart-card full" id="cp-pairs-chart" style="height:320px"></div>
+      <div class="chart-card full" id="cp-pairs-chart" style="height:340px"></div>
     </section>
 
     <!-- 县分对比 -->
@@ -103,15 +110,15 @@
     <section id="tab-risk" class="tab-panel hidden">
       <div id="alert-cards" class="alert-list"></div>
       <div class="charts-row">
-        <div class="chart-card half" id="risk-ratio-chart" style="height:320px"></div>
-        <div class="chart-card half" id="risk-history-chart" style="height:320px"></div>
+        <div class="chart-card half" id="risk-ratio-chart" style="height:340px"></div>
+        <div class="chart-card half" id="risk-history-chart" style="height:340px"></div>
       </div>
     </section>
 
     <!-- 历史趋势 -->
     <section id="tab-trend" class="tab-panel hidden">
-      <div class="chart-card full" id="trend-pts-chart" style="height:360px"></div>
-      <div class="chart-card full" id="trend-gaotao-chart" style="height:300px"></div>
+      <div class="chart-card full" id="trend-pts-chart" style="height:380px"></div>
+      <div class="chart-card full" id="trend-gaotao-chart" style="height:320px"></div>
     </section>
 
     <!-- 数据快照 -->
