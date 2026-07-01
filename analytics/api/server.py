@@ -134,21 +134,38 @@ async def upload_excel(files: list[UploadFile] = File(...)):
     )
     os.makedirs(upload_dir, exist_ok=True)
 
+    logger.info("Upload request: %d file(s): %s",
+                len(files), ", ".join(f.filename for f in files))
+
     for f in files:
         if not f.filename.endswith(('.xlsx', '.xls')):
+            logger.warning("Upload rejected (bad ext): %s", f.filename)
             results.append({"file": f.filename, "status": "error", "msg": "仅支持 xlsx/xls 格式"})
             continue
 
-        # 保存临时文件
+        # 保存上传文件
         dest = os.path.join(upload_dir, f.filename)
-        with open(dest, "wb") as out:
-            shutil.copyfileobj(f.file, out)
+        try:
+            with open(dest, "wb") as out:
+                shutil.copyfileobj(f.file, out)
+            size = os.path.getsize(dest)
+            logger.info("Upload saved: %s (%d bytes) -> %s", f.filename, size, dest)
+        except OSError as e:
+            logger.exception("Upload save failed: %s", f.filename)
+            results.append({"file": f.filename, "status": "error", "msg": f"保存失败: {e}"})
+            continue
 
-        # 处理
+        # 处理入库
         r = process_file(dest, trigger_by="upload")
         r["file"] = f.filename
+        if r.get("status") == "ok":
+            logger.info("Upload processed OK: %s -> %s", f.filename, r.get("msg", ""))
+        else:
+            logger.error("Upload process failed: %s -> %s", f.filename, r.get("msg", ""))
         results.append(r)
 
+    ok_n = sum(1 for r in results if r.get("status") == "ok")
+    logger.info("Upload done: %d ok / %d total", ok_n, len(results))
     return {"results": results}
 
 
@@ -161,8 +178,10 @@ def export_excel(month: str = Query(...)):
     try:
         build_analysis_excel(month, buf)
     except Exception as e:
+        logger.exception("Export excel failed: month=%s", month)
         raise HTTPException(status_code=500, detail=str(e))
     buf.seek(0)
+    logger.info("Export excel OK: month=%s (%d bytes)", month, buf.getbuffer().nbytes)
     filename = f"经营分析_{month}.xlsx"
     return StreamingResponse(
         buf,

@@ -9,7 +9,6 @@
   ANALYTICS_PORT=8992 ANALYTICS_DB_PATH=runtime/analytics.db python run_analytics.py
 """
 
-import logging
 import os
 import sys
 
@@ -18,12 +17,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
-logger = logging.getLogger("analytics")
+from analytics.logging_setup import setup_logging
+
+# 统一日志：控制台 + 压缩轮转文件（runtime/logs/analytics.log）
+logger = setup_logging()
 
 
 def main():
@@ -56,6 +53,9 @@ def main():
         reload=False,
         log_level="info",
         access_log=True,
+        # log_config=None：不让 uvicorn 安装自己的 handler，
+        # 其 logger 向上传播到 root，统一走文件+压缩轮转
+        log_config=None,
     )
 
 
