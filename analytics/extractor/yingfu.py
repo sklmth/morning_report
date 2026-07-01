@@ -1,6 +1,9 @@
 """
 营服业务通报表数据提取器
-从营服Excel中提取人员效能、CP对、包区承包、激励档位等数据
+仅提取与14个政企客户经理相关的数据：
+  - 071人员统计：激励金额（col16）、激励积分（col17）
+  - 中心人员效能/下沉人员效能：揽装积分、高套、FTTR等
+  - 016包区各指标汇总表：包区承包收入
 """
 
 import re
@@ -8,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 import pandas as pd
 
-from analytics.config import ALL_STAFF_NAMES
+from analytics.config import NAMES
 
 
 def _safe(val, default=0.0):
@@ -25,18 +28,15 @@ def _parse_date_from_cell(val) -> Optional[str]:
     if val is None:
         return None
     s = str(val).strip()
-    # 20260628
     m = re.search(r'(\d{8})', s)
     if m:
         d = m.group(1)
         return f"{d[:4]}-{d[4:6]}-{d[6:]}"
-    # 6月28日 → 用当前年份
     m = re.search(r'(\d{1,2})月(\d{1,2})日', s)
     if m:
         mo, da = int(m.group(1)), int(m.group(2))
         year = datetime.today().year
         return f"{year}-{mo:02d}-{da:02d}"
-    # 2026-06-28
     m = re.search(r'(\d{4}-\d{2}-\d{2})', s)
     if m:
         return m.group(1)
@@ -45,21 +45,14 @@ def _parse_date_from_cell(val) -> Optional[str]:
 
 def extract_yingfu(file_path: str) -> dict:
     """
-    解析营服业务通报表，返回：
-    {
-        'data_date': str,
-        'staff_efficiency': [dict, ...],
-        'staff_incentive_tier': [dict, ...],
-        'cp_pair_metrics': [dict, ...],
-        'area_contract_metrics': [dict, ...],
-    }
+    解析营服业务通报表，返回仅包含14个政企客户经理的数据
     """
     result = {
         'data_date': None,
-        'staff_efficiency': [],
-        'staff_incentive_tier': [],
-        'cp_pair_metrics': [],
-        'area_contract_metrics': [],
+        'staff_efficiency': [],       # 14人效能（激励+业务指标）
+        'staff_incentive_tier': [],    # 不再使用，保留空
+        'cp_pair_metrics': [],         # 不再使用，保留空
+        'area_contract_metrics': [],   # 包区数据
     }
 
     try:
@@ -67,153 +60,111 @@ def extract_yingfu(file_path: str) -> dict:
     except Exception as e:
         raise RuntimeError(f"读取营服报表失败: {e}")
 
-    # ── 中心人员效能 ─────────────────────────────────────────────────────────
-    sheet_eff = "中心人员效能"
-    if sheet_eff in all_sheets:
-        df = all_sheets[sheet_eff]
-        # 第1行标题，第2行列名，数据从第3行(index=2)开始
+    names_set = set(NAMES)
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 071人员统计 — 14人激励金额（权威来源）
+    # 表头: 行0-3为多级列头，数据从行4(iloc[4:])开始
+    # col7=营业员名称(H列), col16=激励金额_计件(Q列), col17=激励积分_计件
+    # ══════════════════════════════════════════════════════════════════════════
+    incentive_map = {}  # {name: {'incentive': float, 'incentive_pts': float}}
+
+    sheet_071 = "071人员统计"
+    if sheet_071 in all_sheets:
+        df = all_sheets[sheet_071]
+        data_rows = df.iloc[4:].reset_index(drop=True)
+
+        # 尝试从首个数据行读取日期
+        if len(data_rows) > 0:
+            date_val = _parse_date_from_cell(data_rows.iloc[0, 0])
+            if date_val:
+                result['data_date'] = date_val
+
+        for _, row in data_rows.iterrows():
+            name = str(row.iloc[7]).strip() if pd.notna(row.iloc[7]) else ""
+            if name not in names_set:
+                continue
+            incentive_map[name] = {
+                'incentive': _safe(row.iloc[16]) if len(row) > 16 else 0,
+                'incentive_pts': _safe(row.iloc[17]) if len(row) > 17 else 0,
+                'incentive_new': _safe(row.iloc[18]) if len(row) > 18 else 0,
+                'incentive_stock': _safe(row.iloc[19]) if len(row) > 19 else 0,
+            }
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # 中心人员效能 / 下沉人员效能 — 揽装积分、高套、FTTR等业务指标
+    # 表头: 行0标题，行1列名，数据从行2(iloc[2:])开始
+    # col1=中心, col2=角色, col3=姓名, col4=预计激励(不用！), col5=综合高套
+    # col6=高套, col7=存量高套, col8=揽装积分, col9=激励积分, col10=高套积分
+    # col11=存量高套积分, col12=FTTR, col13=合约, col14=移动
+    # ══════════════════════════════════════════════════════════════════════════
+    eff_records = []
+    for sheet_name in ["中心人员效能", "下沉人员效能"]:
+        if sheet_name not in all_sheets:
+            continue
+        df = all_sheets[sheet_name]
         data_rows = df.iloc[2:].reset_index(drop=True)
 
-        # 解析日期（第2行第0列可能有日期）
-        date_str = _parse_date_from_cell(df.iloc[2, 0] if len(df) > 2 else None)
-        if date_str:
-            result['data_date'] = date_str
-
-        records = []
         for _, row in data_rows.iterrows():
             name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
-            if not name or name in ("nan", "人员"):
+            if name not in names_set:
                 continue
+
             date_val = _parse_date_from_cell(row.iloc[0])
-            records.append({
+            if date_val and not result['data_date']:
+                result['data_date'] = date_val
+
+            # 激励从071人员统计取（权威来源），不从此表取
+            inc_data = incentive_map.get(name, {})
+            eff_records.append({
                 'name': name,
-                'center': str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "",
+                'center': str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "政企",
                 'role': str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "",
-                'predicted_incentive': _safe(row.iloc[4]) if len(row) > 4 else 0,
+                # 激励从071人员统计取
+                'predicted_incentive': inc_data.get('incentive', 0),
                 'total_gaotao': _safe(row.iloc[5]) if len(row) > 5 else 0,
                 'new_gaotao': _safe(row.iloc[6]) if len(row) > 6 else 0,
                 'stock_gaotao': _safe(row.iloc[7]) if len(row) > 7 else 0,
                 'device_pts': _safe(row.iloc[8]) if len(row) > 8 else 0,
-                'incentive_pts': _safe(row.iloc[9]) if len(row) > 9 else 0,
+                'incentive_pts': inc_data.get('incentive_pts', 0),
                 'gaotao_pts': _safe(row.iloc[10]) if len(row) > 10 else 0,
                 'stock_gaotao_pts': _safe(row.iloc[11]) if len(row) > 11 else 0,
                 'fttr': int(_safe(row.iloc[12])) if len(row) > 12 else 0,
                 'contract': int(_safe(row.iloc[13])) if len(row) > 13 else 0,
                 'mobile': int(_safe(row.iloc[14])) if len(row) > 14 else 0,
-                '_date_override': date_val,  # 行内日期，优先用
             })
-        # 若行内日期存在，取第一个非空的
-        if records:
-            for r in records:
-                d = r.pop('_date_override', None)
-                if d and not result['data_date']:
-                    result['data_date'] = d
-        result['staff_efficiency'] = records
 
-    # ── 下沉人员效能（同格式）────────────────────────────────────────────────
-    sheet_sink = "下沉人员效能"
-    if sheet_sink in all_sheets:
-        df = all_sheets[sheet_sink]
-        data_rows = df.iloc[2:].reset_index(drop=True)
-        records = []
-        for _, row in data_rows.iterrows():
-            name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
-            if not name or name in ("nan", "人员"):
-                continue
-            date_val = _parse_date_from_cell(row.iloc[0])
-            records.append({
+    # 如果14人中有人在071人员统计中有数据但不在"中心人员效能"里
+    # 补充一条仅含激励的记录
+    eff_names = {r['name'] for r in eff_records}
+    for name, inc_data in incentive_map.items():
+        if name not in eff_names:
+            eff_records.append({
                 'name': name,
-                'center': str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "",
-                'role': str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "",
-                'predicted_incentive': _safe(row.iloc[4]) if len(row) > 4 else 0,
-                'total_gaotao': _safe(row.iloc[5]) if len(row) > 5 else 0,
-                'new_gaotao': _safe(row.iloc[6]) if len(row) > 6 else 0,
-                'stock_gaotao': _safe(row.iloc[7]) if len(row) > 7 else 0,
-                'device_pts': _safe(row.iloc[8]) if len(row) > 8 else 0,
-                'incentive_pts': _safe(row.iloc[9]) if len(row) > 9 else 0,
-                'gaotao_pts': _safe(row.iloc[10]) if len(row) > 10 else 0,
-                'stock_gaotao_pts': _safe(row.iloc[11]) if len(row) > 11 else 0,
-                'fttr': int(_safe(row.iloc[12])) if len(row) > 12 else 0,
-                'contract': int(_safe(row.iloc[13])) if len(row) > 13 else 0,
-                'mobile': int(_safe(row.iloc[14])) if len(row) > 14 else 0,
+                'center': '政企',
+                'role': '客户经理',
+                'predicted_incentive': inc_data.get('incentive', 0),
+                'total_gaotao': 0,
+                'new_gaotao': 0,
+                'stock_gaotao': 0,
+                'device_pts': 0,
+                'incentive_pts': inc_data.get('incentive_pts', 0),
+                'gaotao_pts': 0,
+                'stock_gaotao_pts': 0,
+                'fttr': 0,
+                'contract': 0,
+                'mobile': 0,
             })
-        # 合并到 staff_efficiency
-        result['staff_efficiency'].extend(records)
 
-    # ── 中心人员预计酬金（激励档位）────────────────────────────────────────────
-    sheet_tier = "中心人员预计酬金"
-    if sheet_tier in all_sheets:
-        df = all_sheets[sheet_tier]
-        # 第1行是列头，数据从第2行(index=1)开始
-        data_rows = df.iloc[1:].reset_index(drop=True)
+    result['staff_efficiency'] = eff_records
 
-        records = []
-        for _, row in data_rows.iterrows():
-            name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
-            if not name or name in ("nan",):
-                continue
-            date_val = _parse_date_from_cell(row.iloc[0])
-            records.append({
-                'name': name,
-                'center': str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "",
-                'cp_group': str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "",
-                'device_pts': _safe(row.iloc[4]) if len(row) > 4 else 0,
-                'tier_129_pts': _safe(row.iloc[5]) if len(row) > 5 else 0,
-                'tier_169_pts': _safe(row.iloc[6]) if len(row) > 6 else 0,
-                'tier_199_pts': _safe(row.iloc[7]) if len(row) > 7 else 0,
-                'bastion_托收_low': _safe(row.iloc[8]) if len(row) > 8 else 0,
-                'bastion_托收_high': _safe(row.iloc[9]) if len(row) > 9 else 0,
-                'bastion_非托收_low': _safe(row.iloc[10]) if len(row) > 10 else 0,
-                'bastion_非托收_high': _safe(row.iloc[11]) if len(row) > 11 else 0,
-                'pure_new_pts': _safe(row.iloc[12]) if len(row) > 12 else 0,
-                'stock_non_bastion_pts': _safe(row.iloc[13]) if len(row) > 13 else 0,
-                'dev_incentive': _safe(row.iloc[14]) if len(row) > 14 else 0,
-                '_date_override': date_val,
-            })
-        if records:
-            for r in records:
-                d = r.pop('_date_override', None)
-                if d and not result['data_date']:
-                    result['data_date'] = d
-        result['staff_incentive_tier'] = records
-
-    # ── 服务工资计算（CP对）─────────────────────────────────────────────────
-    sheet_cp = "服务工资计算"
-    if sheet_cp in all_sheets:
-        df = all_sheets[sheet_cp]
-        # 第1行是列头，数据从第2行(index=1)开始
-        data_rows = df.iloc[1:].reset_index(drop=True)
-
-        records = []
-        for _, row in data_rows.iterrows():
-            center = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-            if not center or center in ("nan",):
-                continue
-            records.append({
-                'center': center,
-                'cp_group': str(row.iloc[1]).strip() if pd.notna(row.iloc[1]) else "",
-                'sales_name': str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else "",
-                'install_name': str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else "",
-                'cp_target': _safe(row.iloc[4]) if len(row) > 4 else 0,
-                'sales_target': _safe(row.iloc[5]) if len(row) > 5 else 0,
-                'install_target': _safe(row.iloc[6]) if len(row) > 6 else 0,
-                'sales_pts_actual': _safe(row.iloc[7]) if len(row) > 7 else 0,
-                'install_pts_actual': _safe(row.iloc[8]) if len(row) > 8 else 0,
-                'cp_pts_total': _safe(row.iloc[9]) if len(row) > 9 else 0,
-                'sales_service_wage': _safe(row.iloc[10]) if len(row) > 10 else 0,
-                'install_coeff': _safe(row.iloc[11]) if len(row) > 11 else 0,
-                'install_gap': _safe(row.iloc[12]) if len(row) > 12 else 0,
-                'cp_gap': _safe(row.iloc[13]) if len(row) > 13 else 0,
-            })
-        result['cp_pair_metrics'] = records
-
-    # ── 016-包区各指标汇总表 ──────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    # 016-包区各指标汇总表 — 包区承包收入
+    # ══════════════════════════════════════════════════════════════════════════
     sheet_area = "016-包区各指标汇总表"
     if sheet_area in all_sheets:
         df = all_sheets[sheet_area]
-        # 前3行是多级列头，数据从第4行(index=3)开始
         data_rows = df.iloc[3:].reset_index(drop=True)
-
         records = []
         for _, row in data_rows.iterrows():
             area_name_raw = row.iloc[4] if len(row) > 4 else None
@@ -236,13 +187,9 @@ def extract_yingfu(file_path: str) -> dict:
                 'cum_progress': _safe(row.iloc[24]) if len(row) > 24 else 0,
                 'pts_target': _safe(row.iloc[25]) if len(row) > 25 else 0,
                 'pts_actual': _safe(row.iloc[26]) if len(row) > 26 else 0,
-                '_date_override': date_val,
             })
-        if records:
-            for r in records:
-                d = r.pop('_date_override', None)
-                if d and not result['data_date']:
-                    result['data_date'] = d
+            if date_val and not result['data_date']:
+                result['data_date'] = date_val
         result['area_contract_metrics'] = records
 
     # 兜底日期

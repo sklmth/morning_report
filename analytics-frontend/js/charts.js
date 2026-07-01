@@ -1,386 +1,427 @@
 /**
- * ECharts 图表渲染模块
- * 每个函数接收数据，渲染到指定 DOM id
+ * ECharts 图表渲染模块 v2
+ * 仅展示14个政企客户经理相关图表
  */
-
 const Charts = (() => {
-  const instances = {};
+  'use strict';
+  const _inst = {};
+
+  const C = {
+    primary:'#1e3a5f', mid:'#2563a8', light:'#3b82c4',
+    accent:'#f59e0b', success:'#059669', danger:'#dc2626',
+    muted:'#94a3b8', text:'#0f172a', sub:'#475569', border:'#e2e8f0',
+    palette:['#1e3a5f','#2563a8','#3b82c4','#f59e0b','#059669',
+             '#f97316','#dc2626','#7c3aed','#0891b2','#be185d',
+             '#065f46','#78350f','#1e40af','#6b21a8'],
+  };
 
   function _init(id) {
-    if (instances[id]) instances[id].dispose();
+    if (_inst[id]) _inst[id].dispose();
     const el = document.getElementById(id);
     if (!el) return null;
-    instances[id] = echarts.init(el, null, { renderer: 'canvas' });
-    return instances[id];
+    _inst[id] = echarts.init(el, null, { renderer: 'canvas' });
+    return _inst[id];
   }
 
-  const COLOR_PRIMARY = ['#1F4E79','#2E75B6','#5BA3D0','#A8CCE8','#E2A317','#C55A11','#375623','#70AD47'];
-  const COLOR_HEALTH  = ['#C00000','#E2A317','#375623'];
+  const _T = (text, sub) => ({
+    text, subtext: sub||'', left:'center', top:10,
+    textStyle:{ fontSize:13, fontWeight:700, color:C.primary, fontFamily:'"PingFang SC","微软雅黑",sans-serif' },
+    subtextStyle:{ fontSize:11, color:C.muted },
+  });
 
-  // ── 总览：积分结构简要饼图 ──────────────────────────────────────────────────
+  const _tip = (trigger='axis') => ({
+    trigger,
+    backgroundColor:'rgba(15,23,42,.92)',
+    borderColor:'transparent',
+    textStyle:{ color:'#fff', fontSize:12 },
+    extraCssText:'border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.3);padding:10px 14px',
+  });
+
+  window.addEventListener('resize', () => Object.values(_inst).forEach(c => c?.resize()));
+
+  // ══════════════════════════════════════
+  // 1. 总览：积分来源构成
+  // ══════════════════════════════════════
   function renderOverviewPts(id, data) {
-    const c = _init(id);
-    if (!c) return;
-    const dz = data.duanzhou || {};
+    const c = _init(id); if (!c) return;
+    const dz = data?.duanzhou || {};
+    const items = [
+      { name:'基本面', value: Math.max(0, dz.base_pts||0) },
+      { name:'双线', value: Math.max(0, dz.twin_pts||0) },
+      { name:'其他业务', value: Math.max(0, dz.other_pts||0) },
+    ].filter(d => d.value > 0);
     c.setOption({
-      title: { text: '积分来源构成', left: 'center', top: 8, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-      legend: { bottom: 0, textStyle: { fontSize: 11 } },
-      series: [{
-        type: 'pie', radius: ['40%', '65%'], center: ['50%', '50%'],
-        data: [
-          { name: '基本面', value: Math.max(0, dz.base_pts || 0) },
-          { name: '双线', value: Math.max(0, dz.twin_pts || 0) },
-          { name: '其他业务', value: Math.max(0, dz.other_pts || 0) },
-        ].filter(d => d.value > 0),
-        color: COLOR_PRIMARY,
-        label: { formatter: '{b}\n{d}%', fontSize: 11 },
+      title: _T('端州积分来源构成'),
+      tooltip: { ..._tip('item'), formatter: p => `${p.name}<br/>积分：${p.value.toFixed(1)} 分<br/>占比：${p.percent}%` },
+      legend: { bottom:8, textStyle:{ fontSize:11, color:C.sub } },
+      series:[{
+        type:'pie', radius:['40%','68%'], center:['50%','52%'],
+        data: items, color:[C.primary, C.accent, C.success],
+        emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(0,0,0,.2)' } },
+        label:{ formatter:'{b}\n{d}%', fontSize:11, color:C.text },
+        labelLine:{ length:10, length2:6 },
       }]
     });
   }
 
-  // ── 总览：高套人员分布柱图 ──────────────────────────────────────────────────
-  function renderOverviewGaotao(id, wanmeiStaff) {
-    const c = _init(id);
-    if (!c || !wanmeiStaff?.length) return;
-    const sorted = [...wanmeiStaff].sort((a, b) => ((b.new_gaotao||0)+(b.stock_gaotao||0)) - ((a.new_gaotao||0)+(a.stock_gaotao||0)));
-    const top = sorted.slice(0, 12);
+  // ══════════════════════════════════════
+  // 2. 总览：高套月累分布
+  // ══════════════════════════════════════
+  function renderOverviewGaotao(id, wm) {
+    const c = _init(id); if (!c || !wm?.length) return;
+    const sorted = [...wm].sort((a,b) => ((b.new_gaotao||0)+(b.stock_gaotao||0)) - ((a.new_gaotao||0)+(a.stock_gaotao||0)));
     c.setOption({
-      title: { text: '人员高套完成（月累）', left: 'center', top: 8, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, textStyle: { fontSize: 11 } },
-      grid: { left: 60, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: top.map(d => d.name), axisLabel: { fontSize: 11, rotate: 30 } },
-      yAxis: { type: 'value', name: '户', nameTextStyle: { fontSize: 11 } },
-      series: [
-        { name: '新增高套', type: 'bar', stack: 'g', data: top.map(d => d.new_gaotao || 0), color: '#1F4E79' },
-        { name: '存量高套', type: 'bar', stack: 'g', data: top.map(d => d.stock_gaotao || 0), color: '#70AD47' },
-      ]
-    });
-  }
-
-  // ── 积分结构：多维饼图 ─────────────────────────────────────────────────────
-  function renderScorePie(id, data) {
-    const c = _init(id);
-    if (!c) return;
-    const dz = data.duanzhou || {};
-    const flow = [
-      { name: '到期积分', value: Math.abs(dz.base_expire || 0) },
-      { name: '降值积分', value: Math.abs(dz.base_decline || 0) },
-      { name: '拆机积分', value: Math.abs(dz.base_churn || 0) },
-    ];
-    c.setOption({
-      title: { text: '积分结构分析（端州）', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'item', formatter: '{b}: {c}分 ({d}%)' },
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      series: [{
-        type: 'pie', radius: ['35%', '60%'], center: ['50%', '50%'],
-        data: [
-          { name: '基本面', value: Math.max(0, dz.base_pts || 0) },
-          { name: '  移动', value: Math.max(0, dz.base_mobile || 0) },
-          { name: '  宽带', value: Math.max(0, dz.base_bb || 0) },
-          { name: '双线', value: Math.max(0, dz.twin_pts || 0) },
-          { name: '  互专', value: Math.max(0, dz.twin_inet || 0) },
-          { name: '  组网', value: Math.max(0, dz.twin_net || 0) },
-          { name: '其他', value: Math.max(0, dz.other_pts || 0) },
-        ].filter(d => d.value > 0),
-        color: COLOR_PRIMARY,
-        label: { formatter: '{b}\n{d}%', fontSize: 10 },
-      }]
-    });
-  }
-
-  // ── 积分结构：健康度仪表盘 ─────────────────────────────────────────────────
-  function renderScoreHealth(id, health) {
-    const c = _init(id);
-    if (!c) return;
-    c.setOption({
-      title: { text: '存量流失健康度', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { formatter: '{a} <br/>{b}: {c}%' },
-      series: [
-        {
-          name: '拆机占比', type: 'gauge', center: ['16%', '55%'], radius: '45%',
-          min: 0, max: 60,
-          axisLine: { lineStyle: { width: 8, color: [[0.3, '#375623'], [0.5, '#E2A317'], [1, '#C00000']] } },
-          pointer: { length: '60%' }, detail: { formatter: '{value}%', fontSize: 12 },
-          title: { fontSize: 11, offsetCenter: [0, '80%'] },
-          data: [{ value: health?.churn_ratio || 0, name: '拆机占比' }]
-        },
-        {
-          name: '降值占比', type: 'gauge', center: ['50%', '55%'], radius: '45%',
-          min: 0, max: 50,
-          axisLine: { lineStyle: { width: 8, color: [[0.25, '#375623'], [0.5, '#E2A317'], [1, '#C00000']] } },
-          pointer: { length: '60%' }, detail: { formatter: '{value}%', fontSize: 12 },
-          title: { fontSize: 11, offsetCenter: [0, '80%'] },
-          data: [{ value: health?.decline_ratio || 0, name: '降值占比' }]
-        },
-        {
-          name: '到期占比', type: 'gauge', center: ['84%', '55%'], radius: '45%',
-          min: 0, max: 80,
-          axisLine: { lineStyle: { width: 8, color: [[0.4, '#375623'], [0.625, '#E2A317'], [1, '#C00000']] } },
-          pointer: { length: '60%' }, detail: { formatter: '{value}%', fontSize: 12 },
-          title: { fontSize: 11, offsetCenter: [0, '80%'] },
-          data: [{ value: health?.expire_ratio || 0, name: '到期占比' }]
-        }
-      ]
-    });
-  }
-
-  // ── 积分结构：各县分积分对比 ──────────────────────────────────────────────
-  function renderScoreDistrictBar(id, allDistricts) {
-    const c = _init(id);
-    if (!c || !allDistricts?.length) return;
-    const sorted = [...allDistricts].sort((a, b) => (b.net_pts || 0) - (a.net_pts || 0));
-    c.setOption({
-      title: { text: '全市各县分净增积分对比', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      grid: { left: 90, right: 20, top: 40, bottom: 30 },
-      xAxis: { type: 'value', name: '分', nameTextStyle: { fontSize: 11 } },
-      yAxis: { type: 'category', data: sorted.map(d => d.district.replace('分公司', '').replace('(区县其它)', '')),
-               axisLabel: { fontSize: 11 } },
-      series: [
-        { name: '净增积分', type: 'bar', data: sorted.map(d => +(d.net_pts || 0).toFixed(1)),
-          itemStyle: { color: (p) => p.name.includes('端州') ? '#E2A317' : '#2E75B6' },
-          label: { show: true, position: 'right', fontSize: 10 } },
-      ]
-    });
-  }
-
-  // ── 进度预测：人员进度横向条形图 ───────────────────────────────────────────
-  function renderProgressBar(id, data) {
-    const c = _init(id);
-    if (!c) return;
-    const people = data.person_progress || [];
-    if (!people.length) return;
-    const sorted = [...people].sort((a, b) => (b.inc_pts || 0) - (a.inc_pts || 0));
-    const timeProg = data.time_progress || 0;
-    c.setOption({
-      title: { text: `人员积分完成进度（时间进度 ${timeProg}%）`, left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis', formatter: (params) => {
-        const p = people.find(x => x.name === params[0]?.name || x.name === sorted[params[0]?.dataIndex]?.name);
-        return p ? `${p.name}<br/>当前积分: ${p.inc_pts}<br/>预测月末: ${p.projected_pts_month}<br/>预计激励: ¥${p.predicted_incentive}` : '';
+      title: _T('人员高套月累完成'),
+      tooltip: { ..._tip(), formatter: params => {
+        const d = sorted[params[0].dataIndex];
+        return d ? `${d.name}<br/>新增高套：${d.new_gaotao||0} 户<br/>存量高套：${d.stock_gaotao||0} 户<br/>合计：${((d.new_gaotao||0)+(d.stock_gaotao||0)).toFixed(1)} 户` : '';
       }},
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      grid: { left: 60, right: 100, top: 40, bottom: 50 },
-      xAxis: { type: 'value', name: '积分', nameTextStyle: { fontSize: 11 } },
-      yAxis: { type: 'category', data: sorted.map(d => d.name), axisLabel: { fontSize: 11 } },
-      series: [
-        {
-          name: '当前积分', type: 'bar',
-          data: sorted.map(d => ({ value: +(d.inc_pts || 0).toFixed(1), itemStyle: {
-            color: d.status === 'green' ? '#375623' : d.status === 'yellow' ? '#E2A317' : '#C00000'
-          }})),
-          label: { show: true, position: 'right', fontSize: 10,
-            formatter: (p) => `${sorted[p.dataIndex]?.status === 'green' ? '✓' : sorted[p.dataIndex]?.status === 'yellow' ? '△' : '✕'}` }
-        },
-        {
-          name: '预测月末', type: 'bar', barGap: '30%',
-          data: sorted.map(d => +(d.projected_pts_month || 0).toFixed(1)),
-          itemStyle: { color: 'rgba(30,80,130,0.25)', borderColor: '#2E75B6', borderWidth: 1 }
-        }
+      legend:{ bottom:4, textStyle:{ fontSize:11 } },
+      grid:{ left:48, right:16, top:52, bottom:50 },
+      xAxis:{ type:'category', data:sorted.map(d=>d.name),
+        axisLabel:{ fontSize:10, rotate:35, color:C.sub },
+        axisLine:{ lineStyle:{ color:C.border } } },
+      yAxis:{ type:'value', name:'户',
+        nameTextStyle:{ fontSize:11, color:C.muted },
+        axisLine:{ show:false },
+        splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      series:[
+        { name:'新增高套', type:'bar', stack:'g', data:sorted.map(d=>+(d.new_gaotao||0).toFixed(2)), color:C.primary, barMaxWidth:26 },
+        { name:'存量高套', type:'bar', stack:'g', data:sorted.map(d=>+(d.stock_gaotao||0).toFixed(2)), color:C.success, barMaxWidth:26 },
       ]
     });
   }
 
-  // ── 人员效能：散点图 ─────────────────────────────────────────────────────
-  function renderPersonScatter(id, staffData) {
-    const c = _init(id);
-    if (!c || !staffData?.length) return;
+  // ══════════════════════════════════════
+  // 3. 人员业绩：激励排名（核心图）
+  //    merged: staff_efficiency + wanmei_staff
+  // ══════════════════════════════════════
+  function renderPersonIncentive(id, staffEff, wm) {
+    const c = _init(id); if (!c) return;
+
+    // 合并两张表，以姓名为键
+    const map = {};
+    (wm||[]).forEach(d => { map[d.name] = { ...map[d.name], ...d }; });
+    (staffEff||[]).forEach(d => { map[d.name] = { ...map[d.name], ...d }; });
+    const people = Object.values(map).sort((a,b) => (b.predicted_incentive||0) - (a.predicted_incentive||0));
+
+    if (!people.length) { c.showLoading({ text:'暂无数据', color:C.mid }); return; }
+
     c.setOption({
-      title: { text: '揽装积分 × 综合高套（气泡=预计激励）', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: {
-        trigger: 'item',
-        formatter: (p) => `${p.data[3]}<br/>揽装积分: ${p.data[0]}<br/>综合高套: ${p.data[1]}<br/>预计激励: ¥${p.data[2]}`
-      },
-      xAxis: { name: '揽装积分', nameTextStyle: { fontSize: 11 } },
-      yAxis: { name: '综合高套', nameTextStyle: { fontSize: 11 } },
-      series: [{
-        type: 'scatter',
-        data: staffData.map(s => [
-          +(s.device_pts || 0).toFixed(1),
-          +(s.total_gaotao || 0).toFixed(1),
-          +(s.predicted_incentive || 0).toFixed(0),
-          s.name
+      title: _T('14人激励排名', '激励来源：071人员统计 · 计件激励金额'),
+      tooltip: { ..._tip('axis'), formatter: params => {
+        const p = people[params[0].dataIndex];
+        return `<b>${p.name}</b><br/>
+          激励金额：¥${(p.predicted_incentive||0).toFixed(0)}<br/>
+          揽装积分：${(p.device_pts||p.inc_pts_total||0).toFixed(0)} 分<br/>
+          综合高套：${((p.new_gaotao||0)+(p.stock_gaotao||0)).toFixed(1)} 户`;
+      }},
+      grid:{ left:70, right:90, top:62, bottom:50 },
+      xAxis:{ type:'category', data:people.map(d=>d.name),
+        axisLabel:{ fontSize:11, color:C.sub, rotate:0 },
+        axisLine:{ lineStyle:{ color:C.border } } },
+      yAxis:[
+        { type:'value', name:'激励(元)',
+          nameTextStyle:{ fontSize:11, color:C.muted },
+          axisLine:{ show:false },
+          splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+        { type:'value', name:'积分',
+          nameTextStyle:{ fontSize:11, color:C.muted },
+          axisLine:{ show:false },
+          splitLine:{ show:false } },
+      ],
+      series:[
+        {
+          name:'激励金额', type:'bar', barMaxWidth:32,
+          data: people.map((d,i) => ({
+            value: +(d.predicted_incentive||0).toFixed(0),
+            itemStyle:{ color: C.palette[i % C.palette.length] }
+          })),
+          label:{ show:true, position:'top', formatter: p => `¥${(+p.value).toLocaleString()}`, fontSize:10, color:C.sub },
+        },
+        {
+          name:'揽装积分', type:'line', yAxisIndex:1, smooth:true,
+          data: people.map(d => +(d.device_pts||d.inc_pts_total||0).toFixed(0)),
+          lineStyle:{ color:C.accent, width:2 },
+          itemStyle:{ color:C.accent },
+          symbol:'circle', symbolSize:5,
+        },
+      ]
+    });
+  }
+
+  // ══════════════════════════════════════
+  // 4. 人员业绩：揽装积分 × 高套 散点图
+  // ══════════════════════════════════════
+  function renderPersonScatter(id, staffEff, wm) {
+    const c = _init(id); if (!c) return;
+
+    const map = {};
+    (wm||[]).forEach(d => { map[d.name] = { ...map[d.name], ...d }; });
+    (staffEff||[]).forEach(d => { map[d.name] = { ...map[d.name], ...d }; });
+    const people = Object.values(map);
+
+    c.setOption({
+      title: _T('揽装积分 × 综合高套', '气泡大小=激励金额'),
+      tooltip: { ..._tip('item'), formatter: p => {
+        const d = p.data;
+        return `<b>${d[3]}</b><br/>揽装积分：${d[0]} 分<br/>综合高套：${d[1]} 户<br/>激励金额：¥${d[2].toLocaleString()}`;
+      }},
+      xAxis:{ name:'揽装积分(分)', nameTextStyle:{ fontSize:11 }, axisLine:{ lineStyle:{ color:C.border } },
+        splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      yAxis:{ name:'综合高套(户)', nameTextStyle:{ fontSize:11 }, axisLine:{ lineStyle:{ color:C.border } },
+        splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      series:[{
+        type:'scatter',
+        data: people.map((d,i) => [
+          +(d.device_pts||d.inc_pts_total||0).toFixed(0),
+          +((d.new_gaotao||0)+(d.stock_gaotao||0)).toFixed(1),
+          +(d.predicted_incentive||0).toFixed(0),
+          d.name,
         ]),
-        symbolSize: (d) => Math.min(60, Math.max(12, Math.sqrt(d[2] / 100))),
-        itemStyle: { color: '#2E75B6', opacity: 0.75 },
-        label: { show: true, formatter: (p) => p.data[3], position: 'top', fontSize: 10 }
+        symbolSize: d => Math.min(50, Math.max(12, Math.sqrt(d[2] / 50))),
+        itemStyle:{ opacity:.8 },
+        color: C.mid,
+        label:{ show:true, formatter: p => p.data[3], position:'top', fontSize:10, color:C.sub },
       }]
     });
   }
 
-  // ── 人员效能：激励档位堆叠柱图 ──────────────────────────────────────────
-  function renderPersonTier(id, tierData) {
-    const c = _init(id);
-    if (!c || !tierData?.length) return;
-    const sorted = [...tierData].sort((a, b) => (b.dev_incentive || 0) - (a.dev_incentive || 0));
+  // ══════════════════════════════════════
+  // 5. 人员业绩：高套 + 网关分布
+  // ══════════════════════════════════════
+  function renderPersonGaotao(id, wm) {
+    const c = _init(id); if (!c || !wm?.length) return;
+    const sorted = [...wm].sort((a,b) => ((b.new_gaotao||0)+(b.stock_gaotao||0)) - ((a.new_gaotao||0)+(a.stock_gaotao||0)));
     c.setOption({
-      title: { text: '高套激励档位构成', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      grid: { left: 60, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: sorted.map(d => d.name), axisLabel: { fontSize: 10, rotate: 30 } },
-      yAxis: { type: 'value', name: '积分', nameTextStyle: { fontSize: 11 } },
-      series: [
-        { name: '129-168档', type: 'bar', stack: 'tier', data: sorted.map(d => +(d.tier_129 || 0).toFixed(1)), color: '#70AD47' },
-        { name: '169-198档', type: 'bar', stack: 'tier', data: sorted.map(d => +(d.tier_169 || 0).toFixed(1)), color: '#E2A317' },
-        { name: '199+档',    type: 'bar', stack: 'tier', data: sorted.map(d => +(d.tier_199 || 0).toFixed(1)), color: '#C00000' },
-      ]
-    });
-  }
-
-  // ── CP对效能：条形图 ─────────────────────────────────────────────────────
-  function renderCpPairs(id, cpData) {
-    const c = _init(id);
-    if (!c || !cpData?.length) return;
-    const sorted = [...cpData].sort((a, b) => (b.completion_rate || 0) - (a.completion_rate || 0));
-    c.setOption({
-      title: { text: 'CP对积分完成率排名', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis', formatter: (p) => {
-        const cp = sorted[p[0]?.dataIndex];
-        return cp ? `${cp.sales_name}+${cp.install_name}<br/>完成率: ${cp.completion_rate}%<br/>实际积分: ${cp.cp_pts_total}` : '';
+      title: _T('高套发展 + 全光网关分布'),
+      tooltip: { ..._tip(), formatter: params => {
+        const d = sorted[params[0].dataIndex];
+        return d ? `<b>${d.name}</b><br/>新增高套：${d.new_gaotao||0} 户<br/>存量高套：${d.stock_gaotao||0} 户<br/>全光网关：${d.gateway_count||0} 台` : '';
       }},
-      grid: { left: 140, right: 60, top: 40, bottom: 30 },
-      xAxis: { type: 'value', max: 150, name: '完成率(%)', nameTextStyle: { fontSize: 11 },
-        axisLine: { lineStyle: { color: '#ccc' } },
-        splitLine: [{ lineStyle: { type: 'dashed' } }] },
-      yAxis: { type: 'category', data: sorted.map(d => `${d.sales_name}/${d.install_name}`),
-               axisLabel: { fontSize: 10 } },
-      series: [{
-        type: 'bar',
-        data: sorted.map(d => ({
-          value: d.completion_rate || 0,
-          itemStyle: { color: d.completion_rate >= 100 ? '#375623' : d.completion_rate >= 80 ? '#E2A317' : '#C00000' }
-        })),
-        markLine: { data: [{ xAxis: 100, lineStyle: { color: '#C00000', type: 'dashed' } }],
-          label: { formatter: '目标线100%' } },
-        label: { show: true, position: 'right', formatter: '{c}%', fontSize: 10 }
-      }]
-    });
-  }
-
-  // ── 县分横向：积分对比 ─────────────────────────────────────────────────────
-  function renderBranchRank(id, branches) {
-    renderScoreDistrictBar(id, branches);
-  }
-
-  // ── 县分横向：多维对比雷达图 ──────────────────────────────────────────────
-  function renderBranchMultiBar(id, branches) {
-    const c = _init(id);
-    if (!c || !branches?.length) return;
-    const top5 = branches.slice(0, 7);
-    c.setOption({
-      title: { text: '各县分业务维度对比（TOP7）', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 0, textStyle: { fontSize: 10 } },
-      grid: { left: 60, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: top5.map(d => d.district.replace('分公司', '')), axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', nameTextStyle: { fontSize: 11 } },
-      series: [
-        { name: '基本面', type: 'bar', barMaxWidth: 30, data: top5.map(d => +(d.base_pts || 0).toFixed(1)), color: '#1F4E79' },
-        { name: '双线', type: 'bar', barMaxWidth: 30, data: top5.map(d => +(d.twin_pts || 0).toFixed(1)), color: '#E2A317' },
-        { name: '其他', type: 'bar', barMaxWidth: 30, data: top5.map(d => +(d.other_pts || 0).toFixed(1)), color: '#70AD47' },
+      legend:{ bottom:4, textStyle:{ fontSize:11 } },
+      grid:{ left:48, right:48, top:52, bottom:50 },
+      xAxis:{ type:'category', data:sorted.map(d=>d.name),
+        axisLabel:{ fontSize:10, rotate:35, color:C.sub },
+        axisLine:{ lineStyle:{ color:C.border } } },
+      yAxis:[
+        { type:'value', name:'高套(户)', nameTextStyle:{ fontSize:11,color:C.muted }, axisLine:{ show:false }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+        { type:'value', name:'网关(台)', nameTextStyle:{ fontSize:11,color:C.muted }, axisLine:{ show:false }, splitLine:{ show:false } },
+      ],
+      series:[
+        { name:'新增高套', type:'bar', stack:'g', data:sorted.map(d=>+(d.new_gaotao||0).toFixed(2)), color:C.primary, barMaxWidth:26 },
+        { name:'存量高套', type:'bar', stack:'g', data:sorted.map(d=>+(d.stock_gaotao||0).toFixed(2)), color:C.success, barMaxWidth:26 },
+        { name:'全光网关', type:'line', yAxisIndex:1, smooth:true,
+          data:sorted.map(d=>+(d.gateway_count||0).toFixed(0)),
+          lineStyle:{ color:C.accent, width:2 }, itemStyle:{ color:C.accent }, symbol:'circle', symbolSize:6 },
       ]
     });
   }
 
-  // ── 风险：流失比例玫瑰图 ──────────────────────────────────────────────────
-  function renderRiskRatio(id, riskData) {
-    const c = _init(id);
-    if (!c) return;
-    const r = riskData.duanzhou_risk || {};
+  // ══════════════════════════════════════
+  // 6. 积分结构：饼图
+  // ══════════════════════════════════════
+  function renderScorePie(id, data) {
+    const c = _init(id); if (!c) return;
+    const dz = data?.duanzhou || {};
     c.setOption({
-      title: { text: '存量流失结构', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'item', formatter: '{b}: {c}分 ({d}%)' },
-      series: [{
-        type: 'pie', radius: ['30%', '65%'], roseType: 'area',
-        data: [
-          { name: '到期积分', value: Math.abs(r.base_expire || 0) },
-          { name: '降值积分', value: Math.abs(r.base_decline || 0) },
-          { name: '拆机积分', value: Math.abs(r.base_churn || 0) },
-          { name: '双线降值', value: Math.abs(r.twin_decline || 0) },
-          { name: '双线拆机', value: Math.abs(r.twin_churn || 0) },
-        ].filter(d => d.value > 0),
-        color: ['#C00000', '#E2A317', '#FF6B6B', '#FFA500', '#FFCC99'],
-        label: { formatter: '{b}\n{d}%', fontSize: 10 }
+      title: _T('积分详细结构分析（端州）'),
+      tooltip: { ..._tip('item'), formatter: '{b}: {c} 分 ({d}%)' },
+      legend: { bottom:8, textStyle:{ fontSize:10 } },
+      series:[{
+        type:'pie', radius:['35%','65%'], center:['50%','50%'],
+        data:[
+          { name:'移动', value: Math.max(0,dz.base_mobile||0) },
+          { name:'宽带', value: Math.max(0,dz.base_bb||0) },
+          { name:'固话', value: Math.max(0,Math.abs(dz.base_phone||0)) },
+          { name:'双线(互专)', value: Math.max(0,dz.twin_inet||0) },
+          { name:'双线(组网)', value: Math.max(0,dz.twin_net||0) },
+          { name:'其他', value: Math.max(0,dz.other_pts||0) },
+        ].filter(d=>d.value>0),
+        color: C.palette,
+        label:{ formatter:'{b}\n{d}%', fontSize:10 },
       }]
     });
   }
 
-  // ── 风险：历史趋势 ────────────────────────────────────────────────────────
+  // 7. 积分结构：健康度仪表盘
+  function renderScoreHealth(id, health) {
+    const c = _init(id); if (!c) return;
+    c.setOption({
+      title: _T('存量流失健康度'),
+      series:[
+        { name:'拆机占比', type:'gauge', center:['17%','55%'], radius:'42%', min:0, max:60,
+          axisLine:{ lineStyle:{ width:8, color:[[.3,C.success],[.5,C.accent],[1,C.danger]] } },
+          pointer:{ length:'55%' }, detail:{ formatter:'{value}%', fontSize:12 },
+          title:{ fontSize:11, offsetCenter:[0,'80%'] },
+          data:[{ value:health?.churn_ratio||0, name:'拆机' }] },
+        { name:'降值占比', type:'gauge', center:['50%','55%'], radius:'42%', min:0, max:50,
+          axisLine:{ lineStyle:{ width:8, color:[[.25,C.success],[.5,C.accent],[1,C.danger]] } },
+          pointer:{ length:'55%' }, detail:{ formatter:'{value}%', fontSize:12 },
+          title:{ fontSize:11, offsetCenter:[0,'80%'] },
+          data:[{ value:health?.decline_ratio||0, name:'降值' }] },
+        { name:'到期占比', type:'gauge', center:['83%','55%'], radius:'42%', min:0, max:80,
+          axisLine:{ lineStyle:{ width:8, color:[[.4,C.success],[.625,C.accent],[1,C.danger]] } },
+          pointer:{ length:'55%' }, detail:{ formatter:'{value}%', fontSize:12 },
+          title:{ fontSize:11, offsetCenter:[0,'80%'] },
+          data:[{ value:health?.expire_ratio||0, name:'到期' }] },
+      ]
+    });
+  }
+
+  // 8. 积分结构：全市县分积分对比
+  function renderScoreDistrictBar(id, districts) {
+    const c = _init(id); if (!c || !districts?.length) return;
+    const sorted = [...districts].sort((a,b) => (b.net_pts||0) - (a.net_pts||0));
+    c.setOption({
+      title: _T('全市各县分净增积分对比'),
+      tooltip: _tip(),
+      grid:{ left:90, right:40, top:52, bottom:24 },
+      xAxis:{ type:'value', name:'分', nameTextStyle:{ fontSize:11 } },
+      yAxis:{ type:'category', data:sorted.map(d=>d.district.replace('分公司','').replace('(区县其它)','')), axisLabel:{ fontSize:11 } },
+      series:[{ name:'净增积分', type:'bar', barMaxWidth:22,
+        data:sorted.map(d=>({
+          value:+(d.net_pts||0).toFixed(1),
+          itemStyle:{ color: d.district.includes('端州') ? C.accent : C.mid }
+        })),
+        label:{ show:true, position:'right', fontSize:10 },
+      }]
+    });
+  }
+
+  // 9. 完成进度：14人进度条形图
+  function renderProgressBar(id, data) {
+    const c = _init(id); if (!c) return;
+    const people = (data.person_progress||[]).sort((a,b)=>(b.inc_pts||0)-(a.inc_pts||0));
+    if (!people.length) return;
+    const tp = data.time_progress||0;
+    c.setOption({
+      title: _T(`14人积分完成进度`, `时间进度 ${tp}% · 数据截至 ${data.latest_date||''}`),
+      tooltip: { ..._tip(), formatter: params => {
+        const p = people[params[0]?.dataIndex];
+        return p ? `<b>${p.name}</b><br/>当前积分：${p.inc_pts} 分<br/>预测月末：${p.projected_pts_month} 分<br/>激励：¥${p.predicted_incentive||0}` : '';
+      }},
+      grid:{ left:60, right:100, top:60, bottom:30 },
+      xAxis:{ type:'value', name:'积分', nameTextStyle:{ fontSize:11 },
+        splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      yAxis:{ type:'category', data:people.map(d=>d.name), axisLabel:{ fontSize:11 } },
+      series:[{
+        name:'当前积分', type:'bar', barMaxWidth:20,
+        data:people.map(d=>({
+          value:+(d.inc_pts||0).toFixed(0),
+          itemStyle:{ color: d.status==='green'?C.success : d.status==='yellow'?C.accent : C.danger }
+        })),
+        label:{ show:true, position:'right',
+          formatter: p => `${people[p.dataIndex]?.status==='green'?'✓':people[p.dataIndex]?.status==='yellow'?'△':'✕'} ${p.value}`,
+          fontSize:10, color:C.sub },
+      }]
+    });
+  }
+
+  // 10. 县分对比：排名
+  function renderBranchRank(id, branches) { renderScoreDistrictBar(id, branches); }
+
+  // 11. 县分对比：多维柱图
+  function renderBranchMultiBar(id, branches) {
+    const c = _init(id); if (!c || !branches?.length) return;
+    const top = branches.slice(0,9);
+    c.setOption({
+      title: _T('各县分业务维度对比'),
+      tooltip: _tip(), legend:{ bottom:0, textStyle:{ fontSize:10 } },
+      grid:{ left:52, right:16, top:52, bottom:48 },
+      xAxis:{ type:'category', data:top.map(d=>d.district.replace('分公司','')), axisLabel:{ fontSize:10, rotate:20 }, axisLine:{ lineStyle:{ color:C.border } } },
+      yAxis:{ type:'value', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      series:[
+        { name:'基本面', type:'bar', barMaxWidth:22, data:top.map(d=>+(d.base_pts||0).toFixed(0)), color:C.primary },
+        { name:'双线', type:'bar', barMaxWidth:22, data:top.map(d=>+(d.twin_pts||0).toFixed(0)), color:C.accent },
+        { name:'其他', type:'bar', barMaxWidth:22, data:top.map(d=>+(d.other_pts||0).toFixed(0)), color:C.success },
+      ]
+    });
+  }
+
+  // 12. 风险：流失玫瑰图
+  function renderRiskRatio(id, data) {
+    const c = _init(id); if (!c) return;
+    const r = data?.duanzhou_risk || {};
+    c.setOption({
+      title: _T('存量流失结构'),
+      tooltip: { ..._tip('item'), formatter:'{b}: {c} 分 ({d}%)' },
+      series:[{
+        type:'pie', radius:['25%','62%'], roseType:'area',
+        data:[
+          { name:'到期积分', value:Math.abs(r.base_expire||0) },
+          { name:'降值积分', value:Math.abs(r.base_decline||0) },
+          { name:'拆机积分', value:Math.abs(r.base_churn||0) },
+          { name:'双线降值', value:Math.abs(r.twin_decline||0) },
+          { name:'双线拆机', value:Math.abs(r.twin_churn||0) },
+        ].filter(d=>d.value>0),
+        color:[C.danger,'#f97316','#fb923c','#fbbf24','#fde68a'],
+        label:{ formatter:'{b}\n{d}%', fontSize:10 },
+      }]
+    });
+  }
+
+  // 13. 风险：历史趋势
   function renderRiskHistory(id, historical) {
-    const c = _init(id);
-    if (!c || !historical?.length) return;
+    const c = _init(id); if (!c || !historical?.length) return;
     const rev = [...historical].reverse();
     c.setOption({
-      title: { text: '近期积分健康趋势', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      grid: { left: 60, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: rev.map(d => d.month), axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', nameTextStyle: { fontSize: 11 } },
-      series: [
-        { name: '净增积分', type: 'line', data: rev.map(d => +(d.net_pts || 0).toFixed(1)), smooth: true, color: '#1F4E79' },
-        { name: '增量积分', type: 'line', data: rev.map(d => +(d.inc_pts || 0).toFixed(1)), smooth: true, color: '#70AD47' },
-        { name: '拆机积分', type: 'line', data: rev.map(d => +(d.base_churn || 0).toFixed(1)), smooth: true, color: '#C00000' },
+      title: _T('近期积分健康趋势'),
+      tooltip: _tip(), legend:{ bottom:4, textStyle:{ fontSize:11 } },
+      grid:{ left:56, right:16, top:52, bottom:48 },
+      xAxis:{ type:'category', data:rev.map(d=>d.month), axisLabel:{ fontSize:11 } },
+      yAxis:{ type:'value', splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      series:[
+        { name:'净增积分', type:'line', smooth:true, data:rev.map(d=>+(d.net_pts||0).toFixed(0)), color:C.primary, lineStyle:{ width:2 } },
+        { name:'增量积分', type:'line', smooth:true, data:rev.map(d=>+(d.inc_pts||0).toFixed(0)), color:C.success },
+        { name:'拆机积分', type:'line', smooth:true, data:rev.map(d=>+(d.base_churn||0).toFixed(0)), color:C.danger },
       ]
     });
   }
 
-  // ── 趋势：积分折线图 ─────────────────────────────────────────────────────
-  function renderTrendPts(id, ptsTrend) {
-    const c = _init(id);
-    if (!c || !ptsTrend?.length) return;
+  // 14. 趋势：积分月度折线
+  function renderTrendPts(id, pts) {
+    const c = _init(id); if (!c || !pts?.length) return;
     c.setOption({
-      title: { text: '端州分公司月度积分趋势', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      grid: { left: 60, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: ptsTrend.map(d => d.month), axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', name: '积分', nameTextStyle: { fontSize: 11 } },
-      series: [
-        { name: '净增积分', type: 'line', data: ptsTrend.map(d => +(d.net_pts || 0).toFixed(1)), smooth: true, color: '#1F4E79', lineStyle: { width: 2 }, symbol: 'circle' },
-        { name: '增量积分', type: 'line', data: ptsTrend.map(d => +(d.inc_pts || 0).toFixed(1)), smooth: true, color: '#70AD47', lineStyle: { width: 2 } },
-        { name: '基本面',   type: 'bar',  data: ptsTrend.map(d => +(d.base_pts || 0).toFixed(1)), color: 'rgba(46,117,182,0.3)' },
-        { name: '双线',     type: 'bar',  data: ptsTrend.map(d => +(d.twin_pts || 0).toFixed(1)), color: 'rgba(226,163,23,0.5)' },
+      title: _T('端州月度积分趋势'),
+      tooltip: _tip(), legend:{ bottom:4, textStyle:{ fontSize:11 } },
+      grid:{ left:56, right:16, top:52, bottom:48 },
+      xAxis:{ type:'category', data:pts.map(d=>d.month), axisLabel:{ fontSize:11 } },
+      yAxis:{ type:'value', name:'积分', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+      series:[
+        { name:'净增积分', type:'line', smooth:true, data:pts.map(d=>+(d.net_pts||0).toFixed(0)), color:C.primary, lineStyle:{ width:2.5 }, symbol:'circle', symbolSize:6 },
+        { name:'增量积分', type:'line', smooth:true, data:pts.map(d=>+(d.inc_pts||0).toFixed(0)), color:C.success, lineStyle:{ width:2 } },
+        { name:'基本面', type:'bar', data:pts.map(d=>+(d.base_pts||0).toFixed(0)), color:'rgba(30,58,95,.2)', barMaxWidth:20 },
+        { name:'双线', type:'bar', data:pts.map(d=>+(d.twin_pts||0).toFixed(0)), color:'rgba(245,158,11,.35)', barMaxWidth:20 },
       ]
     });
   }
 
-  // ── 趋势：高套折线图 ─────────────────────────────────────────────────────
-  function renderTrendGaotao(id, gaotaoTrend) {
-    const c = _init(id);
-    if (!c || !gaotaoTrend?.length) return;
+  // 15. 趋势：高套月度折线
+  function renderTrendGaotao(id, gaotao) {
+    const c = _init(id); if (!c || !gaotao?.length) return;
     c.setOption({
-      title: { text: '高套发展月度趋势', left: 'center', top: 6, textStyle: { fontSize: 13, color: '#1F4E79' } },
-      tooltip: { trigger: 'axis' },
-      legend: { bottom: 4, textStyle: { fontSize: 11 } },
-      grid: { left: 50, right: 20, top: 40, bottom: 50 },
-      xAxis: { type: 'category', data: gaotaoTrend.map(d => d.month), axisLabel: { fontSize: 11 } },
-      yAxis: [
-        { type: 'value', name: '高套(户)', nameTextStyle: { fontSize: 11 } },
-        { type: 'value', name: '人数', nameTextStyle: { fontSize: 11 } }
+      title: _T('高套发展月度趋势'),
+      tooltip: _tip(), legend:{ bottom:4, textStyle:{ fontSize:11 } },
+      grid:{ left:48, right:48, top:52, bottom:48 },
+      xAxis:{ type:'category', data:gaotao.map(d=>d.month), axisLabel:{ fontSize:11 } },
+      yAxis:[
+        { type:'value', name:'高套(户)', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
+        { type:'value', name:'人数', nameTextStyle:{ fontSize:11 }, splitLine:{ show:false } },
       ],
-      series: [
-        { name: '新增高套', type: 'bar', data: gaotaoTrend.map(d => +(d.new_gaotao || 0).toFixed(1)), color: '#1F4E79' },
-        { name: '存量高套', type: 'bar', data: gaotaoTrend.map(d => +(d.stock_gaotao || 0).toFixed(1)), color: '#70AD47' },
-        { name: '参与人数', type: 'line', yAxisIndex: 1, data: gaotaoTrend.map(d => d.person_count || 0), color: '#E2A317', lineStyle: { width: 2 } }
+      series:[
+        { name:'新增高套', type:'bar', data:gaotao.map(d=>+(d.new_gaotao||0).toFixed(0)), color:C.primary, barMaxWidth:20 },
+        { name:'存量高套', type:'bar', data:gaotao.map(d=>+(d.stock_gaotao||0).toFixed(0)), color:C.success, barMaxWidth:20 },
+        { name:'参与人数', type:'line', yAxisIndex:1, data:gaotao.map(d=>d.person_count||0), color:C.accent, lineStyle:{ width:2 } },
       ]
     });
   }
-
-  // 窗口 resize 时自适应
-  window.addEventListener('resize', () => {
-    Object.values(instances).forEach(c => c && c.resize());
-  });
 
   return {
     renderOverviewPts, renderOverviewGaotao,
+    renderPersonIncentive, renderPersonScatter, renderPersonGaotao,
     renderScorePie, renderScoreHealth, renderScoreDistrictBar,
-    renderProgressBar,
-    renderPersonScatter, renderPersonTier, renderCpPairs,
-    renderBranchRank, renderBranchMultiBar,
-    renderRiskRatio, renderRiskHistory,
-    renderTrendPts, renderTrendGaotao,
+    renderProgressBar, renderBranchRank, renderBranchMultiBar,
+    renderRiskRatio, renderRiskHistory, renderTrendPts, renderTrendGaotao,
   };
 })();
