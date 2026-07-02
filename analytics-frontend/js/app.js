@@ -117,7 +117,6 @@
       Charts.renderScorePie('score-pie-chart', merged);
       Charts.renderScoreBase('score-base-chart', merged);
       Charts.renderScoreTwin('score-twin-chart', merged);
-      Charts.renderScoreDistrictBar('score-district-bar', scoreData.all_districts || []);
     } catch (e) { showToast('积分结构加载失败'); }
   }
 
@@ -131,15 +130,20 @@
           '<div class="loading-mask">暂无进度数据</div>';
         return;
       }
-      const fc = data.pts_forecast || {};
+      // 14人聚合（口径同早会五张表：当前完成/时间进度 线性外推月末）
+      const people = data.person_progress || [];
+      const sumPts = people.reduce((s, p) => s + (p.inc_pts || 0), 0);
+      const sumGaotao = people.reduce((s, p) => s + (p.total_gaotao || 0), 0);
+      const projPts = people.reduce((s, p) => s + (p.projected_pts_month || 0), 0);
+      const projGaotao = people.reduce((s, p) => s + (p.projected_gaotao_month || 0), 0);
       renderKpiCards('progress-kpi-cards', [
         { label: '时间进度', value: data.time_progress + '%' },
         { label: '剩余天数', value: data.remaining_days + '天' },
-        { label: '当前净增积分', value: fmt(fc.current, 0), sub: '分', color: fc.current >= 0 ? 'success' : 'danger' },
-        { label: '日均积分', value: fmt(fc.daily_avg_actual, 1), sub: '分/天' },
-        { label: '预测月末', value: fmt(fc.projected_month_end, 0), sub: '分（线性外推）' },
+        { label: '预测月末积分', value: fmt(projPts, 0), sub: `分 · 当前 ${fmt(sumPts, 0)}` },
+        { label: '预测月末高套', value: fmt(projGaotao, 1), sub: `户 · 当前 ${fmt(sumGaotao, 1)}` },
       ]);
-      Charts.renderProgressBar('progress-bar-chart', data);
+      Charts.renderProgressPts('progress-pts-chart', data);
+      Charts.renderProgressGaotao('progress-gaotao-chart', data);
     } catch (e) { showToast('进度预测加载失败'); }
   }
 

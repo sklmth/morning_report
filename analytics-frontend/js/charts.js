@@ -247,21 +247,23 @@ const Charts = (() => {
     const _pct = raw => total ? (raw / total * 100).toFixed(1) : '0.0';
     const data = parts
       .map(([name, raw, color]) => ({
+        // 弧长取绝对值；各分片保留区分色，负值不再统一染红（避免多负片无法区分），
+        // 改用标签 ▼ 前缀 + tooltip 带符号原值提示"流失/负贡献"。
         name, value: Math.abs(raw), raw,
-        itemStyle: { color: raw < 0 ? C.danger : color },
+        itemStyle: { color, borderColor: raw < 0 ? C.danger : '#fff', borderWidth: raw < 0 ? 2 : 1 },
       }))
       .filter(d => d.value > 0.01);
     c.setOption({
       title: _T(title, sub),
       tooltip: { ..._tip('item'), formatter: p =>
-        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分<br/>占比：${_pct(p.data.raw)}%` },
+        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分${p.data.raw < 0 ? '（负贡献）' : ''}<br/>占比：${_pct(p.data.raw)}%` },
       legend: { bottom:6, textStyle:{ fontSize:10, color:C.sub } },
       series:[{
         type:'pie', radius:['38%','66%'], center:['50%','48%'],
         minAngle:3, avoidLabelOverlap:true,
         data,
         emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(0,0,0,.2)' } },
-        label:{ formatter: p => `${p.name}\n${_pct(p.data.raw)}% · ${(+p.data.raw).toFixed(0)}分`,
+        label:{ formatter: p => `${p.data.raw < 0 ? '▼' : ''}${p.name}\n${_pct(p.data.raw)}% · ${(+p.data.raw).toFixed(0)}分`,
                 fontSize:10, color:C.text },
         labelLine:{ length:8, length2:6 },
       }]
@@ -308,8 +310,8 @@ const Charts = (() => {
     const net  = dz.twin_net ?? 0;
     const other = +(twin - inet - net).toFixed(2);
     _signedPie(id, '双线构成', `双线合计 ${(+twin).toFixed(0)} 分`, twin, [
-      ['互专', inet,  C.accent],
-      ['组网', net,   C.palette[5]],
+      ['互专', inet,  C.mid],
+      ['组网', net,   C.accent],
       ['其他', other, C.muted],
     ]);
   }
@@ -359,32 +361,56 @@ const Charts = (() => {
     });
   }
 
-  // 9. 完成进度：14人进度条形图
-  function renderProgressBar(id, data) {
+  // 9. 完成进度：当前 vs 预测月末 分组条形图（口径同早会五张表：预测月末 = 当前完成 / 时间进度）
+  //    _progressGrouped 抽出积分/高套共用逻辑，cur/proj 取值字段由调用方传入。
+  function _progressGrouped(id, data, opt) {
     const c = _init(id); if (!c) return;
-    const people = (data.person_progress||[]).sort((a,b)=>(b.inc_pts||0)-(a.inc_pts||0));
+    const people = (data.person_progress||[]).slice().sort((a,b)=>(b[opt.curKey]||0)-(a[opt.curKey]||0));
     if (!people.length) return;
     const tp = data.time_progress||0;
     c.setOption({
-      title: _T(`14人积分完成进度`, `时间进度 ${tp}% · 数据截至 ${data.latest_date||''}`),
+      title: _T(opt.title, `时间进度 ${tp}%（早会五张表口径）· 数据截至 ${data.latest_date||''}`),
       tooltip: { ..._tip(), formatter: params => {
-        const p = people[params[0]?.dataIndex];
-        return p ? `<b>${p.name}</b><br/>当前积分：${p.inc_pts} 分<br/>预测月末：${p.projected_pts_month} 分<br/>激励：¥${p.predicted_incentive||0}` : '';
+        const p = people[params[0]?.dataIndex]; if (!p) return '';
+        return `<b>${p.name}</b><br/>当前${opt.unitLabel}：${(+(p[opt.curKey]||0)).toFixed(opt.dp)} ${opt.unit}<br/>预测月末：${(+(p[opt.projKey]||0)).toFixed(opt.dp)} ${opt.unit}`;
       }},
-      grid:{ left:60, right:100, top:60, bottom:30 },
-      xAxis:{ type:'value', name:'积分', nameTextStyle:{ fontSize:11 },
+      legend:{ bottom:2, textStyle:{ fontSize:11 } },
+      grid:{ left:60, right:80, top:60, bottom:34 },
+      xAxis:{ type:'value', name:opt.unit, nameTextStyle:{ fontSize:11 },
         splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
       yAxis:{ type:'category', data:people.map(d=>d.name), axisLabel:{ fontSize:11 } },
-      series:[{
-        name:'当前积分', type:'bar', barMaxWidth:20,
-        data:people.map(d=>({
-          value:+(d.inc_pts||0).toFixed(0),
-          itemStyle:{ color: d.status==='green'?C.success : d.status==='yellow'?C.accent : C.danger }
-        })),
-        label:{ show:true, position:'right',
-          formatter: p => `${people[p.dataIndex]?.status==='green'?'✓':people[p.dataIndex]?.status==='yellow'?'△':'✕'} ${p.value}`,
-          fontSize:10, color:C.sub },
-      }]
+      series:[
+        { name:'当前完成', type:'bar', barMaxWidth:12, barGap:'20%',
+          data:people.map(d=>({
+            value:+(d[opt.curKey]||0).toFixed(opt.dp),
+            itemStyle:{ color: d.status==='green'?C.success : d.status==='yellow'?C.accent : C.danger }
+          })),
+          label:{ show:true, position:'right', fontSize:9, color:C.sub,
+            formatter: p => `${people[p.dataIndex]?.status==='green'?'✓':people[p.dataIndex]?.status==='yellow'?'△':'✕'} ${p.value}` },
+        },
+        { name:'预测月末', type:'bar', barMaxWidth:12,
+          data:people.map(d=>+(d[opt.projKey]||0).toFixed(opt.dp)),
+          itemStyle:{ color:C.light, opacity:.55 },
+          label:{ show:true, position:'right', fontSize:9, color:C.mid,
+            formatter: p => `${p.value}` },
+        },
+      ]
+    });
+  }
+
+  // 9a. 积分预测：14人当前 vs 预测月末积分
+  function renderProgressPts(id, data) {
+    _progressGrouped(id, data, {
+      title:'14人积分完成与月末预测', curKey:'inc_pts', projKey:'projected_pts_month',
+      unit:'分', unitLabel:'积分', dp:0,
+    });
+  }
+
+  // 9b. 高套预测：14人当前 vs 预测月末高套
+  function renderProgressGaotao(id, data) {
+    _progressGrouped(id, data, {
+      title:'14人高套发展与月末预测', curKey:'total_gaotao', projKey:'projected_gaotao_month',
+      unit:'户', unitLabel:'高套', dp:1,
     });
   }
 
@@ -491,7 +517,7 @@ const Charts = (() => {
     renderOverviewPts, renderOverviewGaotao,
     renderPersonIncentive, renderPersonScatter, renderPersonGaotao,
     renderScorePie, renderScoreBase, renderScoreTwin, renderScoreHealth, renderScoreDistrictBar,
-    renderProgressBar, renderBranchRank, renderBranchMultiBar,
+    renderProgressPts, renderProgressGaotao, renderBranchRank, renderBranchMultiBar,
     renderRiskRatio, renderRiskHistory, renderTrendPts, renderTrendGaotao,
   };
 })();
