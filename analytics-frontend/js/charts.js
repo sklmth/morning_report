@@ -51,20 +51,27 @@ const Charts = (() => {
     const twin  = data?.twin_pts  ?? data?.duanzhou?.twin_pts  ?? 0;
     const other = data?.other_pts ?? data?.duanzhou?.other_pts ?? 0;
 
+    // 分片可能为负（如双线拆机/降值大于新增）。饼图无法原生绘制负数弧，
+    // 故用绝对值作弧长，raw 保留带符号原值用于标签/tooltip，占比按净增合计计算。
+    const _seg = (name, raw, color) => ({
+      name, value: Math.abs(raw), raw,
+      itemStyle: { color: raw < 0 ? C.danger : color },
+    });
+    const _pct = raw => net ? (raw / net * 100).toFixed(1) : '0.0';
     c.setOption({
       title: _T('端州政企净增积分', `合计 ${(+net).toFixed(2)} 分`),
-      tooltip: { ..._tip('item'), formatter: p => `${p.name}<br/>积分：${(+p.value).toFixed(2)} 分<br/>占比：${p.percent}%` },
+      tooltip: { ..._tip('item'), formatter: p =>
+        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分<br/>占净增：${_pct(p.data.raw)}%` },
       legend: { bottom:8, textStyle:{ fontSize:11, color:C.sub } },
       series:[{
         type:'pie', radius:['40%','68%'], center:['50%','52%'],
         data:[
-          { name:'基本面', value: base },
-          { name:'双线', value: twin },
-          { name:'其他业务', value: other },
+          _seg('基本面', base, C.primary),
+          _seg('双线', twin, C.accent),
+          _seg('其他业务', other, C.success),
         ].filter(d => d.value > 0),
-        color:[C.primary, C.accent, C.success],
         emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(0,0,0,.2)' } },
-        label:{ formatter: p => `${p.name}\n${p.percent}%\n${(+p.value).toFixed(0)}分`, fontSize:11, color:C.text },
+        label:{ formatter: p => `${p.name}\n${_pct(p.data.raw)}%\n${(+p.data.raw).toFixed(0)}分`, fontSize:11, color:C.text },
         labelLine:{ length:10, length2:6 },
       }]
     });
@@ -77,7 +84,7 @@ const Charts = (() => {
     const c = _init(id); if (!c || !wm?.length) return;
     const sorted = [...wm].sort((a,b) => ((b.new_gaotao||0)+(b.stock_gaotao||0)) - ((a.new_gaotao||0)+(a.stock_gaotao||0)));
     c.setOption({
-      title: _T('人员高套月累完成'),
+      title: _T('政企高套月累完成'),
       tooltip: { ..._tip(), formatter: params => {
         const d = sorted[params[0].dataIndex];
         return d ? `${d.name}<br/>新增高套：${d.new_gaotao||0} 户<br/>存量高套：${d.stock_gaotao||0} 户<br/>合计：${((d.new_gaotao||0)+(d.stock_gaotao||0)).toFixed(1)} 户` : '';
@@ -237,28 +244,44 @@ const Charts = (() => {
     const c = _init(id); if (!c) return;
     const dz = data?.duanzhou || {};
     // 优先用端州直接数据（overview格式）
+    const net         = dz.net_pts ?? data?.net_pts ?? 0;
     const base_mobile = dz.base_mobile ?? 0;
     const base_bb     = dz.base_bb ?? 0;
-    const base_phone  = dz.base_phone ?? 0;
-    const twin_inet   = dz.twin_inet ?? 0;
-    const twin_net    = dz.twin_net ?? 0;
+    const base_phone  = dz.base_phone ?? 0;   // 固话，通常为负
+    const base_itv    = dz.base_itv ?? 0;     // ITV，可能为负
+    const twin_inet   = dz.twin_inet ?? 0;    // 双线互专，可能为负
+    const twin_net    = dz.twin_net ?? 0;     // 双线组网，可能为负
     const other_pts   = dz.other_pts ?? data?.other_pts ?? 0;
+
+    // 展示重要分项：基本面前四项(移动/宽带/固话/ITV) + 双线(互专/组网) + 其他业务。
+    // 各分项加总不等于净增合计（含智家、基本面存量调整等），剩余归入"其他"分片，
+    // 使环图各弧长加起来正好等于净增合计。负值分片用红色，弧长取绝对值。
+    const parts = [
+      ['移动',       base_mobile, C.primary],
+      ['宽带',       base_bb,     C.mid],
+      ['固话',       base_phone,  C.light],
+      ['ITV',        base_itv,    C.palette[7]],
+      ['双线(互专)', twin_inet,   C.accent],
+      ['双线(组网)', twin_net,    C.palette[5]],
+      ['其他业务',   other_pts,   C.success],
+    ];
+    const shown = parts.reduce((s, p) => s + p[1], 0);
+    parts.push(['其他', +(net - shown).toFixed(2), C.muted]);
+
+    const _pct = raw => net ? (raw / net * 100).toFixed(1) : '0.0';
+    const _seg = ([name, raw, color]) => ({
+      name, value: Math.abs(raw), raw,
+      itemStyle: { color: raw < 0 ? C.danger : color },
+    });
     c.setOption({
       title: _T('端州政企净增积分结构详解', '来源：完美一单 · 区县责任田积分(月）端州行'),
-      tooltip: { ..._tip('item'), formatter: '{b}: {c} 分 ({d}%)' },
+      tooltip: { ..._tip('item'), formatter: p =>
+        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分<br/>占净增：${_pct(p.data.raw)}%` },
       legend: { bottom:8, textStyle:{ fontSize:10 } },
       series:[{
         type:'pie', radius:['35%','65%'], center:['50%','50%'],
-        data:[
-          { name:'移动', value: Math.max(0, base_mobile) },
-          { name:'宽带', value: Math.max(0, base_bb) },
-          { name:'固话', value: Math.abs(base_phone) > 0 ? 0 : 0 }, // 固话通常为负，不展示
-          { name:'双线(互专)', value: Math.max(0, twin_inet) },
-          { name:'双线(组网)', value: Math.max(0, twin_net) > 0 ? 0 : 0 }, // 组网若为负不展示
-          { name:'其他业务', value: Math.max(0, other_pts) },
-        ].filter(d=>d.value>0),
-        color: C.palette,
-        label:{ formatter: p => `${p.name}\n${p.percent}%\n${(+p.value).toFixed(0)}分`, fontSize:10 },
+        data: parts.map(_seg).filter(d => d.value > 0),
+        label:{ formatter: p => `${p.name}\n${_pct(p.data.raw)}%\n${(+p.data.raw).toFixed(0)}分`, fontSize:10, color:C.text },
       }]
     });
   }
