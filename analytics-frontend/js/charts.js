@@ -479,14 +479,13 @@ const Charts = (() => {
   function renderTrendPts(id, pts) {
     const c = _init(id); if (!c || !pts?.length) return;
     c.setOption({
-      title: _T('端州月度积分趋势'),
+      title: _T('政企月度积分趋势'),
       tooltip: _tip(), legend:{ bottom:4, textStyle:{ fontSize:11 } },
       grid:{ left:56, right:16, top:52, bottom:48 },
       xAxis:{ type:'category', data:pts.map(d=>d.month), axisLabel:{ fontSize:11 } },
       yAxis:{ type:'value', name:'积分', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
       series:[
         { name:'净增积分', type:'line', smooth:true, data:pts.map(d=>+(d.net_pts||0).toFixed(0)), color:C.primary, lineStyle:{ width:2.5 }, symbol:'circle', symbolSize:6 },
-        { name:'增量积分', type:'line', smooth:true, data:pts.map(d=>+(d.inc_pts||0).toFixed(0)), color:C.success, lineStyle:{ width:2 } },
         { name:'基本面', type:'bar', data:pts.map(d=>+(d.base_pts||0).toFixed(0)), color:'rgba(30,58,95,.2)', barMaxWidth:20 },
         { name:'双线', type:'bar', data:pts.map(d=>+(d.twin_pts||0).toFixed(0)), color:'rgba(245,158,11,.35)', barMaxWidth:20 },
       ]
@@ -497,18 +496,14 @@ const Charts = (() => {
   function renderTrendGaotao(id, gaotao) {
     const c = _init(id); if (!c || !gaotao?.length) return;
     c.setOption({
-      title: _T('高套发展月度趋势'),
+      title: _T('端州政企高套发展月度趋势'),
       tooltip: _tip(), legend:{ bottom:4, textStyle:{ fontSize:11 } },
-      grid:{ left:48, right:48, top:52, bottom:48 },
+      grid:{ left:48, right:16, top:52, bottom:48 },
       xAxis:{ type:'category', data:gaotao.map(d=>d.month), axisLabel:{ fontSize:11 } },
-      yAxis:[
-        { type:'value', name:'高套(户)', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
-        { type:'value', name:'人数', nameTextStyle:{ fontSize:11 }, splitLine:{ show:false } },
-      ],
+      yAxis:{ type:'value', name:'高套(户)', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
       series:[
-        { name:'新增高套', type:'bar', data:gaotao.map(d=>+(d.new_gaotao||0).toFixed(0)), color:C.primary, barMaxWidth:20 },
-        { name:'存量高套', type:'bar', data:gaotao.map(d=>+(d.stock_gaotao||0).toFixed(0)), color:C.success, barMaxWidth:20 },
-        { name:'参与人数', type:'line', yAxisIndex:1, data:gaotao.map(d=>d.person_count||0), color:C.accent, lineStyle:{ width:2 } },
+        { name:'新增高套', type:'bar', stack:'g', data:gaotao.map(d=>+(d.new_gaotao||0).toFixed(0)), color:C.primary, barMaxWidth:28 },
+        { name:'存量高套', type:'bar', stack:'g', data:gaotao.map(d=>+(d.stock_gaotao||0).toFixed(0)), color:C.success, barMaxWidth:28 },
       ]
     });
   }

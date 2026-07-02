@@ -440,12 +440,11 @@ def get_trend(months: int = 6, conn: Optional[sqlite3.Connection] = None) -> dic
             LIMIT ?
         """, (months,))
 
-        # 人员高套月度趋势
-        gaotao_trend = query_json(conn, """
+        # 端州政企高套月度趋势（政企责任田认领口径 new_gaotao_zq+stock_gaotao_zq，仅14人）
+        gaotao_trend = query_json(conn, f"""
             SELECT pm.month,
-                SUM(pm.new_gaotao) as new_gaotao,
-                SUM(pm.stock_gaotao) as stock_gaotao,
-                COUNT(DISTINCT name) as person_count
+                SUM(pm.new_gaotao_zq) as new_gaotao,
+                SUM(pm.stock_gaotao_zq) as stock_gaotao
             FROM person_monthly_metrics pm
             JOIN (
                 SELECT month, MAX(id) as snapshot_id
@@ -453,6 +452,7 @@ def get_trend(months: int = 6, conn: Optional[sqlite3.Connection] = None) -> dic
                 WHERE source_type='wanmei'
                 GROUP BY month
             ) latest ON latest.snapshot_id = pm.snapshot_id
+            WHERE pm.{_NAMES_FILTER}
             GROUP BY pm.month
             ORDER BY pm.month ASC
             LIMIT ?
