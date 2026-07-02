@@ -113,7 +113,10 @@
         Api.getOverview(currentMonth),
       ]);
       // 积分饼图优先用overview的直接数据（更准确的净增积分分项）
-      Charts.renderScorePie('score-pie-chart', { ...scoreData, ...overviewData });
+      const merged = { ...scoreData, ...overviewData };
+      Charts.renderScorePie('score-pie-chart', merged);
+      Charts.renderScoreBase('score-base-chart', merged);
+      Charts.renderScoreTwin('score-twin-chart', merged);
       Charts.renderScoreDistrictBar('score-district-bar', scoreData.all_districts || []);
     } catch (e) { showToast('积分结构加载失败'); }
   }

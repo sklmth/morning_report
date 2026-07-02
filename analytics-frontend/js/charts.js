@@ -238,52 +238,80 @@ const Charts = (() => {
   }
 
   // ══════════════════════════════════════
-  // 6. 积分结构：饼图
+  // 6. 积分结构：三个饼图（净增组成 / 基本面构成 / 双线构成）
+  //    分片可能为负，饼图无法原生绘制负弧：弧长取绝对值，raw 保留带符号原值，
+  //    占比按 total（该图合计）计算，负值分片染红。
   // ══════════════════════════════════════
-  function renderScorePie(id, data) {
+  function _signedPie(id, title, sub, total, parts) {
     const c = _init(id); if (!c) return;
-    const dz = data?.duanzhou || {};
-    // 优先用端州直接数据（overview格式）
-    const net         = dz.net_pts ?? data?.net_pts ?? 0;
-    const base_mobile = dz.base_mobile ?? 0;
-    const base_bb     = dz.base_bb ?? 0;
-    const base_phone  = dz.base_phone ?? 0;   // 固话，通常为负
-    const base_itv    = dz.base_itv ?? 0;     // ITV，可能为负
-    const twin_inet   = dz.twin_inet ?? 0;    // 双线互专，可能为负
-    const twin_net    = dz.twin_net ?? 0;     // 双线组网，可能为负
-    const other_pts   = dz.other_pts ?? data?.other_pts ?? 0;
-
-    // 展示重要分项：基本面前四项(移动/宽带/固话/ITV) + 双线(互专/组网) + 其他业务。
-    // 各分项加总不等于净增合计（含智家、基本面存量调整等），剩余归入"其他"分片，
-    // 使环图各弧长加起来正好等于净增合计。负值分片用红色，弧长取绝对值。
-    const parts = [
-      ['移动',       base_mobile, C.primary],
-      ['宽带',       base_bb,     C.mid],
-      ['固话',       base_phone,  C.light],
-      ['ITV',        base_itv,    C.palette[7]],
-      ['双线(互专)', twin_inet,   C.accent],
-      ['双线(组网)', twin_net,    C.palette[5]],
-      ['其他业务',   other_pts,   C.success],
-    ];
-    const shown = parts.reduce((s, p) => s + p[1], 0);
-    parts.push(['其他', +(net - shown).toFixed(2), C.muted]);
-
-    const _pct = raw => net ? (raw / net * 100).toFixed(1) : '0.0';
-    const _seg = ([name, raw, color]) => ({
-      name, value: Math.abs(raw), raw,
-      itemStyle: { color: raw < 0 ? C.danger : color },
-    });
+    const _pct = raw => total ? (raw / total * 100).toFixed(1) : '0.0';
+    const data = parts
+      .map(([name, raw, color]) => ({
+        name, value: Math.abs(raw), raw,
+        itemStyle: { color: raw < 0 ? C.danger : color },
+      }))
+      .filter(d => d.value > 0.01);
     c.setOption({
-      title: _T('端州政企净增积分结构详解', '来源：完美一单 · 区县责任田积分(月）端州行'),
+      title: _T(title, sub),
       tooltip: { ..._tip('item'), formatter: p =>
-        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分<br/>占净增：${_pct(p.data.raw)}%` },
-      legend: { bottom:8, textStyle:{ fontSize:10 } },
+        `${p.name}<br/>积分：${(+p.data.raw).toFixed(2)} 分<br/>占比：${_pct(p.data.raw)}%` },
+      legend: { bottom:6, textStyle:{ fontSize:10, color:C.sub } },
       series:[{
-        type:'pie', radius:['35%','65%'], center:['50%','50%'],
-        data: parts.map(_seg).filter(d => d.value > 0),
-        label:{ formatter: p => `${p.name}\n${_pct(p.data.raw)}%\n${(+p.data.raw).toFixed(0)}分`, fontSize:10, color:C.text },
+        type:'pie', radius:['38%','66%'], center:['50%','48%'],
+        minAngle:3, avoidLabelOverlap:true,
+        data,
+        emphasis:{ itemStyle:{ shadowBlur:10, shadowColor:'rgba(0,0,0,.2)' } },
+        label:{ formatter: p => `${p.name}\n${_pct(p.data.raw)}% · ${(+p.data.raw).toFixed(0)}分`,
+                fontSize:10, color:C.text },
+        labelLine:{ length:8, length2:6 },
       }]
     });
+  }
+
+  // 6a. 净增积分组成：基本面 / 双线 / 其他业务
+  function renderScorePie(id, data) {
+    const dz = data?.duanzhou || {};
+    const net   = dz.net_pts   ?? data?.net_pts   ?? 0;
+    const base  = dz.base_pts  ?? data?.base_pts  ?? 0;
+    const twin  = dz.twin_pts  ?? data?.twin_pts  ?? 0;
+    const other = dz.other_pts ?? data?.other_pts ?? 0;
+    _signedPie(id, '净增积分组成', `合计 ${(+net).toFixed(0)} 分（端州政企）`, net, [
+      ['基本面',   base,  C.primary],
+      ['双线',     twin,  C.accent],
+      ['其他业务', other, C.success],
+    ]);
+  }
+
+  // 6b. 基本面构成：移动 / 宽带 / 固话 / ITV + 其他（智家及存量调整等）
+  function renderScoreBase(id, data) {
+    const dz = data?.duanzhou || {};
+    const base   = dz.base_pts ?? 0;
+    const mobile = dz.base_mobile ?? 0;
+    const bb     = dz.base_bb ?? 0;
+    const phone  = dz.base_phone ?? 0;
+    const itv    = dz.base_itv ?? 0;
+    const other  = +(base - mobile - bb - phone - itv).toFixed(2);
+    _signedPie(id, '基本面构成', `基本面合计 ${(+base).toFixed(0)} 分`, base, [
+      ['移动', mobile, C.primary],
+      ['宽带', bb,     C.mid],
+      ['固话', phone,  C.light],
+      ['ITV',  itv,    C.palette[7]],
+      ['其他', other,  C.muted],
+    ]);
+  }
+
+  // 6c. 双线构成：互专 / 组网
+  function renderScoreTwin(id, data) {
+    const dz = data?.duanzhou || {};
+    const twin = dz.twin_pts ?? 0;
+    const inet = dz.twin_inet ?? 0;
+    const net  = dz.twin_net ?? 0;
+    const other = +(twin - inet - net).toFixed(2);
+    _signedPie(id, '双线构成', `双线合计 ${(+twin).toFixed(0)} 分`, twin, [
+      ['互专', inet,  C.accent],
+      ['组网', net,   C.palette[5]],
+      ['其他', other, C.muted],
+    ]);
   }
 
   // 7. 积分结构：健康度仪表盘
@@ -371,7 +399,7 @@ const Charts = (() => {
       title: _T('各县分业务维度对比'),
       tooltip: _tip(), legend:{ bottom:0, textStyle:{ fontSize:10 } },
       grid:{ left:52, right:16, top:52, bottom:48 },
-      xAxis:{ type:'category', data:top.map(d=>d.district.replace('分公司','')), axisLabel:{ fontSize:10, rotate:20 }, axisLine:{ lineStyle:{ color:C.border } } },
+      xAxis:{ type:'category', data:top.map(d=>d.district.replace('分公司','')), axisLabel:{ fontSize:11, rotate:20, color:C.sub, fontWeight:500 }, axisLine:{ lineStyle:{ color:C.mid } } },
       yAxis:{ type:'value', nameTextStyle:{ fontSize:11 }, splitLine:{ lineStyle:{ color:C.border, type:'dashed' } } },
       series:[
         { name:'基本面', type:'bar', barMaxWidth:22, data:top.map(d=>+(d.base_pts||0).toFixed(0)), color:C.primary },
@@ -462,7 +490,7 @@ const Charts = (() => {
   return {
     renderOverviewPts, renderOverviewGaotao,
     renderPersonIncentive, renderPersonScatter, renderPersonGaotao,
-    renderScorePie, renderScoreHealth, renderScoreDistrictBar,
+    renderScorePie, renderScoreBase, renderScoreTwin, renderScoreHealth, renderScoreDistrictBar,
     renderProgressBar, renderBranchRank, renderBranchMultiBar,
     renderRiskRatio, renderRiskHistory, renderTrendPts, renderTrendGaotao,
   };
