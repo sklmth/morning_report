@@ -311,25 +311,84 @@ def generate_gaozhuang_gaotao_table(data):
     result["高套数"] = result["高套数"].fillna(0)
     return result[["姓名", "高套数"]]
 
-def generate_jifen_table(wm_path):
+# 净增积分 sheet 固定输出人员（客户经理部分，12人）
+JINGZENG_PERSON_NAMES = [
+    "麦海芬", "黄淡妮", "邱海燕", "李东",
+    "王锦添", "黄观霞", "谢卓和", "伍颖敏",
+    "邓天群", "李玉强", "张小敏", "具进康",
+]
+
+# 净增积分 sheet 固定输出区县（短名，按输出顺序）
+JINGZENG_DISTRICT_NAMES = ["端州", "高要", "四会", "怀集", "德庆", "广宁", "封开", "鼎湖", "高新"]
+
+# 区县短名 → 完美一单「区县责任田积分(月）」中 C 列的全名
+_DISTRICT_SHORT_TO_FULL = {
+    "端州": "端州分公司",
+    "高要": "高要分公司",
+    "四会": "四会分公司",
+    "怀集": "怀集分公司",
+    "德庆": "德庆分公司",
+    "广宁": "广宁分公司",
+    "封开": "封开分公司",
+    "鼎湖": "鼎湖分公司",
+    "高新": "高新区(区县其它)",
+}
+
+
+def generate_jingzeng_jifen_table(wm_path):
     """
-    从完美一单提取积分 sheet 数据（A2:D2），用绝对单元格地址读取：
-    区县责任田积分(月): D5=净增积分, E5=基本面, N5=双线
-    揽装局向维度（月累）: G8=增量积分落格率
+    从完美一单提取净增积分数据，返回 DataFrame，列为 ["姓名", "净增积分"]。
+    输出顺序固定：12 个客户经理 + 9 个区县。
+
+    数据来源：
+    - 客户经理：「客户经理责任田积分（月）」sheet，D 列(idx=3)=客户经理，F 列(idx=5)=净增积分
+      同一客户经理可能出现多行，取合计值。
+    - 区县：    「区县责任田积分(月）」sheet，C 列(idx=2)=区县全名，D 列(idx=3)=净增积分
+      每个区县唯一一行，直接取值。
     """
     sheets = pd.read_excel(
         wm_path,
-        sheet_name=["区县责任田积分(月）", "揽装局向维度（月累）"],
+        sheet_name=["客户经理责任田积分（月）", "区县责任田积分(月）"],
         header=None,
     )
-    def _v(df, r, c):  # Excel 1-based 行列 → iloc[r-1, c-1]
-        try:
-            return pd.to_numeric(df.iloc[r - 1, c - 1], errors="coerce")
-        except (IndexError, KeyError):
-            return None
-    zx = sheets["区县责任田积分(月）"]
-    lz = sheets["揽装局向维度（月累）"]
-    return [_v(zx, 5, 4), _v(zx, 5, 5), _v(zx, 5, 14), _v(lz, 8, 7)]
+
+    # ── 客户经理净增积分（按人汇总）──────────────────────────────────────────
+    person_pts = {}
+    sheet_person = "客户经理责任田积分（月）"
+    if sheet_person in sheets:
+        df_p = sheets[sheet_person]
+        for _, row in df_p.iterrows():
+            name = str(row.iloc[3]).strip() if pd.notna(row.iloc[3]) else ""
+            if name not in JINGZENG_PERSON_NAMES:
+                continue
+            val = pd.to_numeric(row.iloc[5], errors="coerce")
+            if pd.notna(val):
+                person_pts[name] = person_pts.get(name, 0) + val
+
+    # ── 区县净增积分（一一对应）──────────────────────────────────────────────
+    district_pts = {}
+    sheet_dist = "区县责任田积分(月）"
+    if sheet_dist in sheets:
+        df_d = sheets[sheet_dist]
+        # 建立全名 → 短名的反查表
+        full_to_short = {v: k for k, v in _DISTRICT_SHORT_TO_FULL.items()}
+        for _, row in df_d.iterrows():
+            dist_full = str(row.iloc[2]).strip() if pd.notna(row.iloc[2]) else ""
+            short = full_to_short.get(dist_full)
+            if short is None:
+                continue
+            val = pd.to_numeric(row.iloc[3], errors="coerce")
+            if pd.notna(val):
+                district_pts[short] = val  # 一一对应，直接覆盖
+
+    # ── 按固定顺序组装结果 ────────────────────────────────────────────────────
+    rows = []
+    for name in JINGZENG_PERSON_NAMES:
+        rows.append({"姓名": name, "净增积分": person_pts.get(name, 0)})
+    for name in JINGZENG_DISTRICT_NAMES:
+        rows.append({"姓名": name, "净增积分": district_pts.get(name, 0)})
+
+    return pd.DataFrame(rows)
 
 
 def generate_yingfu_gaotao_for_gaozhuang(yf_data):
