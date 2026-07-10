@@ -27,15 +27,15 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-# ── 模板1 团队分组（row4-10 党政军；row12-18 大企业）──────────────────
+# ── 模板1 团队分组（row4-10 党政军；row12-19 大企业）──────────────────
 TEAM_PARTY = ["钟俊杰", "麦海芬", "黄淡妮", "邱海燕", "李东", "王锦添", "黄观霞"]
-TEAM_ENTERPRISE = ["冯艺康", "谢卓和", "伍颖敏", "潘观友", "李玉强", "张小敏", "具进康"]
+TEAM_ENTERPRISE = ["谢卓和", "伍颖敏", "潘观友", "李玉强", "张小敏", "具进康", "邓天群", "张端"]
 ALL_PERSONS = TEAM_PARTY + TEAM_ENTERPRISE
 
 # ── 模板1 目标（C/J/P 列）──────────────────────────────────────────────
 GAOTAO_TARGET_PER_PERSON = 10        # C 列个人高套目标
 GAOTAO_TARGET_PARTY = 70             # C11 党政军合计
-GAOTAO_TARGET_ENTERPRISE = 70        # C19 大企业合计
+GAOTAO_TARGET_ENTERPRISE = 80        # C20 大企业合计（8人×10）
 GAOTAO_TARGET_TOTAL = 132            # C20 全合计（手填）
 PERFECT_TARGET_PER_PERSON = 2500     # J 列个人积分目标
 QUANGUANG_TARGET_PER_PERSON = 21     # P 列个人全光目标
@@ -140,7 +140,7 @@ def build_report_text(result_xlsx):
         pf_rate = pf / pf_target
         pf_time = pf_rate / factor if factor else 0
         qg = sum_members(q_quang, members)
-        qg_target = QUANGUANG_TARGET_PER_PERSON * len(members)  # P19=SUM(P12:P18)=7*21
+        qg_target = QUANGUANG_TARGET_PER_PERSON * len(members)  # P20=SUM(P12:P19)=8*21
         qg_rate = qg / qg_target if qg_target else 0
         return dict(gt_rate=gt_rate, gt_time=gt_time, pf_rate=pf_rate,
                     pf_time=pf_time, qg_rate=qg_rate)
