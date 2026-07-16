@@ -32,6 +32,10 @@ venv/
 # Excel temporary files
 ~$*.xlsx
 
+# assets: 仅保留模板「早会五张表.xlsx」，其他 Excel（含真实数据）一律不跟踪
+/assets/*.xlsx
+!/assets/早会五张表.xlsx
+
 # IDE files
 .vscode/
 .idea/
