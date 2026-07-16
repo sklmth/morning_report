@@ -29,6 +29,7 @@ sys.path.insert(0, _SRC)
 
 from storage import ReportStore
 import server as _srv
+import zhengqi_web as _zq
 
 # ── 全局单例（main() 注入）────────────────────────────────────────────
 _cfg: dict = {}
@@ -213,6 +214,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_download_zip(rid)
         elif path == "/api/reports":
             self._handle_api_reports()
+        elif path == "/zhengqi/latest":
+            self._handle_zhengqi_download()
         else:
             self._send(404, "<h3>Not Found</h3>")
 
@@ -222,6 +225,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_upload()
         elif path == "/poll":
             self._handle_poll()
+        elif path == "/zhengqi/upload":
+            self._handle_zhengqi_upload()
         else:
             self._send(404, "Not Found")
 
@@ -254,6 +259,24 @@ class Handler(BaseHTTPRequestHandler):
 </div>"""
         else:
             cards = '<div class="no-records">暂无处理记录，请上传文件或等待邮件触发。</div>'
+
+        # 政企家庭专项走访统计卡片
+        zq_recv = _zq.last_received()
+        if zq_recv:
+            zq_meta = f"最后接收：{zq_recv.strftime('%Y-%m-%d %H:%M:%S')}（金山文档推送）"
+            zq_btn = ('<a class="btn btn-primary" href="/zhengqi/latest">'
+                      '⬇ 下载最新家庭专项走访统计</a>')
+        else:
+            zq_meta = "尚未收到金山文档推送的政企标准化信息收集表。"
+            zq_btn = '<span class="btn" style="opacity:.5;cursor:not-allowed">暂无可下载数据</span>'
+        zhengqi_card = f"""<div class="card">
+  <h2>政企家庭专项走访统计</h2>
+  <div class="meta">{zq_meta}</div>
+  <div class="row-link">
+    <span style="font-size:.85rem;color:#8b949e">按当前自然周（周一~周日）实时统计</span>
+    {zq_btn}
+  </div>
+</div>"""
 
         upload_form = """<div class="card">
   <h2>手动上传处理</h2>
@@ -289,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
                 parts.append(f'<a class="btn" href="/?page={page+1}">下一页 ›</a>')
             pagination = f'<div class="pagination">{"".join(parts)}<span style="color:#8b949e;font-size:.8rem">共 {total} 条</span></div>'
 
-        body = upload_form + poll_form + cards + pagination
+        body = zhengqi_card + upload_form + poll_form + cards + pagination
         self._send(200, _page("早会数据处理系统", body))
 
     # ── GET /report/<id> ──
@@ -434,6 +457,78 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             traceback.print_exc()
         self._redirect("/")
+
+    # ── POST /zhengqi/upload ── 金山文档脚本推送政企标准化信息收集表
+    def _handle_zhengqi_upload(self):
+        """接收原始 Excel。支持 multipart（字段名 file/files）或 raw body（application/*）。
+
+        成功返回 JSON：{ok, received, generated, rows}
+        """
+        try:
+            ctype = self.headers.get("Content-Type", "")
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+
+            filename = "input.xlsx"
+            data = None
+            if "multipart/form-data" in ctype:
+                environ = {"REQUEST_METHOD": "POST", "CONTENT_TYPE": ctype,
+                           "CONTENT_LENGTH": str(length)}
+                form = cgi.FieldStorage(fp=io.BytesIO(raw), environ=environ,
+                                        headers=self.headers, keep_blank_values=True)
+                field = form["file"] if "file" in form else (
+                    form["files"] if "files" in form else None)
+                if isinstance(field, list):
+                    field = field[0] if field else None
+                if field is not None and getattr(field, "filename", None):
+                    filename = field.filename
+                    data = field.file.read()
+            else:
+                # raw body：直接就是 xlsx 字节
+                data = raw
+
+            if not data:
+                self._send_json({"ok": False, "error": "未收到文件内容"}, 400)
+                return
+
+            _zq.save_input(data, original_name=filename)
+            df, out_path = _zq.generate()
+            # 数据行数（去掉合计行）
+            n = max(0, len(df) - 1)
+            self._send_json({
+                "ok": True,
+                "received": filename,
+                "generated": os.path.basename(out_path),
+                "rows": n,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json({"ok": False, "error": str(e)}, 500)
+
+    # ── GET /zhengqi/latest ── 下载最新统计结果（按当天口径实时生成）
+    def _handle_zhengqi_download(self):
+        try:
+            if not _zq.has_input():
+                self._send(404, _page("暂无数据", "<p>尚未收到政企标准化信息收集表。</p>"))
+                return
+            _df, out_path = _zq.generate()
+            with open(out_path, "rb") as f:
+                data = f.read()
+            fname = os.path.basename(out_path)
+            quoted = urllib.parse.quote(fname)
+            self.send_response(200)
+            self.send_header(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename*=UTF-8''{quoted}")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+        except Exception as e:
+            traceback.print_exc()
+            self._send(500, _page("生成失败", f"<p>生成失败：{e}</p>"))
 
 
 # ── 后台邮件轮询线程 ────────────────────────────────────────────────

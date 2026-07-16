@@ -1,0 +1,1 @@
+python -m zhengqi_visit.cli "assets/(政企标准化信息收集V2)表格视图.xlsx" "zhengqi_visit/output/家庭专项走访统计.xlsx"

@@ -27,7 +27,7 @@ from function import (  # noqa: E402
     generate_wanmei_table, generate_honghuangpai_gaotao_table,
     generate_gaozhuang_gaotao_table, generate_shangji_table,
     generate_yingfu_table, generate_yingfu_gaotao_for_gaozhuang,
-    generate_jifen_table, GatewayConfigError,
+    generate_jingzeng_jifen_table, GatewayConfigError,
 )
 
 # 模板文件名（位于 assets/ 或打包内嵌目录）
@@ -127,8 +127,8 @@ def build_report(inputs, out_path):
         sheet_results["高套"] = generate_gaotao_table(wm_data)
         sheet_results["红黄牌高套"] = generate_honghuangpai_gaotao_table(wm_data)
         sheet_results["高装高套"] = generate_gaozhuang_gaotao_table(wm_data)
-        sheet_results["积分"] = generate_jifen_table(wm_path)
-        for k in ("完美一单", "全光组网", "高套", "红黄牌高套", "高装高套", "积分"):
+        sheet_results["净增积分"] = generate_jingzeng_jifen_table(wm_path)
+        for k in ("完美一单", "全光组网", "高套", "红黄牌高套", "高装高套", "净增积分"):
             written[k] = True
 
     # 兜底：完美一单无数据的高装人员从营服报表补充
@@ -160,22 +160,22 @@ def build_report(inputs, out_path):
     template_path = find_template()
     shutil.copy2(template_path, out_path)
 
-    # 高装高套、积分单独按单元格写（保留模板公式列）
+    # 高装高套、净增积分单独按单元格写（保留模板公式列）
     gaozhuang_df = sheet_results.pop("高装高套", None)
-    jifen_vals   = sheet_results.pop("积分", None)
+    jingzeng_df  = sheet_results.pop("净增积分", None)
 
     with pd.ExcelWriter(out_path, engine="openpyxl", mode="a",
                         if_sheet_exists="replace") as writer:
         for s_name, df in sheet_results.items():
             df.to_excel(writer, sheet_name=s_name, index=False)
 
-        if jifen_vals is not None:
-            if "积分" not in writer.book.sheetnames:
-                writer.book.create_sheet("积分")
-            ws_jf = writer.book["积分"]
-            for c_idx, val in enumerate(jifen_vals):
-                if val is not None:
-                    ws_jf.cell(row=2, column=1 + c_idx, value=val)
+        if jingzeng_df is not None:
+            if "净增积分" not in writer.book.sheetnames:
+                writer.book.create_sheet("净增积分")
+            ws_jz = writer.book["净增积分"]
+            for r_idx, row_vals in enumerate(jingzeng_df[["姓名", "净增积分"]].values.tolist()):
+                ws_jz.cell(row=2 + r_idx, column=1, value=row_vals[0])
+                ws_jz.cell(row=2 + r_idx, column=2, value=row_vals[1])
 
         if gaozhuang_df is not None:
             if "高装高套" not in writer.book.sheetnames:
