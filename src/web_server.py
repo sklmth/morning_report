@@ -227,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_poll()
         elif path == "/zhengqi/upload":
             self._handle_zhengqi_upload()
+        elif path == "/zhengqi/upload-rows":
+            self._handle_zhengqi_upload_rows()
         else:
             self._send(404, "Not Found")
 
@@ -495,6 +497,53 @@ class Handler(BaseHTTPRequestHandler):
             df, out_path = _zq.generate()
             # 数据行数（去掉合计行）
             n = max(0, len(df) - 1)
+            self._send_json({
+                "ok": True,
+                "received": filename,
+                "generated": os.path.basename(out_path),
+                "rows": n,
+            })
+        except Exception as e:
+            traceback.print_exc()
+            self._send_json({"ok": False, "error": str(e)}, 500)
+
+    # ── POST /zhengqi/upload-rows ── AirScript/金山文档脚本推送 JSON 行
+    def _handle_zhengqi_upload_rows(self):
+        """接收 JSON 行数据（AirScript 读单元格拼成的数组）。
+
+        请求体 application/json，两种形态均可：
+            {"rows": [ {...}, ... ], "file_name": "可选"}
+            [ {...}, ... ]                      # 直接就是数组
+
+        每行至少含 name/type/appt_date/result（或对应中文表头名）。
+        成功返回 {ok, received, generated, rows}。
+        """
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            try:
+                payload = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                self._send_json({"ok": False, "error": "请求体不是合法 JSON"}, 400)
+                return
+
+            if isinstance(payload, list):
+                rows = payload
+                filename = "rows"
+            elif isinstance(payload, dict):
+                rows = payload.get("rows")
+                filename = payload.get("file_name") or "rows"
+            else:
+                rows = None
+                filename = "rows"
+
+            if not isinstance(rows, list) or not rows:
+                self._send_json({"ok": False, "error": "缺少 rows 数组或为空"}, 400)
+                return
+
+            _zq.save_rows(rows, original_name=filename)
+            df, out_path = _zq.generate()
+            n = max(0, len(df) - 1)  # 去掉合计行
             self._send_json({
                 "ok": True,
                 "received": filename,

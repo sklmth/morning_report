@@ -88,6 +88,43 @@ def compute_stats(input_path, sheet_name=0, ref_date=None):
     ref_date 默认今天，动态跟随当前周。
     """
     df = pd.read_excel(input_path, sheet_name=sheet_name)
+    return compute_stats_from_df(df, ref_date=ref_date)
+
+
+def compute_stats_from_rows(rows, ref_date=None):
+    """从 JSON 行统计（AirScript / 金山文档脚本推送用）。
+
+    rows 为 dict 列表，每条至少包含以下逻辑键（缺失按空处理）：
+        name       -> 填写人员姓名
+        type       -> 拜访对象类型
+        appt_date  -> 预约上门日期（字符串，如 "2026-07-15"）
+        result     -> 拜访结果（上门后回填）
+    也兼容直接用中文表头名作为键。
+
+    构造成与 Excel 同构的 DataFrame 后复用 compute_stats_from_df，
+    保证与文件上传口径完全一致。
+    """
+    def g(r, logical, cn):
+        if logical in r:
+            return r[logical]
+        return r.get(cn, "")
+
+    df = pd.DataFrame([{
+        _COL_NAME: g(r, "name", _COL_NAME),
+        _COL_TYPE: g(r, "type", _COL_TYPE),
+        _COL_APPT_DATE: g(r, "appt_date", _COL_APPT_DATE),
+        _COL_RESULT: g(r, "result", _COL_RESULT),
+    } for r in (rows or [])], columns=[
+        _COL_NAME, _COL_TYPE, _COL_APPT_DATE, _COL_RESULT,
+    ])
+    return compute_stats_from_df(df, ref_date=ref_date)
+
+
+def compute_stats_from_df(df, ref_date=None):
+    """核心统计：输入已含所需列的 DataFrame，返回结果 DataFrame。
+
+    Excel 上传与 JSON 行上传共用此函数，确保口径一致。
+    """
     name_col, type_col, result_col, appt_date_col = _locate_columns(df)
 
     monday, sunday = week_range(ref_date)
@@ -177,6 +214,26 @@ def process_excel(input_path, out_path=None, sheet_name=0, ref_date=None):
         )
 
     # 延迟导入，避免无样式需求时的开销
+    from .styling import write_styled_table
+    title = (f"政企家庭专项走访统计"
+             f"（{monday:%m.%d}-{sunday:%m.%d} 今周目标 {WEEKLY_TARGET} 户/人）")
+    write_styled_table(result, out_path, title=title)
+    return result, out_path
+
+
+def process_rows(rows, out_path, ref_date=None):
+    """主接口（JSON 行版）：输入行数据，输出统计结果 Excel。
+
+    参数：
+        rows     : dict 列表，见 compute_stats_from_rows
+        out_path : 结果 Excel 路径（必填）
+        ref_date : 参考日期，决定"今周"区间；默认今天
+    返回：
+        (result_df, out_path)
+    """
+    result = compute_stats_from_rows(rows, ref_date=ref_date)
+    monday, sunday = week_range(ref_date)
+
     from .styling import write_styled_table
     title = (f"政企家庭专项走访统计"
              f"（{monday:%m.%d}-{sunday:%m.%d} 今周目标 {WEEKLY_TARGET} 户/人）")

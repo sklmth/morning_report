@@ -7,6 +7,14 @@
 统计口径见 processor.py。
 """
 
-from .processor import process_excel, compute_stats, VISIT_TYPE  # noqa: F401
+from .processor import (  # noqa: F401
+    process_excel, process_rows,
+    compute_stats, compute_stats_from_rows,
+    VISIT_TYPE,
+)
 
-__all__ = ["process_excel", "compute_stats", "VISIT_TYPE"]
+__all__ = [
+    "process_excel", "process_rows",
+    "compute_stats", "compute_stats_from_rows",
+    "VISIT_TYPE",
+]
