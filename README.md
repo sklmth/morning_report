@@ -266,7 +266,7 @@ python api.py                 # 监听 8994
 ```
 本地开发直接双击 `frontend/index.html`（file:// 会自动直连 8994）即可聊天。
 
-> 首次 `ingest.py` 会从 HuggingFace 下载 Embedding 模型（约 130MB），需能访问外网，下载后缓存。
+> 首次 `ingest.py` 会从 HuggingFace 下载 Embedding 模型（约 130MB），需能访问外网，下载后缓存。若服务器访问 HuggingFace 不稳定，给 `company-kb.service` 设置 `HF_ENDPOINT=https://hf-mirror.com` 和 `HF_HUB_DISABLE_XET=1`。
 
 服务器部署见下方「部署指南 → 四、企业知识库」。
 

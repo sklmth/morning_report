@@ -36,14 +36,30 @@ app.add_middleware(
 )
 
 # 全局单例：模型和向量库只加载一次
-STATE = {"embedder": None, "coll": None}
+STATE = {"embedder": None, "embedder_error": None, "coll": None}
 # 写库（上传/删除）需串行，避免并发写 ChromaDB
 _WRITE_LOCK = threading.Lock()
 
 
+def _load_embedder():
+    """按需加载 Embedding；避免服务启动时因外网不可达而整体失败。"""
+    if STATE["embedder"] is not None:
+        return STATE["embedder"]
+    try:
+        STATE["embedder"] = TextEmbedding(model_name=config.EMBED_MODEL)
+        STATE["embedder_error"] = None
+        return STATE["embedder"]
+    except BaseException as e:
+        STATE["embedder"] = None
+        STATE["embedder_error"] = str(e)
+        return None
+
+
 @app.on_event("startup")
 def _load():
-    STATE["embedder"] = TextEmbedding(model_name=config.EMBED_MODEL)
+    # 启动阶段只打开已有向量库，不加载 embedding 模型。
+    # 首次加载模型可能需要访问 HuggingFace；若服务器网络不可达，
+    # 也应保证健康检查、文档列表、前端页面可用。
     try:
         client = chromadb.PersistentClient(path=str(config.DB_DIR))
         STATE["coll"] = client.get_collection(config.COLLECTION)
@@ -69,7 +85,9 @@ def health():
     coll = STATE["coll"]
     count = coll.count() if coll else 0
     return {"ok": True, "indexed": coll is not None, "chunks": count,
-            "model": config.CHAT_MODEL}
+            "model": config.CHAT_MODEL,
+            "embedder_ready": STATE["embedder"] is not None,
+            "embedder_error": STATE.get("embedder_error")}
 
 
 @app.get("/api/models")
@@ -95,6 +113,8 @@ def upload(files: list[UploadFile] = File(...)):
 
     支持 txt/md/docx/pdf/xlsx。重复上传同名文件会覆盖旧内容。
     """
+    if _load_embedder() is None:
+        raise HTTPException(status_code=503, detail=f"Embedding 模型未就绪：{STATE.get('embedder_error') or 'unknown error'}")
     config.DOCS_DIR.mkdir(parents=True, exist_ok=True)
     results = []
     with _WRITE_LOCK:
@@ -160,6 +180,10 @@ def _sse(event: str, data: dict) -> str:
 @app.post("/api/ask")
 def ask(req: AskReq):
     """流式问答：先返回来源，再逐段返回答案。"""
+    if _load_embedder() is None:
+        def no_embedder():
+            yield _sse("error", {"message": f"Embedding 模型未就绪：{STATE.get('embedder_error') or 'unknown error'}"})
+        return StreamingResponse(no_embedder(), media_type="text/event-stream")
     coll = STATE["coll"]
     if coll is None or coll.count() == 0:
         def empty():
