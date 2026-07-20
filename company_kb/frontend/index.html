@@ -106,6 +106,49 @@ textarea{width:100%;background:transparent;border:none;outline:none;resize:none;
 .send:hover:not(:disabled){transform:scale(1.06);box-shadow:0 4px 16px rgba(91,140,255,.5)}
 .send:disabled{opacity:.4;cursor:not-allowed}
 .hint{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
+/* 上传按钮 */
+.upload-btn{
+  width:100%;margin-top:14px;background:var(--panel-2);color:var(--text);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;
+  transition:all .2s;
+}
+.upload-btn:hover{border-color:var(--brand);color:var(--brand-2)}
+/* 弹层 */
+.modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);
+  display:none;place-items:center;z-index:50}
+.modal-mask.show{display:grid}
+.modal{width:min(560px,92vw);max-height:86vh;overflow:auto;background:var(--panel);
+  border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:22px}
+.modal h3{font-size:17px;margin-bottom:4px}
+.modal .sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+.modal .x{float:right;cursor:pointer;color:var(--muted);font-size:20px;line-height:1}
+.modal .x:hover{color:var(--text)}
+.dropzone{border:2px dashed var(--line);border-radius:14px;padding:28px 16px;
+  text-align:center;cursor:pointer;transition:all .2s;color:var(--muted)}
+.dropzone:hover,.dropzone.over{border-color:var(--brand);background:rgba(91,140,255,.08);color:var(--text)}
+.dropzone .dz-ic{font-size:32px;margin-bottom:8px}
+.dropzone b{color:var(--brand-2)}
+.dz-exts{font-size:11px;margin-top:8px}
+.results{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.res-row{font-size:13px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);
+  background:var(--panel-2);display:flex;gap:8px;align-items:center}
+.res-row.ok{border-color:rgba(61,220,151,.4)}
+.res-row.warn{border-color:rgba(255,180,76,.4)}
+.res-row.error{border-color:rgba(255,107,107,.4)}
+.res-row .rn{font-weight:500;flex-shrink:0}
+.res-row .rm{color:var(--muted);font-size:12px;margin-left:auto}
+.doc-list{margin-top:18px;border-top:1px solid var(--line);padding-top:14px}
+.doc-list .dl-t{font-size:12px;color:var(--muted);margin-bottom:10px}
+.doc-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:7px 10px;
+  border-radius:9px;transition:background .2s}
+.doc-row:hover{background:var(--panel-2)}
+.doc-row .dn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc-row .dc{font-size:11px;color:var(--muted);flex-shrink:0}
+.doc-row .del{cursor:pointer;color:var(--muted);flex-shrink:0;padding:2px 6px;border-radius:6px}
+.doc-row .del:hover{color:var(--err);background:rgba(255,107,107,.12)}
+.busy-note{font-size:12px;color:var(--brand-2);margin-top:12px;display:none}
+.busy-note.show{display:block}
 /* 响应式 */
 @media(max-width:720px){
   .side{display:none}
@@ -122,6 +165,7 @@ textarea{width:100%;background:transparent;border:none;outline:none;resize:none;
     </div>
     <div class="side-label">回答模型</div>
     <select class="model-sel" id="model"></select>
+    <button class="upload-btn" id="upload-open">📤 上传文档到知识库</button>
     <div class="tips">
       <div class="side-label" style="margin-top:20px">使用提示</div>
       直接输入问题即可。回答<b>只基于</b>已入库的公司文档，并标注<b>来源</b>。
@@ -155,6 +199,31 @@ textarea{width:100%;background:transparent;border:none;outline:none;resize:none;
       <div class="hint">回车发送 · Shift+回车换行 · 回答由 AI 生成，请以官方文件为准</div>
     </div>
   </main>
+</div>
+
+<!-- 上传弹层 -->
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <span class="x" id="modal-close">✕</span>
+    <h3>📤 上传文档到知识库</h3>
+    <div class="sub">支持 .txt .md .docx .pdf .xlsx · 重复上传同名文件将覆盖旧版本</div>
+
+    <div class="dropzone" id="dz">
+      <input type="file" id="file-input" multiple
+        accept=".txt,.md,.docx,.pdf,.xlsx" style="display:none">
+      <div class="dz-ic">📂</div>
+      <div>拖拽文件到此处，或 <b>点击选择文件</b></div>
+      <div class="dz-exts">支持：txt · md · docx · pdf · xlsx</div>
+    </div>
+
+    <div class="busy-note" id="busy-note">⏳ 正在向量化入库，请稍候…</div>
+    <div class="results" id="results"></div>
+
+    <div class="doc-list" id="doc-list">
+      <div class="dl-t">📚 已入库文档</div>
+      <div id="doc-rows">加载中…</div>
+    </div>
+  </div>
 </div>
 <script>
 // 后端地址：
@@ -289,6 +358,109 @@ qEl.addEventListener("input", () => {
   qEl.style.height = "auto";
   qEl.style.height = Math.min(qEl.scrollHeight,160) + "px";
 });
+
+// ---------- 上传功能 ----------
+const mask      = $("#modal-mask");
+const dz        = $("#dz");
+const fileInput = $("#file-input");
+const busyNote  = $("#busy-note");
+const resultsEl = $("#results");
+const docRowsEl = $("#doc-rows");
+
+function openModal(){
+  mask.classList.add("show");
+  loadDocList();
+}
+function closeModal(){ mask.classList.remove("show"); }
+
+$("#upload-open").onclick = openModal;
+$("#modal-close").onclick = closeModal;
+mask.onclick = e => { if(e.target === mask) closeModal(); };
+
+// 点击 dropzone 触发文件选择
+dz.onclick = e => { if(e.target !== fileInput) fileInput.click(); };
+fileInput.onchange = () => {
+  if(fileInput.files.length) doUpload(Array.from(fileInput.files));
+};
+
+// 拖拽
+dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+dz.addEventListener("drop", e => {
+  e.preventDefault(); dz.classList.remove("over");
+  if(e.dataTransfer.files.length) doUpload(Array.from(e.dataTransfer.files));
+});
+
+async function doUpload(files){
+  resultsEl.innerHTML = "";
+  busyNote.classList.add("show");
+  const fd = new FormData();
+  files.forEach(f => fd.append("files", f));
+  try{
+    const r = await fetch(API + "/api/upload", {method:"POST", body:fd});
+    if(!r.ok){ throw new Error(`HTTP ${r.status}`); }
+    const d = await r.json();
+    busyNote.classList.remove("show");
+    resultsEl.innerHTML = (d.results || []).map(res => {
+      const ic = res.status === "ok" ? "✅" : res.status === "warn" ? "⚠️" : "❌";
+      return `<div class="res-row ${res.status}">
+        <span>${ic}</span>
+        <span class="rn">${esc(res.file)}</span>
+        <span class="rm">${esc(res.msg)}</span>
+      </div>`;
+    }).join("");
+    // 刷新库状态和文档列表
+    loadHealth();
+    loadDocList();
+    // 重置 file input 以支持重复上传同一文件
+    fileInput.value = "";
+  }catch(e){
+    busyNote.classList.remove("show");
+    resultsEl.innerHTML = `<div class="res-row error">❌ <span class="rm">上传失败：${esc(e.message)}</span></div>`;
+  }
+}
+
+async function loadDocList(){
+  docRowsEl.innerHTML = "<span style='color:var(--muted);font-size:12px'>加载中…</span>";
+  try{
+    const r = await fetch(API + "/api/documents");
+    const d = await r.json();
+    if(!d.documents || d.documents.length === 0){
+      docRowsEl.innerHTML = "<span style='color:var(--muted);font-size:12px'>暂无已入库文档</span>";
+      return;
+    }
+    docRowsEl.innerHTML = d.documents.map(doc =>
+      `<div class="doc-row" data-src="${esc(doc.source)}">
+        <span>📄</span>
+        <span class="dn" title="${esc(doc.source)}">${esc(doc.source)}</span>
+        <span class="dc">${doc.chunks} 块</span>
+        <span class="del" title="从知识库删除">🗑</span>
+      </div>`
+    ).join("");
+    docRowsEl.querySelectorAll(".del").forEach(btn =>
+      btn.onclick = async e => {
+        e.stopPropagation();
+        const row = btn.closest(".doc-row");
+        const src = row.dataset.src;
+        if(!confirm(`确认从知识库删除「${src}」？`)) return;
+        try{
+          const res = await fetch(API + "/api/documents/delete", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({source: src})
+          });
+          if(!res.ok) throw new Error(`HTTP ${res.status}`);
+          loadHealth();
+          loadDocList();
+        }catch(err){
+          alert("删除失败：" + err.message);
+        }
+      }
+    );
+  }catch(e){
+    docRowsEl.innerHTML = "<span style='color:var(--err);font-size:12px'>加载失败</span>";
+  }
+}
 
 initSamples(); loadHealth(); loadModels();
 setInterval(loadHealth, 30000);

@@ -87,6 +87,79 @@ def chunk_text(text: str, size: int, overlap: int) -> list[str]:
     return chunks
 
 
+# ---- 可复用的建库组件（供 CLI 与 API 共用）--------------------------------
+
+SUPPORTED_EXTS = tuple(READERS.keys())
+
+
+def load_embedder():
+    """加载本地 Embedding 模型。"""
+    return TextEmbedding(model_name=config.EMBED_MODEL)
+
+
+def get_client():
+    return chromadb.PersistentClient(path=str(config.DB_DIR))
+
+
+def open_or_create_collection(client):
+    """打开集合；不存在则创建（供增量上传时首次建库用）。"""
+    try:
+        return client.get_collection(config.COLLECTION)
+    except Exception:
+        return client.create_collection(
+            config.COLLECTION, metadata={"hnsw:space": "cosine"})
+
+
+def _chunk_id(source: str, i: int) -> str:
+    # 用完整文件名做前缀，避免不同文档同名 stem 时 id 冲突
+    return f"{source}::{i}"
+
+
+def ingest_file(embedder, coll, path: Path) -> int:
+    """把单个文档增量写入向量库。
+
+    若该来源(文件名)已存在，先删除其旧块再写入，保证重复上传时幂等。
+    返回写入的文本块数量。
+    """
+    text = load_text(path)
+    chunks = chunk_text(text, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
+    source = path.name
+
+    # 先清掉同名来源的旧块（覆盖式更新）
+    try:
+        coll.delete(where={"source": source})
+    except Exception:
+        pass
+
+    if not chunks:
+        return 0
+
+    ids = [_chunk_id(source, i) for i in range(len(chunks))]
+    metas = [{"source": source, "chunk": i} for i in range(len(chunks))]
+    vectors = [v.tolist() for v in embedder.embed(chunks)]
+    coll.add(documents=chunks, embeddings=vectors, metadatas=metas, ids=ids)
+    return len(chunks)
+
+
+def delete_source(coll, source: str) -> None:
+    """从向量库中删除某个来源(文件名)的全部文本块。"""
+    coll.delete(where={"source": source})
+
+
+def list_sources(coll) -> list[dict]:
+    """列出向量库中已入库的文档及其块数。"""
+    try:
+        data = coll.get(include=["metadatas"])
+    except Exception:
+        return []
+    counts: dict[str, int] = {}
+    for m in data.get("metadatas") or []:
+        src = (m or {}).get("source")
+        if src:
+            counts[src] = counts.get(src, 0) + 1
+    return [{"source": s, "chunks": c} for s, c in sorted(counts.items())]
+
+
 # ---- 主流程 ------------------------------------------------------------
 
 def main():
@@ -101,35 +174,27 @@ def main():
         return
 
     print(f"加载 Embedding 模型 {config.EMBED_MODEL} ...")
-    embedder = TextEmbedding(model_name=config.EMBED_MODEL)
+    embedder = load_embedder()
 
-    client = chromadb.PersistentClient(path=str(config.DB_DIR))
-    # 重建集合，保证幂等
+    client = get_client()
+    # 全量重建集合，保证幂等
     try:
         client.delete_collection(config.COLLECTION)
     except Exception:
         pass
     coll = client.create_collection(config.COLLECTION, metadata={"hnsw:space": "cosine"})
 
-    all_chunks, all_meta, all_ids = [], [], []
+    total = 0
     for f in files:
-        text = load_text(f)
-        chunks = chunk_text(text, config.CHUNK_SIZE, config.CHUNK_OVERLAP)
-        print(f"  {f.name}: {len(chunks)} 块")
-        for i, ch in enumerate(chunks):
-            all_chunks.append(ch)
-            all_meta.append({"source": f.name, "chunk": i})
-            all_ids.append(f"{f.stem}_{i}")
+        n = ingest_file(embedder, coll, f)
+        print(f"  {f.name}: {n} 块")
+        total += n
 
-    if not all_chunks:
+    if not total:
         print("没有提取到任何文本。")
         return
 
-    print(f"向量化 {len(all_chunks)} 个文本块 ...")
-    vectors = [v.tolist() for v in embedder.embed(all_chunks)]
-
-    coll.add(documents=all_chunks, embeddings=vectors, metadatas=all_meta, ids=all_ids)
-    print(f"完成！共入库 {len(all_chunks)} 块，来自 {len(files)} 个文档。")
+    print(f"完成！共入库 {total} 块，来自 {len(files)} 个文档。")
     print(f"向量库位置: {config.DB_DIR}")
 
 

@@ -8,3 +8,4 @@ pypdf>=4.0.0              # 解析 PDF
 openpyxl>=3.1.0           # 解析 Excel
 fastapi>=0.110.0          # Web 后端（第二期）
 uvicorn>=0.29.0           # ASGI 服务器（第二期）
+python-multipart>=0.0.9   # 解析上传的文件（multipart/form-data）

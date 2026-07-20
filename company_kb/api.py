@@ -9,17 +9,20 @@
     python api.py             # 监听 127.0.0.1:8994
 """
 import json
+import threading
+from pathlib import Path
 
 import chromadb
 import uvicorn
 from fastembed import TextEmbedding
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from openai import OpenAI
 from pydantic import BaseModel
 
 import config
+import ingest
 from query import SYSTEM_PROMPT, retrieve, build_prompt
 
 app = FastAPI(title="企业知识库 API")
@@ -34,6 +37,8 @@ app.add_middleware(
 
 # 全局单例：模型和向量库只加载一次
 STATE = {"embedder": None, "coll": None}
+# 写库（上传/删除）需串行，避免并发写 ChromaDB
+_WRITE_LOCK = threading.Lock()
 
 
 @app.on_event("startup")
@@ -44,6 +49,14 @@ def _load():
         STATE["coll"] = client.get_collection(config.COLLECTION)
     except Exception:
         STATE["coll"] = None  # 库未建立
+
+
+def _ensure_coll():
+    """返回集合；若尚未建库则创建一个空集合（首次上传时用）。"""
+    if STATE["coll"] is None:
+        client = ingest.get_client()
+        STATE["coll"] = ingest.open_or_create_collection(client)
+    return STATE["coll"]
 
 
 class AskReq(BaseModel):
@@ -64,6 +77,80 @@ def models():
     return {"default": config.CHAT_MODEL, "fallback": config.FALLBACK_MODEL,
             "options": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
                         "claude-sonnet-5", "claude-opus-4-8", "claude-haiku-4-5-20251001"]}
+
+
+@app.get("/api/documents")
+def documents():
+    """列出已入库的文档及其块数。"""
+    coll = STATE["coll"]
+    if coll is None:
+        return {"documents": [], "total": 0}
+    docs = ingest.list_sources(coll)
+    return {"documents": docs, "total": sum(d["chunks"] for d in docs)}
+
+
+@app.post("/api/upload")
+def upload(files: list[UploadFile] = File(...)):
+    """上传文档：保存到 documents/，解析切块向量化后增量写入向量库。
+
+    支持 txt/md/docx/pdf/xlsx。重复上传同名文件会覆盖旧内容。
+    """
+    config.DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    results = []
+    with _WRITE_LOCK:
+        coll = _ensure_coll()
+        for uf in files:
+            name = Path(uf.filename or "").name
+            ext = Path(name).suffix.lower()
+            if not name:
+                results.append({"file": uf.filename, "status": "error",
+                                "msg": "文件名为空"})
+                continue
+            if ext not in ingest.SUPPORTED_EXTS:
+                results.append({"file": name, "status": "error",
+                                "msg": f"不支持的格式 {ext}，仅支持 "
+                                       f"{', '.join(ingest.SUPPORTED_EXTS)}"})
+                continue
+            dest = config.DOCS_DIR / name
+            try:
+                data = uf.file.read()
+                dest.write_bytes(data)
+                n = ingest.ingest_file(STATE["embedder"], coll, dest)
+                if n == 0:
+                    results.append({"file": name, "status": "warn",
+                                    "msg": "未提取到文本内容（已保存文件）"})
+                else:
+                    results.append({"file": name, "status": "ok",
+                                    "msg": f"已入库 {n} 个知识块", "chunks": n})
+            except Exception as e:
+                results.append({"file": name, "status": "error", "msg": str(e)})
+    ok = sum(1 for r in results if r["status"] == "ok")
+    return {"results": results, "ok": ok, "chunks": coll.count()}
+
+
+class DeleteReq(BaseModel):
+    source: str
+
+
+@app.post("/api/documents/delete")
+def delete_document(req: DeleteReq):
+    """从向量库删除指定来源(文件名)的全部块，并删除磁盘上的原文件。"""
+    coll = STATE["coll"]
+    if coll is None:
+        raise HTTPException(status_code=404, detail="知识库为空")
+    name = Path(req.source).name
+    with _WRITE_LOCK:
+        try:
+            ingest.delete_source(coll, name)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        f = config.DOCS_DIR / name
+        if f.exists():
+            try:
+                f.unlink()
+            except Exception:
+                pass
+    return {"ok": True, "source": name, "chunks": coll.count()}
 
 
 def _sse(event: str, data: dict) -> str:
