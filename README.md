@@ -557,6 +557,21 @@ KB_REBUILD=1 bash scripts/deploy.sh # 知识库文档有增删，重建向量库
 FORCE=1 bash scripts/deploy.sh      # 强制重启所有服务（排障用）
 ```
 
+**全量部署（`FULL=1`）：** 忽略 git 变动，无条件装全部依赖 + 重启全部服务。适合**首次部署、依赖出问题、环境重建、迁移后**等需要彻底刷新的场景。
+
+```bash
+FULL=1 bash scripts/deploy.sh            # 全量：全部模块装依赖 + 重启
+FULL=1 bash scripts/deploy.sh main       # 全量：只刷单个模块
+FULL=1 KB_REBUILD=1 bash scripts/deploy.sh   # 全量 + 知识库重建向量库
+```
+
+| | 增量（默认） | 全量（`FULL=1`） |
+|---|---|---|
+| 判断依据 | 只处理本次 git 有变动的模块 | 忽略变动，无条件处理选中模块 |
+| 装依赖 | requirements 变了才装 | 一律装 |
+| 重启 | 代码变了才重启 | 一律重启 |
+| 速度 | 快，日常用 | 慢，彻底 |
+
 > 服务名/路径可用环境变量覆盖（`SVC_MAIN` `SVC_ANALYTICS` `SVC_KB` `PYTHON_BIN` 等）。
 > 旧脚本 `scripts/deploy_latest.sh` 仍保留（仅管 8990），推荐改用 `scripts/deploy.sh`。
 

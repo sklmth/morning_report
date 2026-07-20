@@ -4,6 +4,7 @@
 #
 # 用法：
 #   bash deploy.sh              # 增量：按 git 变动决定装依赖/重启/什么都不做
+#   FULL=1   bash deploy.sh     # 全量：无条件装依赖 + 重启（忽略 git 变动）
 #   REBUILD=1 bash deploy.sh    # 文档(documents/)有增删时，额外重建向量库
 #   FORCE=1  bash deploy.sh     # 强制重启后端（不管有无变动）
 set -Eeuo pipefail
@@ -17,6 +18,7 @@ PIP_BIN="${PIP_BIN:-$REPO_DIR/.venv/bin/pip}"
 BRANCH="${BRANCH:-master}"
 REBUILD="${REBUILD:-0}"
 FORCE="${FORCE:-0}"
+FULL="${FULL:-0}"         # 1 = 全量：无条件装依赖 + 重启
 # 供上层统一脚本调用：SKIP_PULL=1 时不拉代码，用 DIFF_BASE 作为对比起点
 SKIP_PULL="${SKIP_PULL:-0}"
 DIFF_BASE="${DIFF_BASE:-}"
@@ -54,8 +56,13 @@ fi
 
 # 4. 判断需要哪些动作
 need_deps=0; need_restart=0; need_build=0
-echo "$CHANGED" | grep -q 'company_kb/requirements.txt' && { need_deps=1; need_restart=1; }
-echo "$CHANGED" | grep -qE 'company_kb/(api|query|config|ingest)\.py' && need_restart=1
+if [[ "$FULL" == "1" ]]; then
+  # 全量：无条件装依赖 + 重启（建库仍看 REBUILD/向量库是否存在，避免误清已有库）
+  need_deps=1; need_restart=1; log "全量部署 → 装依赖 + 重启。"
+else
+  echo "$CHANGED" | grep -q 'company_kb/requirements.txt' && { need_deps=1; need_restart=1; }
+  echo "$CHANGED" | grep -qE 'company_kb/(api|query|config|ingest)\.py' && need_restart=1
+fi
 [[ "$REBUILD" == "1" ]] && { need_build=1; need_restart=1; }
 [[ "$FORCE"   == "1" ]] && need_restart=1
 # 向量库不存在时，强制建一次
