@@ -25,6 +25,14 @@ DOCS_DIR = BASE_DIR / "documents"
 DB_DIR = BASE_DIR / "chroma_db"
 COLLECTION = "company_kb"
 
+# ---- 会话历史（SQLite，标准库，无额外依赖）----
+CHAT_DB = BASE_DIR / "chat_history.db"
+HISTORY_TURNS = 6       # 发给大模型时携带的最近历史「轮」数上限（防 token 膨胀）
+
+# ---- 登录会话（Bearer Token）----
+SESSION_TTL_DAYS = 30   # 登录令牌有效期（天）；过期需重新登录
+PASSWORD_MIN_LEN = 6    # 注册密码最短长度
+
 # ---- 切块参数 ----
 CHUNK_SIZE = 400        # 每块约 400 字
 CHUNK_OVERLAP = 50      # 块间重叠，避免切断上下文

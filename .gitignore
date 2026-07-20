@@ -25,6 +25,10 @@ venv/
 /company_kb/models/
 /company_kb/documents/
 /company_kb/logs/
+/company_kb/chat_history.db
+/company_kb/chat_history.db-wal
+/company_kb/chat_history.db-shm
+/company_kb/_test_*.db*
 
 # Runtime data
 /tmp/
