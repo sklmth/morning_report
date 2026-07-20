@@ -1,0 +1,24 @@
+# 企业知识库后端 systemd 服务示例
+# 用法：
+#   1. 复制到 /etc/systemd/system/company-kb.service
+#   2. 修改 WorkingDirectory / ExecStart 为服务器实际路径
+#   3. systemctl daemon-reload && systemctl enable --now company-kb.service
+
+[Unit]
+Description=Company Knowledge Base API (port 8994)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# ↓ 改为服务器上 company_kb 的绝对路径
+WorkingDirectory=/root/morning_report/company_kb
+# ↓ 用项目 venv 的 python；无 venv 则填 /usr/bin/python3
+ExecStart=/root/morning_report/.venv/bin/python api.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/root/morning_report/company_kb/logs/api.log
+StandardError=append:/root/morning_report/company_kb/logs/api.log
+
+[Install]
+WantedBy=multi-user.target

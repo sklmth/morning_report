@@ -1,0 +1,36 @@
+# 企业知识库 Nginx 配置示例
+# 前端静态页托管在 3030，/api/* 反代到本地 FastAPI(8994)
+#
+# 用法：
+#   1. 复制到 /etc/nginx/conf.d/company_kb.conf（按发行版调整路径）
+#   2. 修改 root 为服务器上 frontend/ 的绝对路径
+#   3. nginx -t && systemctl reload nginx
+#   4. 后端：cd company_kb && python api.py（建议用 systemd/supervisor 守护）
+
+server {
+    listen 3030;
+    server_name _;
+
+    # 前端静态页
+    root /path/to/morning_report/company_kb/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # 反向代理到 FastAPI 后端
+    location /api/ {
+        proxy_pass http://127.0.0.1:8994;
+        proxy_http_version 1.1;
+
+        # SSE 流式输出必需：关闭缓冲，保持连接
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
