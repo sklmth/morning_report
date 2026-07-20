@@ -6,12 +6,12 @@ import os
 block_cipher = None
 
 a = Analysis(
-    ['src/app.py'],
+    ['daily_report/app.py'],
     pathex=['.'],
     binaries=[],
     datas=[
         # 把 function.py 和 早会五张表.xlsx 打包进去
-        ('src/function.py', '.'),
+        ('daily_report/function.py', '.'),
         ('assets/早会五张表.xlsx', '.'),
     ],
     hiddenimports=[

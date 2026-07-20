@@ -28,8 +28,8 @@ def main():
 
     # 检查必要文件
     checks = [
-        ("src/app.py", "主程序"),
-        ("src/function.py", "处理逻辑"),
+        ("daily_report/app.py", "主程序"),
+        ("daily_report/function.py", "处理逻辑"),
         ("assets/早会五张表.xlsx", "Excel模板"),
         ("morning_report.spec", "打包配置"),
     ]

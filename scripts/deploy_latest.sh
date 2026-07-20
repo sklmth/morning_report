@@ -70,10 +70,10 @@ if [[ "$INSTALL_DEPS" == "1" || "$INSTALL_DEPS" == "true" || "$INSTALL_DEPS" == 
     echo "ERROR: pip not found or not executable: $PIP_BIN" >&2
     exit 1
   fi
-  run "$PIP_BIN" install -r requirements.txt
+  run "$PIP_BIN" install -r daily_report/requirements.txt
 elif [[ "$INSTALL_DEPS" == "auto" && -x "$PIP_BIN" ]]; then
-  if ! git diff --quiet "$BEFORE_REV" "$AFTER_REV" -- requirements.txt 2>/dev/null; then
-    run "$PIP_BIN" install -r requirements.txt
+  if ! git diff --quiet "$BEFORE_REV" "$AFTER_REV" -- daily_report/requirements.txt 2>/dev/null; then
+    run "$PIP_BIN" install -r daily_report/requirements.txt
   else
     log "requirements.txt unchanged; skipping dependency install."
   fi
@@ -81,7 +81,7 @@ else
   log "Skipping dependency install."
 fi
 
-run "$PYTHON_BIN" -m py_compile src/*.py
+run "$PYTHON_BIN" -m py_compile daily_report/*.py
 run systemctl restart "$SERVICE_NAME"
 sleep 2
 run systemctl is-active --quiet "$SERVICE_NAME"

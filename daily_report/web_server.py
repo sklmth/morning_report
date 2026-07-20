@@ -1,11 +1,11 @@
 """
 早会数据处理系统 - Web 服务入口（端口 8990）。
 
-启动：python src/web_server.py
+启动：python daily_report/web_server.py
     --no-poll   不启动后台邮件轮询（仅提供网页，手动上传）
     --once      启动时立即收一次邮件再常驻
 
-依赖：标准库（http.server / threading / email / cgi）+ 项目自身 src/ 模块
+依赖：标准库（http.server / threading / email / cgi）+ 项目自身 daily_report/ 模块
 """
 
 import cgi
@@ -22,7 +22,7 @@ import zipfile
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# 确保 src/ 在 Python 路径中
+# 确保 daily_report/ 在 Python 路径中
 _SRC = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_SRC)
 sys.path.insert(0, _SRC)

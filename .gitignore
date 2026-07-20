@@ -32,7 +32,7 @@ venv/
 /analytics/runtime/
 /logs/
 /output/
-/zhengqi_visit/output/
+/zhengqi_visit_stats/output/
 *.log
 
 # Excel temporary files

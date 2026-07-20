@@ -7,7 +7,7 @@ Type=simple
 User=root
 # ↓ 改为服务器上仓库根目录的绝对路径
 WorkingDirectory=/root/.openclaw/workspace/morning_report
-ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python run_analytics.py
+ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python analytics/main.py
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/root/.openclaw/workspace/morning_report/runtime/analytics.log

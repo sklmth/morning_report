@@ -3,8 +3,8 @@
 
 把原本写在 app.py 里的「读取输入 Excel → 调用 function.py 各处理函数 → 写入模板」逻辑
 抽离成与界面无关的纯函数，供：
-  - src/app.py        （本机 GUI / exe 版）
-  - src/server.py     （云服务器无界面版）
+  - daily_report/app.py        （本机 GUI / exe 版）
+  - daily_report/server.py     （云服务器无界面版）
 共同调用，保证两端处理逻辑完全一致。
 """
 

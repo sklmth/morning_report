@@ -9,9 +9,9 @@
   → 通过 OpenClaw 把四张图依次发到微信
 
 运行：
-  python src/server.py            # 持续轮询（间隔取 MAIL_POLL_SECONDS）
-  python src/server.py --once     # 只跑一轮
-  python src/server.py --local 文件1.xlsx 文件2.xlsx   # 跳过邮箱，直接处理本地文件
+  python daily_report/server.py            # 持续轮询（间隔取 MAIL_POLL_SECONDS）
+  python daily_report/server.py --once     # 只跑一轮
+  python daily_report/server.py --local 文件1.xlsx 文件2.xlsx   # 跳过邮箱，直接处理本地文件
 
 配置：复制 .env.example 为 .env 并填写，或直接用环境变量。
 """

@@ -4,16 +4,16 @@
   - FastAPI 服务 (端口 8992，由 nginx:8991 代理)
   - ReportWatcher 后台线程（监听8990的 morning_report.db，自动触发分析）
 用法：
-  python run_analytics.py
+  python analytics/main.py
   # 或指定端口/DB路径：
-  ANALYTICS_PORT=8992 ANALYTICS_DB_PATH=runtime/analytics.db python run_analytics.py
+  ANALYTICS_PORT=8992 ANALYTICS_DB_PATH=runtime/analytics.db python analytics/main.py
 """
 
 import os
 import sys
 
-# 确保项目根目录在 Python 路径中
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# 确保项目根目录（analytics/ 的上级）在 Python 路径中
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 

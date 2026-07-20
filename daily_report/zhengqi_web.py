@@ -2,7 +2,7 @@
 
 职责：
     - 保存金山文档脚本推送来的原始 Excel（latest + 时间戳存档）
-    - 调用 zhengqi_visit.process_excel 生成统计结果 Excel
+    - 调用 zhengqi_visit_stats.process_excel 生成统计结果 Excel
     - 提供「下载最新结果」所需的路径解析
 
 与 web_server 解耦：web_server 只调这里的 3 个函数。
@@ -16,7 +16,7 @@ import os
 import sys
 from datetime import datetime
 
-# 让 zhengqi_visit 包（位于项目根目录）可被导入
+# 让 zhengqi_visit_stats 包（位于项目根目录）可被导入
 _SRC = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_SRC)
 if _ROOT not in sys.path:
@@ -101,10 +101,10 @@ def generate(ref_date=None):
     _ensure_dirs()
     kind, path = src
     if kind == "xlsx":
-        from zhengqi_visit import process_excel
+        from zhengqi_visit_stats import process_excel
         return process_excel(path, OUTPUT_XLSX, ref_date=ref_date)
     # JSON 行
-    from zhengqi_visit import process_rows
+    from zhengqi_visit_stats import process_rows
     with open(path, "r", encoding="utf-8") as f:
         rows = json.load(f)
     return process_rows(rows, OUTPUT_XLSX, ref_date=ref_date)

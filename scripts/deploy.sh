@@ -3,8 +3,8 @@
 # 拉一次代码，按各模块的 git 变动分别决定：装依赖 / 重启 / 建库 / 什么都不做。
 #
 # 服务与端口：
-#   8990  日报服务        (morning-report.service)              代码: src/
-#   8992  经营分析后端    (morning-report-analytics.service)    代码: analytics/ run_analytics.py
+#   8990  日报服务        (morning-report.service)              代码: daily_report/
+#   8992  经营分析后端    (morning-report-analytics.service)    代码: analytics/ (入口: analytics/main.py)
 #   8994  知识库后端      (company-kb.service)                  代码: company_kb/
 #   8991/3030 静态前端    (nginx 托管，改前端无需重启)
 #
@@ -31,10 +31,8 @@ log(){ printf '[%(%F %T)T] %s\n' -1 "$*"; }
 py(){ [[ -x "$PYTHON_BIN" ]] && echo "$PYTHON_BIN" || echo python3; }
 pip_bin(){ [[ -x "$PIP_BIN" ]] && echo "$PIP_BIN" || echo pip3; }
 
-# 判断某服务是否已在 systemd 注册
 has_svc(){ systemctl list-unit-files 2>/dev/null | grep -q "^$1"; }
 
-# 重启并校验服务
 restart_svc(){
   local svc="$1"
   if ! has_svc "$svc"; then log "  未注册 $svc，跳过重启（首次需手动配 systemd）。"; return 0; fi
@@ -72,12 +70,12 @@ rc=0
 # ── 2. 日报服务 (8990) ──────────────────────────
 if want main; then
   need=0
-  changed '^requirements\.txt' && { log "[main] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r requirements.txt; need=1; }
-  changed '^src/' && need=1
+  changed '^daily_report/requirements\.txt' && { log "[main] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r daily_report/requirements.txt; need=1; }
+  changed '^daily_report/' && need=1
   [[ "$FORCE" == "1" ]] && need=1
   if [[ "$need" == "1" ]]; then
     log "[main] 重启 $SVC_MAIN"
-    "$(py)" -m py_compile src/*.py
+    "$(py)" -m py_compile daily_report/*.py
     restart_svc "$SVC_MAIN" || rc=1
   else
     log "[main] 无变动，跳过。"
@@ -87,11 +85,10 @@ fi
 # ── 3. 经营分析 (8992 后端 / 8991 前端) ──────────
 if want analytics; then
   need=0
-  changed '^analytics_requirements\.txt' && { log "[analytics] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r analytics_requirements.txt; need=1; }
+  changed '^analytics/requirements\.txt' && { log "[analytics] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r analytics/requirements.txt; need=1; }
   # 排除 analytics/frontend/（静态前端，不触发后端重启）
-  echo "$CHANGED" | grep -E '^(analytics/|run_analytics\.py)' | grep -qv '^analytics/frontend/' && need=1
+  echo "$CHANGED" | grep -E '^analytics/' | grep -qv '^analytics/frontend/' && need=1
   [[ "$FORCE" == "1" ]] && need=1
-  # 前端是静态，nginx 直接生效
   changed '^analytics/frontend/' && log "[analytics] 前端更新，nginx 直接生效（无需重启）。"
   if [[ "$need" == "1" ]]; then
     log "[analytics] 重启 $SVC_ANALYTICS"
