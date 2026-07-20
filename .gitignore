@@ -28,6 +28,7 @@ venv/
 
 # Runtime data
 /tmp/
+/temp/
 /runtime/
 /analytics/runtime/
 /logs/
