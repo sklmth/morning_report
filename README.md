@@ -518,6 +518,17 @@ FORCE=1   bash deploy.sh      # 强制重启后端（排障用）
 
 ---
 
+### 命名重构后首次迁移（仅一次）
+
+命名规范化重构改了入口脚本路径（`src/web_server.py`→`daily_report/web_server.py`、`run_analytics.py`→`analytics/main.py`）。服务器 `git pull` 后，已安装的 systemd 服务仍指向旧路径，需运行一次迁移脚本就地更新：
+
+```bash
+git pull
+sudo bash scripts/migrate_rename.sh   # 幂等，自动改 ExecStart + daemon-reload + 重启
+```
+
+之后日常更新照常用 `bash scripts/deploy.sh`。
+
 ### 更新代码（统一增量部署）
 
 一个脚本搞定所有模块，拉一次代码后**按各模块的实际变动**分别决定动作，不全量重来：
