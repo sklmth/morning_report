@@ -42,15 +42,15 @@ morning_report/
 │   ├── analyzer/
 │   │   ├── metrics.py      # 积分结构/人员效能/风险/横向对比/总览
 │   │   └── forecast.py     # 进度预测（日均/月末/人员状态）
-│   └── api/
-│       └── server.py       # FastAPI（11个端点，内部端口 8992）
-├── analytics-frontend/     # ── 经营分析前端 ──────────────────────
-│   ├── index.html          # 8个Tab单页应用
-│   ├── css/style.css
-│   └── js/
-│       ├── api.js          # API封装
-│       ├── charts.js       # ECharts 14种图表
-│       └── app.js          # Tab切换、数据加载、上传弹窗
+│   ├── api/
+│   │   └── server.py       # FastAPI（11个端点，内部端口 8992）
+│   └── frontend/           # ── 经营分析前端（nginx 托管于 8991）──
+│       ├── index.html      # 8个Tab单页应用
+│       ├── css/style.css
+│       └── js/
+│           ├── api.js      # API封装
+│           ├── charts.js   # ECharts 14种图表
+│           └── app.js      # Tab切换、数据加载、上传弹窗
 ├── company_kb/              # ── 企业知识库 RAG ────────────────────
 │   ├── config.py            # 密钥/模型/切块检索参数
 │   ├── ingest.py            # 文档→切块→本地向量化→ChromaDB
@@ -305,7 +305,7 @@ cp .env.example .env
 
 **第一步：编辑 nginx 配置文件**
 
-> 仓库内原先的 `nginx/analytics.conf` 已移除，请自行新建。把下面这段存为 `/etc/nginx/conf.d/analytics.conf`，并把 **两处** `root` 占位路径改为服务器实际绝对路径（如 `/home/ubuntu/morning_report/analytics-frontend`）。若 nginx 不 include `conf.d/*.conf`，直接追加到 `nginx.conf` 的 `http {}` 块末尾：
+> 仓库内原先的 `nginx/analytics.conf` 已移除，请自行新建。把下面这段存为 `/etc/nginx/conf.d/analytics.conf`，并把 **两处** `root` 占位路径改为服务器实际绝对路径（如 `/home/ubuntu/morning_report/analytics/frontend`）。若 nginx 不 include `conf.d/*.conf`，直接追加到 `nginx.conf` 的 `http {}` 块末尾：
 >
 > ```nginx
 > server {
@@ -314,13 +314,13 @@ cp .env.example .env
 >     charset utf-8;
 >
 >     location / {
->         root /home/ubuntu/morning_report/analytics-frontend;  # ← 改为实际路径
+>         root /home/ubuntu/morning_report/analytics/frontend;  # ← 改为实际路径
 >         try_files $uri $uri/ /index.html;
 >         add_header Cache-Control "no-cache";
 >     }
 >
 >     location ~* \.(js|css|png|ico)$ {
->         root /home/ubuntu/morning_report/analytics-frontend;  # ← 改为实际路径
+>         root /home/ubuntu/morning_report/analytics/frontend;  # ← 改为实际路径
 >         expires 1h;
 >     }
 >
@@ -528,7 +528,7 @@ bash scripts/deploy.sh
 | `src/**` 或 `requirements.txt` | 重启日报服务(8990)，依赖变才装 |
 | `analytics/**` `run_analytics.py` 或 `analytics_requirements.txt` | 重启经营分析(8992)，依赖变才装 |
 | `company_kb/**` 后端 `.py` | 重启知识库(8994) |
-| 任意前端（`analytics-frontend/` `company_kb/frontend/`） | 不重启，Nginx 直接生效 |
+| 任意前端（`analytics/frontend/` `company_kb/frontend/`） | 不重启，Nginx 直接生效 |
 | 纯文档 / 无相关变动 | 跳过，秒退 |
 
 **只部署某个模块 / 特殊开关：**

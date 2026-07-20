@@ -88,10 +88,11 @@ fi
 if want analytics; then
   need=0
   changed '^analytics_requirements\.txt' && { log "[analytics] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r analytics_requirements.txt; need=1; }
-  changed '^(analytics/|run_analytics\.py)' && need=1
+  # 排除 analytics/frontend/（静态前端，不触发后端重启）
+  echo "$CHANGED" | grep -E '^(analytics/|run_analytics\.py)' | grep -qv '^analytics/frontend/' && need=1
   [[ "$FORCE" == "1" ]] && need=1
   # 前端是静态，nginx 直接生效
-  changed '^analytics-frontend/' && log "[analytics] 前端更新，nginx 直接生效（无需重启）。"
+  changed '^analytics/frontend/' && log "[analytics] 前端更新，nginx 直接生效（无需重启）。"
   if [[ "$need" == "1" ]]; then
     log "[analytics] 重启 $SVC_ANALYTICS"
     restart_svc "$SVC_ANALYTICS" || rc=1
