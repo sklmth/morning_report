@@ -1,0 +1,19 @@
+[Unit]
+Description=Morning Report Analytics Service (port 8992)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+# ↓ 改为服务器上仓库根目录的绝对路径
+WorkingDirectory=/root/.openclaw/workspace/morning_report
+ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python run_analytics.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/root/.openclaw/workspace/morning_report/runtime/analytics.log
+StandardError=append:/root/.openclaw/workspace/morning_report/runtime/analytics.log
+Environment=ANALYTICS_HOST=127.0.0.1
+Environment=ANALYTICS_PORT=8992
+
+[Install]
+WantedBy=multi-user.target
