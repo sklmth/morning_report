@@ -30,6 +30,26 @@ python -m zhengqi_visit_stats.cli \
 
 ---
 
+## gaotao_stats · 客户经理高套清单
+
+**功能**：读取营服报表 xlsx，提取客户经理的新增高套（③高套清单）与存量高套（④存量高套清单），生成含两 sheet 的 Excel，风格对齐「早会五张表」。
+
+```bash
+python -m gaotao_stats.cli \
+  "<营服报表.xlsx>" \
+  "gaotao_stats/output/客户经理高套清单.xlsx"
+```
+
+- 输入：营服报表（业务通报）；不传输出路径时默认在源文件同目录生成 `<源名>_客户经理高套清单.xlsx`
+- 输出两 sheet：`新增高套` / `存量高套`，列均为 接入号 / 客户经理 / 竣工日期 / 积分 / 高套数
+- 仅保留 `NAMES` 名单内客户经理（沿用 daily_report.function.names）
+- 列映射（0-based，header=None 读取，首行表头跳过）：
+  - ③高套清单：接入号 N=13，客户经理 AM=38，竣工日期 I=8，积分 BL=63，高套数 BR=69
+  - ④存量高套清单：接入号 E=4，客户经理 BX=75，竣工时间 CU=98，积分 AK=36，高套系数 CS=96（作为高套数）
+- 依赖：`openpyxl`, `pandas`
+
+---
+
 ## daily_report · 早会日报
 
 > TODO：补充运行命令
