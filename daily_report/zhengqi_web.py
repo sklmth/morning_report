@@ -36,10 +36,31 @@ def _ensure_dirs():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
+def _cleanup_archives(prefix_exts):
+    """删除 INPUT_DIR 下旧的带时间戳归档，每类只保留最新 1 个。
+
+    prefix_exts: list of file extensions to clean, e.g. [".xlsx", ".json"]
+    """
+    for ext in prefix_exts:
+        candidates = [
+            f for f in os.listdir(INPUT_DIR)
+            if f not in ("latest.xlsx", "latest_rows.json")
+            and f.endswith(ext)
+            and len(f) >= 15
+            and f[:8].isdigit()
+        ]
+        candidates.sort()
+        for old in candidates[:-1]:  # 保留最新 1 个，删除其余
+            try:
+                os.remove(os.path.join(INPUT_DIR, old))
+            except OSError:
+                pass
+
+
 def save_input(data, original_name=None):
     """保存推送来的原始 Excel 字节。
 
-    写入 latest.xlsx（覆盖），同时按时间戳存一份归档，便于回溯。
+    写入 latest.xlsx（覆盖），同时按时间戳存一份归档（只保留最新 1 个）。
     返回 latest.xlsx 路径。
     """
     _ensure_dirs()
@@ -53,14 +74,15 @@ def save_input(data, original_name=None):
         with open(archive, "wb") as f:
             f.write(data)
     except OSError:
-        pass  # 归档失败不影响主流程
+        pass
+    _cleanup_archives([".xlsx"])
     return LATEST_INPUT
 
 
 def save_rows(rows, original_name=None):
     """保存 AirScript / 金山文档脚本推送来的 JSON 行。
 
-    写入 latest_rows.json（覆盖），同时按时间戳存一份归档。
+    写入 latest_rows.json（覆盖），同时按时间戳存一份归档（只保留最新 1 个）。
     返回 latest_rows.json 路径。
     """
     _ensure_dirs()
@@ -75,7 +97,8 @@ def save_rows(rows, original_name=None):
         with open(archive, "w", encoding="utf-8") as f:
             f.write(payload)
     except OSError:
-        pass  # 归档失败不影响主流程
+        pass
+    _cleanup_archives([".json"])
     return LATEST_ROWS
 
 
