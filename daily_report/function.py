@@ -402,9 +402,15 @@ def generate_yingfu_gaotao_for_gaozhuang(yf_data):
         ("高套清单",    38, 63, 69),
         ("存量高套清单", 75, 36, 96),
     ]:
-        if sheet not in yf_data:
+        # 新版营服报表给 sheet 名加了序号前缀（如 ③高套清单、④存量高套清单），
+        # 这里按后缀匹配，兼容带/不带前缀两种写法。
+        real_sheet = next(
+            (s for s in yf_data if s == sheet or s.endswith(sheet)),
+            None,
+        )
+        if real_sheet is None:
             continue
-        t = yf_data[sheet].iloc[1:, [name_col, score_col, cnt_col]].copy()
+        t = yf_data[real_sheet].iloc[1:, [name_col, score_col, cnt_col]].copy()
         t.columns = ["姓名", "积分", "高套数"]
         t["姓名"] = t["姓名"].astype(str).str.strip()
         t = t[t["姓名"].isin(gaozhuang_names)]

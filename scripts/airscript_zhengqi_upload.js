@@ -17,7 +17,7 @@
 
 function main() {
   // ⚠️ 改成你的 HTTPS 反代域名，例如 https://report.example.com/zhengqi/upload-rows
-  const SERVER_URL = 'https://your-domain.example.com/zhengqi/upload-rows';
+  const SERVER_URL = 'https://shanguantang.site/zhengqi/upload-rows';
 
   // 如接口需要令牌，填在这里；不需要就留空字符串
   const TOKEN = '';
@@ -26,16 +26,30 @@ function main() {
   const COL = { name: 5, type: 7, appt_date: 11, result: 20 };
   const HEADER_ROWS = 1; // 表头占的行数
 
-  const sheet = Application.ActiveWorkbook.ActiveSheet;
-  const usedRange = sheet.UsedRange;
-  const lastRow = usedRange.Row + usedRange.Rows.Count - 1;
+  // 金山文档：直接用 ActiveSheet，不需要通过 ActiveWorkbook
+  const sheet = ActiveSheet;
+
+  // UsedRange 在金山文档中不可用，改用遍历到指定行
+  // 假设数据不超过 1000 行（可按需调整）
+  const MAX_ROW = 1000;
 
   const rows = [];
-  for (let r = HEADER_ROWS + 1; r <= lastRow; r++) {
+  for (let r = HEADER_ROWS + 1; r <= MAX_ROW; r++) {
     const name = readCell(sheet, r, COL.name);
     const type = readCell(sheet, r, COL.type);
-    // 整行姓名和类型都空，视为空行，跳过
-    if (!name && !type) continue;
+    // 整行姓名和类型都空，视为空行；连续 10 行空行则结束
+    if (!name && !type) {
+      // 检查后续是否还有数据（最多再看 10 行）
+      let hasMore = false;
+      for (let check = r + 1; check <= Math.min(r + 10, MAX_ROW); check++) {
+        if (readCell(sheet, check, COL.name) || readCell(sheet, check, COL.type)) {
+          hasMore = true;
+          break;
+        }
+      }
+      if (!hasMore) break; // 确认后面没数据了，提前结束
+      continue;
+    }
     rows.push({
       name: name,
       type: type,

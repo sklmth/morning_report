@@ -39,7 +39,9 @@ ROSTER = [
 EXCLUDED = {"邓天群"}
 
 # 表头名 -> 逻辑字段（按名匹配，容忍列顺序变化）
+# V2/V3 版本列名变化
 _COL_NAME = "填写人员姓名"
+_COL_NAME_V3 = "客户经理姓名"  # V3 版本列名
 _COL_TYPE = "拜访对象类型"
 _COL_RESULT = "拜访结果（上门后回填）"
 _COL_APPT_DATE = "预约上门日期"  # K 列，作为「今周」判定依据
@@ -60,22 +62,40 @@ def week_range(ref=None):
 
 
 def _locate_columns(df):
-    """按表头名定位所需列，返回 (name_col, type_col, result_col) 的实际列名。
+    """按表头名定位所需列，返回 (name_col, type_col, result_col, appt_date_col) 的实际列名。
 
     表头可能带前后空格或换行，做一次归一化匹配。
+    支持 V2/V3 版本的列名差异。
     """
     norm = {str(c).strip().replace("\n", ""): c for c in df.columns}
 
-    def pick(target):
+    def pick(target, alternatives=None):
+        """查找列名，支持备用名称列表（用于版本兼容）"""
+        if alternatives is None:
+            alternatives = []
+
+        # 优先匹配目标列名
         if target in norm:
             return norm[target]
+
+        # 尝试备用列名
+        for alt in alternatives:
+            if alt in norm:
+                return norm[alt]
+
         # 退化匹配：去掉括号差异后包含关系
         for k, orig in norm.items():
             if target[:4] in k:
                 return orig
-        raise KeyError(f"输入表缺少列「{target}」，实际列：{list(df.columns)}")
 
-    return pick(_COL_NAME), pick(_COL_TYPE), pick(_COL_RESULT), pick(_COL_APPT_DATE)
+        raise KeyError(f"输入表缺少列「{target}」（备用：{alternatives}），实际列：{list(df.columns)}")
+
+    return (
+        pick(_COL_NAME, [_COL_NAME_V3]),
+        pick(_COL_TYPE),
+        pick(_COL_RESULT),
+        pick(_COL_APPT_DATE)
+    )
 
 
 def compute_stats(input_path, sheet_name=0, ref_date=None):
@@ -141,7 +161,13 @@ def compute_stats_from_df(df, ref_date=None):
     counts = {}  # name -> (预约数, 走访数)
     if not sub.empty:
         sub["_name"] = sub[name_col].astype(str).str.strip()
-        sub["_visited"] = sub[result_col].astype(str).str.strip() == VISITED_FLAG
+        # V3 版本逻辑：拜访结果列有值（非空）即为已拜访
+        # 兼容 V2 版本：值为"已拜访"也算
+        result_values = sub[result_col].astype(str).str.strip()
+        sub["_visited"] = (
+            (result_values == VISITED_FLAG) |  # V2: 明确标记"已拜访"
+            ((result_values != "") & (result_values != "nan") & (result_values.notna()))  # V3: 有任何非空值
+        )
         for name, g in sub.groupby("_name", sort=False):
             counts[name] = (int(len(g)), int(g["_visited"].sum()))
 
