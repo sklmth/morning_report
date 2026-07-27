@@ -68,7 +68,7 @@ function main() {
 
 /** 读单元格并归一化成字符串：日期转成 YYYY-MM-DD，其余去空白。 */
 function readCell(sheet, row, col) {
-  const cell = sheet.Range(sheet.Cells(row, col).Address());
+  const cell = sheet.Cells.Item(row, col);
   let v = cell.Value2;
   if (v === null || v === undefined) return '';
   // AirSheet 日期为从 1899-12-30 起的序列号
