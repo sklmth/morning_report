@@ -1,121 +1,92 @@
 /**
- * 政企标准化信息收集 → 家庭专项走访统计：AirScript 上传脚本
- * ============================================================
- * 在金山文档（AirSheet）里定时/手动运行，把当前工作表的 4 个关键列
- * 读成 JSON 行，POST 到服务器的 /zhengqi/upload-rows 接口。
- *
- * 为什么是 JSON 行而不是传文件：
- *   AirScript 无法把工作簿导出成 xlsx 字节，且禁止请求 IP / 带端口的 URL。
- *   统计只依赖 4 列（见下），因此直接读单元格发 JSON 最稳、无授权坑。
+ * 政企标准化信息收集V3（多维表格）→ 走访统计服务器推送
+ * AirScript 1.0 — 工具 → 自动化脚本
  *
  * 使用前：
- *   1. AirScript 编辑器 → 右侧「服务」→ 添加「网络 API」，填入 SERVER_URL 的域名
- *   2. 把 SERVER_URL 改成你的 HTTPS 域名接口（必须 https、不带端口、不用 IP）
- *   3. 确认下面的列号与实际表头一致（默认 E/G/K/T）
- *   4. 若表格第 1 行是表头，HEADER_ROWS 保持 1
+ *   1. 在金山文档打开「政企标准化信息收集V3」多维表格
+ *   2. 工具 → 自动化脚本 → 新建脚本，粘贴此文件全部内容
+ *   3. 右侧「服务」→ 添加「网络 API」，填入 shanguantang.site
+ *   4. 点击运行，或设置触发器定时推送
  */
 
+var SERVER_URL = 'https://shanguantang.site/zhengqi/upload-rows';
+
+// 多维表格字段名（与表头列名严格对应）
+var FIELD_NAME   = '客户经理姓名';
+var FIELD_TYPE   = '拜访对象类型';
+var FIELD_DATE   = '预约上门日期';
+var FIELD_RESULT = '拜访结果（上门后回填）';
+
 function main() {
-  // ⚠️ 改成你的 HTTPS 反代域名，例如 https://report.example.com/zhengqi/upload-rows
-  const SERVER_URL = 'https://shanguantang.site/zhengqi/upload-rows';
+  var sheet = Application.ActiveSheet;
 
-  // 如接口需要令牌，填在这里；不需要就留空字符串
-  const TOKEN = '';
+  var allRows = [];
+  var offset  = null;
 
-  // 列号（1 基）：E=5 姓名, G=7 拜访对象类型, K=11 预约上门日期, T=20 拜访结果
-  const COL = { name: 5, type: 7, appt_date: 11, result: 20 };
-  const HEADER_ROWS = 1; // 表头占的行数
+  // 分页读取全部记录（不限定视图，读取所有行）
+  do {
+    var params = {
+      MaxRecords: 500,
+      Fields:     [FIELD_NAME, FIELD_TYPE, FIELD_DATE, FIELD_RESULT],
+    };
+    if (offset) params.Offset = offset;
 
-  // 金山文档：直接用 ActiveSheet，不需要通过 ActiveWorkbook
-  const sheet = ActiveSheet;
+    var result  = sheet.Record.GetRecords(params);
+    var records = result.records || [];
+    offset      = result.nextOffset || null;
 
-  // UsedRange 在金山文档中不可用，改用遍历到指定行
-  // 假设数据不超过 1000 行（可按需调整）
-  const MAX_ROW = 1000;
-
-  const rows = [];
-  for (let r = HEADER_ROWS + 1; r <= MAX_ROW; r++) {
-    const name = readCell(sheet, r, COL.name);
-    const type = readCell(sheet, r, COL.type);
-    // 整行姓名和类型都空，视为空行；连续 10 行空行则结束
-    if (!name && !type) {
-      // 检查后续是否还有数据（最多再看 10 行）
-      let hasMore = false;
-      for (let check = r + 1; check <= Math.min(r + 10, MAX_ROW); check++) {
-        if (readCell(sheet, check, COL.name) || readCell(sheet, check, COL.type)) {
-          hasMore = true;
-          break;
-        }
-      }
-      if (!hasMore) break; // 确认后面没数据了，提前结束
-      continue;
+    for (var i = 0; i < records.length; i++) {
+      var rec  = records[i];
+      var name = toStr(rec[FIELD_NAME]);
+      var type = toStr(rec[FIELD_TYPE]);
+      if (!name && !type) continue;
+      allRows.push({
+        name:     name,
+        type:     type,
+        appt_date: toDateStr(rec[FIELD_DATE]),
+        result:   toStr(rec[FIELD_RESULT]),
+      });
     }
-    rows.push({
-      name: name,
-      type: type,
-      appt_date: readCell(sheet, r, COL.appt_date),
-      result: readCell(sheet, r, COL.result),
-    });
-  }
+  } while (offset);
 
-  if (rows.length === 0) {
+  if (allRows.length === 0) {
     console.log('没有可上传的数据行。');
-    return { success: false, message: '空数据' };
+    return;
   }
 
-  return send(SERVER_URL, TOKEN, rows);
+  console.log('读取到 ' + allRows.length + ' 条记录，正在推送...');
+
+  return fetch(SERVER_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ rows: allRows, file_name: '政企标准化信息收集V3' }),
+  }).then(function(resp) {
+    if (!resp.ok) {
+      console.log('❌ 推送失败，HTTP ' + resp.status);
+      return null;
+    }
+    return resp.json();
+  }).then(function(data) {
+    if (!data) return;
+    if (data.ok) {
+      console.log('✅ 推送成功！' + data.rows + ' 位客户经理，结果文件：' + data.generated);
+    } else {
+      console.log('❌ 服务器错误：' + data.error);
+    }
+  }).catch(function(e) {
+    console.log('❌ 网络请求失败：' + e.message);
+  });
 }
 
-/** 读单元格并归一化成字符串：日期转成 YYYY-MM-DD，其余去空白。 */
-function readCell(sheet, row, col) {
-  const cell = sheet.Cells.Item(row, col);
-  let v = cell.Value2;
+function toStr(v) {
   if (v === null || v === undefined) return '';
-  // AirSheet 日期为从 1899-12-30 起的序列号
-  if (typeof v === 'number' && isDateColumn(cell)) {
-    return serialToDate(v);
-  }
   return String(v).trim();
 }
 
-/** 单元格数字格式含日期标记时，按日期解释。 */
-function isDateColumn(cell) {
-  const fmt = String(cell.NumberFormat || '');
-  return /[ymd]/i.test(fmt) && !/[eE]\+/.test(fmt);
+// 多维表格日期字段返回 "YYYY-MM-DD" 或 "YYYY/MM/DD" 字符串，统一转为 "YYYY-MM-DD"
+function toDateStr(v) {
+  if (!v) return '';
+  return String(v).slice(0, 10).replace(/\//g, '-');
 }
 
-/** Excel 日期序列号 → YYYY-MM-DD */
-function serialToDate(serial) {
-  const ms = Math.round((serial - 25569) * 86400 * 1000); // 25569 = 1970-01-01 的序列号
-  const d = new Date(ms);
-  const p = (n) => String(n).padStart(2, '0');
-  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
-}
-
-/** POST JSON 行到服务器。 */
-function send(url, token, rows) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = 'Bearer ' + token;
-
-  try {
-    const resp = HTTP.fetch(url, {
-      method: 'POST',
-      timeout: 60000,
-      headers: headers,
-      body: JSON.stringify({ rows: rows, file_name: '政企标准化信息收集.json' }),
-    });
-    const status = resp.status;
-    const text = resp.text();
-    console.log('行数：' + rows.length + '，HTTP ' + status);
-    console.log('服务器返回：' + text);
-    if (status < 200 || status >= 300) {
-      throw new Error('上传失败 HTTP ' + status + '：' + text);
-    }
-    return { success: true, status: status, sent: rows.length, message: text };
-  } catch (e) {
-    console.log('上传异常：' + e.message);
-    return { success: false, message: e.message };
-  }
-}
-
-return main();
+main();
