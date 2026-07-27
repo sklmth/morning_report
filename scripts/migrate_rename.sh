@@ -56,7 +56,7 @@ if [[ "$changed_any" == "1" ]]; then
   log "systemctl daemon-reload…"
   systemctl daemon-reload
   for svc in "$SVC_MAIN" "$SVC_ANALYTICS"; do
-    if systemctl list-unit-files | grep -q "^$svc"; then
+    if systemctl list-unit-files "$svc" --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$svc"; then
       log "重启 $svc…"
       systemctl restart "$svc"; sleep 2
       systemctl is-active --quiet "$svc" \

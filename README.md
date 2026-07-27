@@ -529,48 +529,47 @@ sudo bash scripts/migrate_rename.sh   # 幂等，自动改 ExecStart + daemon-re
 
 之后日常更新照常用 `bash scripts/deploy.sh`。
 
-### 更新代码（统一增量部署）
+### 更新代码（统一部署）
 
-一个脚本搞定所有模块，拉一次代码后**按各模块的实际变动**分别决定动作，不全量重来：
+一个脚本搞定所有模块，拉一次代码后默认执行**全量部署**：安装依赖并重启选中的服务。当前服务器实测全量约 26 秒，速度可接受，日常优先用全量换稳定性。
 
 ```bash
 bash scripts/deploy.sh
 ```
 
-它会自动判断：
+默认动作：
 
-| 本次改了什么 | 动作 |
+| 模块 | 动作 |
 |---|---|
-| `daily_report/**` 或 `daily_report/requirements.txt` | 重启日报服务(8990)，依赖变才装 |
-| `analytics/**` `analytics/main.py` 或 `analytics/requirements.txt` | 重启经营分析(8992)，依赖变才装 |
-| `company_kb/**` 后端 `.py` | 重启知识库(8994) |
-| 任意前端（`analytics/frontend/` `company_kb/frontend/`） | 不重启，Nginx 直接生效 |
-| 纯文档 / 无相关变动 | 跳过，秒退 |
+| `daily_report/` | 安装日报依赖，编译并重启日报服务(8990) |
+| `analytics/` | 安装经营分析依赖，重启经营分析后端(8992) |
+| `company_kb/` | 安装知识库依赖，编译并重启知识库后端(8994) |
+| 前端静态文件 | Nginx 直接托管最新文件 |
 
 **只部署某个模块 / 特殊开关：**
 
 ```bash
-bash scripts/deploy.sh main         # 只部署日报服务
-bash scripts/deploy.sh analytics    # 只部署经营分析
-bash scripts/deploy.sh kb           # 只部署知识库
+bash scripts/deploy.sh main         # 全量部署日报服务
+bash scripts/deploy.sh analytics    # 全量部署经营分析
+bash scripts/deploy.sh kb           # 全量部署知识库
 KB_REBUILD=1 bash scripts/deploy.sh # 知识库文档有增删，重建向量库
-FORCE=1 bash scripts/deploy.sh      # 强制重启所有服务（排障用）
+FORCE=1 bash scripts/deploy.sh      # 强制重启所有服务（不装依赖）
 ```
 
-**全量部署（`FULL=1`）：** 忽略 git 变动，无条件装全部依赖 + 重启全部服务。适合**首次部署、依赖出问题、环境重建、迁移后**等需要彻底刷新的场景。
+**增量部署（`FULL=0`）：** 按本次 git 变动判断是否安装依赖、重启服务，适合赶时间或只想跳过无关模块时使用。
 
 ```bash
-FULL=1 bash scripts/deploy.sh            # 全量：全部模块装依赖 + 重启
-FULL=1 bash scripts/deploy.sh main       # 全量：只刷单个模块
-FULL=1 KB_REBUILD=1 bash scripts/deploy.sh   # 全量 + 知识库重建向量库
+FULL=0 bash scripts/deploy.sh            # 增量：全部模块按变动判断
+FULL=0 bash scripts/deploy.sh main       # 增量：只判断日报服务
+FULL=0 KB_REBUILD=1 bash scripts/deploy.sh   # 增量 + 知识库重建向量库
 ```
 
-| | 增量（默认） | 全量（`FULL=1`） |
+| | 全量（默认） | 增量（`FULL=0`） |
 |---|---|---|
-| 判断依据 | 只处理本次 git 有变动的模块 | 忽略变动，无条件处理选中模块 |
-| 装依赖 | requirements 变了才装 | 一律装 |
-| 重启 | 代码变了才重启 | 一律重启 |
-| 速度 | 快，日常用 | 慢，彻底 |
+| 判断依据 | 忽略变动，无条件处理选中模块 | 只处理本次 git 有变动的模块 |
+| 装依赖 | 一律装 | requirements 变了才装 |
+| 重启 | 一律重启 | 代码变了才重启 |
+| 速度 | 当前约 26 秒，日常用 | 更快，适合赶时间 |
 
 > 服务名/路径可用环境变量覆盖（`SVC_MAIN` `SVC_ANALYTICS` `SVC_KB` `PYTHON_BIN` 等）。
 > 旧脚本 `scripts/deploy_latest.sh` 仍保留（仅管 8990），推荐改用 `scripts/deploy.sh`。

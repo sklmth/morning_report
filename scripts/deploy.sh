@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 全项目统一增量部署脚本
-# 拉一次代码，按各模块的 git 变动分别决定：装依赖 / 重启 / 建库 / 什么都不做。
+# 全项目统一部署脚本
+# 默认全量部署；如需按 git 变动增量部署，可用 FULL=0。
 #
 # 服务与端口：
 #   8990  日报服务        (morning-report.service)              代码: daily_report/
@@ -9,17 +9,16 @@
 #   8991/3030 静态前端    (nginx 托管，改前端无需重启)
 #
 # 用法：
-#   bash scripts/deploy.sh              # 增量部署全部模块（按 git 变动决定动作）
-#   bash scripts/deploy.sh kb           # 只部署知识库（可选: main / analytics / kb）
-#   FULL=1 bash scripts/deploy.sh       # 全量部署：不看变动，装全部依赖 + 重启全部服务
-#   FULL=1 bash scripts/deploy.sh main  # 全量部署单个模块
+#   bash scripts/deploy.sh              # 全量部署全部模块（装依赖 + 重启）
+#   bash scripts/deploy.sh kb           # 全量部署知识库（可选: main / analytics / kb）
+#   FULL=0 bash scripts/deploy.sh       # 增量部署：按 git 变动决定动作
+#   FULL=0 bash scripts/deploy.sh main  # 增量部署单个模块
 #   FORCE=1 bash scripts/deploy.sh      # 强制重启（不装依赖，仅重启已选模块）
 #   KB_REBUILD=1 bash scripts/deploy.sh # 知识库额外重建向量库
 #
 # 增量 vs 全量：
-#   增量（默认）—— 只对本次 git 拉取有变动的模块装依赖/重启，快，日常用。
-#   全量（FULL=1）—— 忽略变动，无条件装依赖 + 重启，慢但彻底，适合首次部署 /
-#                    依赖出问题 / 环境重建 / 迁移后。
+#   全量（默认）—— 忽略 git 变动，无条件装依赖 + 重启，更稳妥。
+#   增量（FULL=0）—— 只对本次 git 拉取有变动的模块装依赖/重启，适合赶时间。
 set -Eeuo pipefail
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -27,7 +26,7 @@ BRANCH="${BRANCH:-master}"
 PYTHON_BIN="${PYTHON_BIN:-$REPO_DIR/.venv/bin/python}"
 PIP_BIN="${PIP_BIN:-$REPO_DIR/.venv/bin/pip}"
 FORCE="${FORCE:-0}"
-FULL="${FULL:-0}"         # 1 = 全量部署（忽略 git 变动，无条件装依赖+重启）
+FULL="${FULL:-1}"         # 1 = 全量部署（忽略 git 变动，无条件装依赖+重启）
 KB_REBUILD="${KB_REBUILD:-0}"
 ONLY="${1:-all}"          # all / main / analytics / kb
 
@@ -39,7 +38,7 @@ log(){ printf '[%(%F %T)T] %s\n' -1 "$*"; }
 py(){ [[ -x "$PYTHON_BIN" ]] && echo "$PYTHON_BIN" || echo python3; }
 pip_bin(){ [[ -x "$PIP_BIN" ]] && echo "$PIP_BIN" || echo pip3; }
 
-has_svc(){ systemctl list-unit-files 2>/dev/null | grep -q "^$1"; }
+has_svc(){ systemctl list-unit-files "$1" --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$1"; }
 
 restart_svc(){
   local svc="$1"

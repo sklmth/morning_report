@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 企业知识库 —— 增量部署 / 更新脚本
-# 只对本次真正变动的部分执行操作，尽量快。
+# 企业知识库 —— 部署 / 更新脚本
+# 默认全量部署；如需按 git 变动增量部署，可用 FULL=0。
 #
 # 用法：
-#   bash deploy.sh              # 增量：按 git 变动决定装依赖/重启/什么都不做
-#   FULL=1   bash deploy.sh     # 全量：无条件装依赖 + 重启（忽略 git 变动）
+#   bash deploy.sh              # 全量：无条件装依赖 + 重启（忽略 git 变动）
+#   FULL=0   bash deploy.sh     # 增量：按 git 变动决定装依赖/重启/什么都不做
 #   REBUILD=1 bash deploy.sh    # 文档(documents/)有增删时，额外重建向量库
 #   FORCE=1  bash deploy.sh     # 强制重启后端（不管有无变动）
 set -Eeuo pipefail
@@ -18,7 +18,7 @@ PIP_BIN="${PIP_BIN:-$REPO_DIR/.venv/bin/pip}"
 BRANCH="${BRANCH:-master}"
 REBUILD="${REBUILD:-0}"
 FORCE="${FORCE:-0}"
-FULL="${FULL:-0}"         # 1 = 全量：无条件装依赖 + 重启
+FULL="${FULL:-1}"         # 1 = 全量：无条件装依赖 + 重启
 # 供上层统一脚本调用：SKIP_PULL=1 时不拉代码，用 DIFF_BASE 作为对比起点
 SKIP_PULL="${SKIP_PULL:-0}"
 DIFF_BASE="${DIFF_BASE:-}"
@@ -83,7 +83,7 @@ fi
 
 if [[ "$need_restart" == "1" ]]; then
   "$(py)" -m py_compile "$KB_DIR"/{config,ingest,query,api}.py
-  if systemctl list-unit-files | grep -q "^$SERVICE"; then
+  if systemctl list-unit-files "$SERVICE" --no-legend 2>/dev/null | awk '{print $1}' | grep -Fxq "$SERVICE"; then
     systemctl restart "$SERVICE"; sleep 3
     systemctl is-active --quiet "$SERVICE" \
       && log "后端已重启 ($SERVICE active)" \
