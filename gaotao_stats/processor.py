@@ -35,12 +35,12 @@ NAMES = [
 NEW_SHEET_SUFFIX = "高套清单"
 STOCK_SHEET_SUFFIX = "存量高套清单"
 
-# ③高套清单：接入号 N=13, 客户经理 AM=38, 竣工日期 I=8, 积分 BL=63, 高套数 BR=69
-NEW_COLS = {"接入号": 13, "客户经理": 38, "竣工日期": 8, "积分": 63, "高套数": 69}
-# ④存量高套清单：接入号 E=4, 客户经理 BX=75, 竣工时间 CU=98, 积分 AK=36, 高套系数 CS=96
-STOCK_COLS = {"接入号": 4, "客户经理": 75, "竣工日期": 98, "积分": 36, "高套数": 96}
+# ③高套清单：接入号 N=13, 客户经理 AM=38, 竣工日期 I=8, 认领局向 AH=33, 积分 BL=63, 高套数 BR=69
+NEW_COLS = {"接入号": 13, "客户经理": 38, "竣工日期": 8, "认领局向": 33, "积分": 63, "高套数": 69}
+# ④存量高套清单：接入号 E=4, 客户经理 BX=75, 竣工时间 CU=98, 认领局向 DB=107, 积分 AK=36, 高套系数 CS=96
+STOCK_COLS = {"接入号": 4, "客户经理": 75, "竣工日期": 98, "认领局向": 105, "积分": 36, "高套数": 96}
 
-HEADERS = ["接入号", "客户经理", "竣工日期", "积分", "高套数"]
+HEADERS = ["接入号", "客户经理", "竣工日期", "认领局向", "积分", "高套数"]
 
 
 def _find_sheet(data, suffix, exclude_suffix=None):
@@ -107,6 +107,7 @@ def _extract(data, sheet_name, cols):
 
     t["接入号"] = t["接入号"].apply(lambda v: "" if pd.isna(v) else str(v).strip())
     t["竣工日期"] = t["竣工日期"].apply(_fmt_date)
+    t["认领局向"] = t["认领局向"].astype(str).str.strip().str.replace("^端州", "", regex=True)
     t["积分"] = pd.to_numeric(t["积分"], errors="coerce").fillna(0)
     t["高套数"] = pd.to_numeric(t["高套数"], errors="coerce").fillna(0)
 
@@ -118,7 +119,7 @@ def _extract(data, sheet_name, cols):
 
 
 def compute_tables(input_path):
-    """读取营服报表，返回 (新增高套 df, 存量高套 df)。"""
+    """读取营服报表，返回 (新增高套 df, 存量高套 df, 统计日期字符串)。"""
     data = pd.read_excel(input_path, sheet_name=None, header=None)
 
     new_sheet = _find_sheet(data, NEW_SHEET_SUFFIX, exclude_suffix=STOCK_SHEET_SUFFIX)
@@ -129,9 +130,13 @@ def compute_tables(input_path):
     if stock_sheet is None:
         raise ValueError(f"营服报表缺少「{STOCK_SHEET_SUFFIX}」sheet，实际：{list(data.keys())}")
 
+    # ③高套清单 A列（索引0）存放统计日期 rb_tj_date，数据从第3行起（索引2）
+    raw_date = data[new_sheet].iloc[2, 0]
+    date_str = _fmt_date(raw_date)
+
     df_new = _extract(data, new_sheet, NEW_COLS)
     df_stock = _extract(data, stock_sheet, STOCK_COLS)
-    return df_new, df_stock
+    return df_new, df_stock, date_str
 
 
 def process_excel(input_path, out_path=None):
@@ -139,7 +144,7 @@ def process_excel(input_path, out_path=None):
 
     返回 (df_new, df_stock, out_path)。
     """
-    df_new, df_stock = compute_tables(input_path)
+    df_new, df_stock, date_str = compute_tables(input_path)
 
     if out_path is None:
         base = os.path.splitext(os.path.basename(input_path))[0]
@@ -149,5 +154,5 @@ def process_excel(input_path, out_path=None):
         )
 
     from .styling import write_styled_workbook
-    write_styled_workbook(df_new, df_stock, out_path)
+    write_styled_workbook(df_new, df_stock, out_path, date_str)
     return df_new, df_stock, out_path

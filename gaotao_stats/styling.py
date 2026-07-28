@@ -20,8 +20,8 @@ _thin = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-HEADERS = ["接入号", "客户经理", "竣工日期", "积分", "高套数"]
-COL_WIDTHS = {"接入号": 24, "客户经理": 12, "竣工日期": 13, "积分": 10, "高套数": 10}
+HEADERS = ["接入号", "客户经理", "竣工日期", "认领局向", "积分", "高套数"]
+COL_WIDTHS = {"接入号": 24, "客户经理": 12, "竣工日期": 13, "认领局向": 20, "积分": 10, "高套数": 10}
 NUM_COLS = {"积分", "高套数"}
 
 
@@ -78,15 +78,16 @@ def _write_sheet(ws, df, title):
     ws.freeze_panes = "A3"
 
 
-def write_styled_workbook(df_new, df_stock, out_path):
+def write_styled_workbook(df_new, df_stock, out_path, date_str=""):
     """写出含「新增高套」「存量高套」两 sheet 的工作簿。"""
+    suffix = f"（{date_str}）" if date_str else ""
     wb = Workbook()
     ws1 = wb.active
     ws1.title = "新增高套"
-    _write_sheet(ws1, df_new, "客户经理新增高套清单")
+    _write_sheet(ws1, df_new, f"客户经理新增高套清单{suffix}")
 
     ws2 = wb.create_sheet("存量高套")
-    _write_sheet(ws2, df_stock, "客户经理存量高套清单")
+    _write_sheet(ws2, df_stock, f"客户经理存量高套清单{suffix}")
 
     wb.save(out_path)
     return out_path
