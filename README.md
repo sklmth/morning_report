@@ -195,6 +195,34 @@ systemctl daemon-reload
 systemctl enable --now morning-report.service
 ```
 
+### 配置 nginx（8990 端口反代）
+
+日报服务 Python 进程只监听内部 `127.0.0.1:18990`（由 systemd service 中的 `WEB_HOST`/`WEB_PORT` 环境变量控制），对外由 Nginx 在 `8990` 提供代理。把下面这段追加到现有 nginx 配置的 `http {}` 块里（或存为 `/etc/nginx/conf.d/morning-report.conf`）：
+
+```nginx
+server {
+    listen 8990;
+    server_name _;
+    charset utf-8;
+    client_max_body_size 50m;
+
+    location / {
+        proxy_pass         http://127.0.0.1:18990;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+```
+
+```bash
+nginx -t && nginx -s reload
+```
+
+> 若需要 HTTPS / 去端口（AirScript 限制），改 `listen 443 ssl` 并加上证书指令，`proxy_pass` 保持不变。
+
 ---
 
 ## 三、经营分析系统（端口 8991）

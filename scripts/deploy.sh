@@ -74,7 +74,14 @@ changed(){ echo "$CHANGED" | grep -qE "$1"; }
 want(){ [[ "$ONLY" == "all" || "$ONLY" == "$1" ]]; }
 rc=0
 
-# ── 2. 日报服务 (8990) ──────────────────────────
+# ── 2. 共享基础依赖（fastapi/uvicorn/openpyxl 等）────────────────────
+if [[ "$FULL" == "1" ]]; then
+  log "[base] 安装根目录共享依赖…"; "$(pip_bin)" install -q -r requirements.txt
+else
+  changed '^requirements\.txt' && { log "[base] 共享依赖变动 → 安装…"; "$(pip_bin)" install -q -r requirements.txt; }
+fi
+
+# ── 3. 日报服务 (8990) ──────────────────────────
 if want main; then
   need=0
   if [[ "$FULL" == "1" ]]; then
@@ -93,7 +100,7 @@ if want main; then
   fi
 fi
 
-# ── 3. 经营分析 (8992 后端 / 8991 前端) ──────────
+# ── 4. 经营分析 (8992 后端 / 8991 前端) ──────────
 if want analytics; then
   need=0
   if [[ "$FULL" == "1" ]]; then
@@ -113,7 +120,7 @@ if want analytics; then
   fi
 fi
 
-# ── 4. 知识库 (8994 后端 / 3030 前端) ────────────
+# ── 5. 知识库 (8994 后端 / 3030 前端) ────────────
 if want kb; then
   log "[kb] 交给 company_kb/deploy.sh（复用本次已拉取的变动）"
   SKIP_PULL=1 DIFF_BASE="$BEFORE" REBUILD="$KB_REBUILD" FORCE="$FORCE" FULL="$FULL" \

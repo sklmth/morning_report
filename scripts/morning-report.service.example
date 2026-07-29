@@ -10,6 +10,9 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+# 退到内部端口，让 nginx 在 :8990 做反代
+Environment=WEB_HOST=127.0.0.1
+Environment=WEB_PORT=18990
 
 [Install]
 WantedBy=multi-user.target

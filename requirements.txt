@@ -1,0 +1,14 @@
+# 项目共享基础依赖 —— 所有模块公用同一 venv，版本在此统一管理
+# 安装顺序：先装此文件，再按需装各子模块的 requirements.txt
+#   pip install -r requirements.txt
+#   pip install -r daily_report/requirements.txt   # 报表核心
+#   pip install -r analytics/requirements.txt      # 经营分析（可选）
+#   pip install -r company_kb/requirements.txt     # 知识库（可选）
+
+# ── Web 框架（analytics 和 company_kb 共用）──────────────────────────
+fastapi>=0.115.5
+uvicorn[standard]>=0.32.1
+python-multipart>=0.0.12
+
+# ── Excel 处理（daily_report 和 company_kb 共用）─────────────────────
+openpyxl>=3.1.0
