@@ -57,3 +57,12 @@ Thumbs.db
 
 # 音乐下载（本地使用，不纳入版本管理）
 /music/
+
+# 各模块运行时数据（数据库、上传文件、缓存）不入库
+# 模板/代码保留，数据文件由各环境自行生成
+**/data/*.db
+**/data/*.db-wal
+**/data/*.db-shm
+**/uploads/
+**/cache/
+/gaotao_stats/temp/
