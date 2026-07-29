@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>书架 · 小说阅读器</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="shelf-page">
+
+<!-- ── Header ── -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+      </svg>
+      <span>我的书架</span>
+    </div>
+    <button class="btn-upload-open" id="btnOpenUpload">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      上传小说
+    </button>
+  </div>
+</header>
+
+<!-- ── Book shelf ── -->
+<main class="shelf-main">
+  {% if books %}
+  <div class="book-grid">
+    {% for b in books %}
+    <div class="book-card" data-id="{{ b.id }}">
+      <a href="{{ url_for('toc', book_id=b.id) }}" class="book-cover" style="background:{{ b.cover_color }}">
+        <span class="cover-initial">{{ b.title[0] }}</span>
+        <span class="cover-title">{{ b.title }}</span>
+      </a>
+      <div class="book-info">
+        <div class="book-title">
+          <a href="{{ url_for('toc', book_id=b.id) }}">{{ b.title }}</a>
+        </div>
+        <div class="book-author">{{ b.author }}</div>
+        <div class="book-meta">
+          <span>{{ b.total_chaps }} 章</span>
+          <span>{{ '{:,}'.format(b.total_chars) }} 字</span>
+        </div>
+        <div class="book-actions">
+          <a href="{{ url_for('read', book_id=b.id, chap_num=0) }}" class="btn-read">开始阅读</a>
+          <button class="btn-del" onclick="deleteBook({{ b.id }}, '{{ b.title }}')">删除</button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-shelf">
+    <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.2">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+    <p>书架还空着</p>
+    <p class="empty-hint">上传一本 .txt 小说开始阅读</p>
+    <button class="btn-upload-open" id="btnOpenUpload2">上传小说</button>
+  </div>
+  {% endif %}
+</main>
+
+<!-- ── Upload Modal ── -->
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>上传小说</h3>
+      <button class="modal-close" id="btnCloseUpload">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="upload-zone" id="dropZone">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="1.5">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+        <p>拖拽文件到此处，或</p>
+        <label class="btn-choose-file">
+          选择文件
+          <input type="file" id="fileInput" accept=".txt" hidden>
+        </label>
+        <p class="upload-hint">支持 .txt 格式，最大 50 MB</p>
+        <p class="file-chosen" id="fileChosen"></p>
+      </div>
+      <div class="form-row">
+        <label>书名</label>
+        <input type="text" id="inputTitle" placeholder="留空则使用文件名">
+      </div>
+      <div class="form-row">
+        <label>作者</label>
+        <input type="text" id="inputAuthor" placeholder="留空则显示"未知作者"">
+      </div>
+      <div class="upload-progress" id="uploadProgress" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <p id="progressText">正在解析章节…</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" id="btnCancelUpload">取消</button>
+      <button class="btn-confirm" id="btnConfirmUpload">上传</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const modal = document.getElementById('uploadModal');
+const openBtns = [document.getElementById('btnOpenUpload'), document.getElementById('btnOpenUpload2')].filter(Boolean);
+const closeBtn = document.getElementById('btnCloseUpload');
+const cancelBtn = document.getElementById('btnCancelUpload');
+const confirmBtn = document.getElementById('btnConfirmUpload');
+const fileInput = document.getElementById('fileInput');
+const dropZone = document.getElementById('dropZone');
+const fileChosen = document.getElementById('fileChosen');
+
+openBtns.forEach(b => b && b.addEventListener('click', () => modal.classList.add('active')));
+[closeBtn, cancelBtn].forEach(b => b.addEventListener('click', () => modal.classList.remove('active')));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('active'); });
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) fileChosen.textContent = fileInput.files[0].name;
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) { fileInput.files = e.dataTransfer.files; fileChosen.textContent = file.name; }
+});
+
+confirmBtn.addEventListener('click', async () => {
+  const file = fileInput.files[0];
+  if (!file) { alert('请先选择文件'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('title', document.getElementById('inputTitle').value);
+  fd.append('author', document.getElementById('inputAuthor').value);
+  document.getElementById('uploadProgress').style.display = 'block';
+  confirmBtn.disabled = true;
+  const fill = document.getElementById('progressFill');
+  const txt  = document.getElementById('progressText');
+  fill.style.width = '30%'; txt.textContent = '上传中…';
+  try {
+    const res  = await fetch('/upload', { method: 'POST', body: fd });
+    fill.style.width = '80%'; txt.textContent = '解析章节…';
+    const data = await res.json();
+    if (data.error) { alert(data.error); fill.style.width='0'; confirmBtn.disabled=false; return; }
+    fill.style.width = '100%';
+    txt.textContent = `《${data.title}》上传成功，共 ${data.chapters} 章`;
+    setTimeout(() => location.href = `/book/${data.book_id}`, 800);
+  } catch(e) {
+    alert('上传失败，请重试'); confirmBtn.disabled = false;
+    document.getElementById('uploadProgress').style.display = 'none';
+  }
+});
+
+async function deleteBook(id, title) {
+  if (!confirm(`确定删除《${title}》吗？此操作不可撤销。`)) return;
+  const res  = await fetch(`/delete/${id}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.success) {
+    const card = document.querySelector(`.book-card[data-id="${id}"]`);
+    if (card) { card.style.opacity='0'; card.style.transform='scale(0.9)'; setTimeout(() => location.reload(), 300); }
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ chap.title }} · {{ book.title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="reader-page" id="readerBody">
+
+<!-- ── Reading progress bar ── -->
+<div class="read-progress-bar" id="readProgress"></div>
+
+<!-- ── Top bar ── -->
+<header class="reader-header" id="readerHeader">
+  <div class="rh-left">
+    <button class="rh-btn" id="btnToggleSidebar" title="目录">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="3" y1="6"  x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <a href="{{ url_for('toc', book_id=book.id) }}" class="rh-book-title">{{ book.title }}</a>
+  </div>
+  <div class="rh-center">
+    <select class="chap-select" id="chapSelect" onchange="location.href=this.value">
+      {% for c in all_chaps %}
+      <option value="{{ url_for('read', book_id=book.id, chap_num=c.chap_num) }}"
+        {% if c.chap_num == chap.chap_num %}selected{% endif %}>
+        {{ c.chap_num + 1 }}. {{ c.title }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="rh-right">
+    <button class="rh-btn" id="btnSettings" title="阅读设置">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </div>
+</header>
+
+<!-- ── Sidebar overlay ── -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- ── Sidebar ── -->
+<aside class="reader-sidebar" id="readerSidebar">
+  <div class="sidebar-head">
+    <span>目录</span>
+    <button class="rh-btn" id="btnCloseSidebar">×</button>
+  </div>
+  <div class="sidebar-book-info">
+    <div class="sb-dot" style="background:{{ book.cover_color }}">{{ book.title[0] }}</div>
+    <div>
+      <div class="sb-book-title">{{ book.title }}</div>
+      <div class="sb-author">{{ book.author }}</div>
+    </div>
+  </div>
+  <input type="text" class="sb-search" id="sbSearch" placeholder="搜索章节…">
+  <ol class="sb-chap-list" id="sbChapList">
+    {% for c in all_chaps %}
+    <li class="sb-chap-item {% if c.chap_num == chap.chap_num %}active{% endif %}"
+        data-title="{{ c.title }}">
+      <a href="{{ url_for('read', book_id=book.id, chap_num=c.chap_num) }}">
+        {{ c.chap_num + 1 }}. {{ c.title }}
+      </a>
+    </li>
+    {% endfor %}
+  </ol>
+</aside>
+
+<!-- ── Main reading area ── -->
+<div class="reader-wrap">
+  <article class="reader-content" id="readerContent">
+    <h2 class="chap-heading">{{ chap.title }}</h2>
+    <div class="chap-body" id="chapBody">
+      {% for para in chap.content.split('\n') %}
+        {% set p = para.strip() %}
+        {% if p %}
+        <p>{{ p }}</p>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="chap-word-count">本章 {{ '{:,}'.format(chap.char_count) }} 字</div>
+  </article>
+
+  <!-- Bottom navigation -->
+  <nav class="chap-nav">
+    {% if prev_c %}
+    <a href="{{ url_for('read', book_id=book.id, chap_num=prev_c.chap_num) }}" class="nav-btn nav-prev">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+      上一章
+    </a>
+    {% else %}
+    <span class="nav-btn nav-disabled">已是第一章</span>
+    {% endif %}
+
+    <a href="{{ url_for('toc', book_id=book.id) }}" class="nav-toc-btn">目录</a>
+
+    {% if next_c %}
+    <a href="{{ url_for('read', book_id=book.id, chap_num=next_c.chap_num) }}" class="nav-btn nav-next">
+      下一章
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+    </a>
+    {% else %}
+    <span class="nav-btn nav-disabled">已是最后章</span>
+    {% endif %}
+  </nav>
+</div>
+
+<!-- ── Settings panel ── -->
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <span>阅读设置</span>
+    <button class="rh-btn" id="btnCloseSettings">×</button>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-label">字体大小</label>
+    <div class="font-size-row">
+      <button class="fs-btn" id="fsMinus">A-</button>
+      <span class="fs-value" id="fsValue">18</span>
+      <button class="fs-btn" id="fsPlus">A+</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-label">背景主题</label>
+    <div class="theme-row">
+      <button class="theme-btn" data-theme="light"   style="background:#fff;color:#333">白</button>
+      <button class="theme-btn" data-theme="sepia"   style="background:#f5f0e6;color:#5c4a2a">米</button>
+      <button class="theme-btn" data-theme="green"   style="background:#c7edcc;color:#2a4a2a">绿</button>
+      <button class="theme-btn" data-theme="dark"    style="background:#1e1e2e;color:#cdd6f4">暗</button>
+      <button class="theme-btn" data-theme="darkgray" style="background:#2b2b2b;color:#e0e0e0">深</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-label">字体</label>
+    <div class="font-row">
+      <button class="font-btn" data-font="song">宋体</button>
+      <button class="font-btn" data-font="hei">黑体</button>
+      <button class="font-btn" data-font="kai">楷体</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <label class="settings-label">行距</label>
+    <div class="font-size-row">
+      <button class="fs-btn" id="lhMinus">−</button>
+      <span class="fs-value" id="lhValue">1.9</span>
+      <button class="fs-btn" id="lhPlus">+</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/reader.js') }}"></script>
+</body>
+</html>
