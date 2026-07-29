@@ -217,4 +217,6 @@ def delete_book(book_id):
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=False, port=6060, host='0.0.0.0')
+    host = os.environ.get('NOVEL_READER_HOST', '127.0.0.1')
+    port = int(os.environ.get('NOVEL_READER_PORT', '16060'))
+    app.run(debug=False, port=port, host=host)
