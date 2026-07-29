@@ -403,9 +403,12 @@ def generate_yingfu_gaotao_for_gaozhuang(yf_data):
         ("存量高套清单", 75, 36, 96),
     ]:
         # 新版营服报表给 sheet 名加了序号前缀（如 ③高套清单、④存量高套清单），
-        # 这里按后缀匹配，兼容带/不带前缀两种写法。
+        # 按后缀匹配，同时要求"存量"有无一致，避免"高套清单"错匹配"存量高套清单"。
         real_sheet = next(
-            (s for s in yf_data if s == sheet or s.endswith(sheet)),
+            (s for s in yf_data
+             if s == sheet or (
+                 s.endswith(sheet) and ("存量" in s) == ("存量" in sheet)
+             )),
             None,
         )
         if real_sheet is None:
