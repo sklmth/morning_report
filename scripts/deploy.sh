@@ -6,11 +6,12 @@
 #   8990  日报服务        (morning-report.service)              代码: daily_report/
 #   8992  经营分析后端    (morning-report-analytics.service)    代码: analytics/ (入口: analytics/main.py)
 #   8994  知识库后端      (company-kb.service)                  代码: company_kb/
+#   8996  企业微信通报后端 (wecom-notice.service)              代码: wecom_notice/，前端 nginx:6081
 #   8991/3030 静态前端    (nginx 托管，改前端无需重启)
 #
 # 用法：
 #   bash scripts/deploy.sh              # 全量部署全部模块（装依赖 + 重启）
-#   bash scripts/deploy.sh kb           # 全量部署知识库（可选: main / analytics / kb）
+#   bash scripts/deploy.sh kb           # 全量部署知识库（可选: main / analytics / kb / wecom）
 #   FULL=0 bash scripts/deploy.sh       # 增量部署：按 git 变动决定动作
 #   FULL=0 bash scripts/deploy.sh main  # 增量部署单个模块
 #   FORCE=1 bash scripts/deploy.sh      # 强制重启（不装依赖，仅重启已选模块）
@@ -28,11 +29,12 @@ PIP_BIN="${PIP_BIN:-$REPO_DIR/.venv/bin/pip}"
 FORCE="${FORCE:-0}"
 FULL="${FULL:-1}"         # 1 = 全量部署（忽略 git 变动，无条件装依赖+重启）
 KB_REBUILD="${KB_REBUILD:-0}"
-ONLY="${1:-all}"          # all / main / analytics / kb
+ONLY="${1:-all}"          # all / main / analytics / kb / wecom
 
 SVC_MAIN="${SVC_MAIN:-morning-report.service}"
 SVC_ANALYTICS="${SVC_ANALYTICS:-morning-report-analytics.service}"
 SVC_KB="${SVC_KB:-company-kb.service}"
+SVC_WECOM="${SVC_WECOM:-wecom-notice.service}"
 
 log(){ printf '[%(%F %T)T] %s\n' -1 "$*"; }
 py(){ [[ -x "$PYTHON_BIN" ]] && echo "$PYTHON_BIN" || echo python3; }
@@ -125,6 +127,25 @@ if want kb; then
   log "[kb] 交给 company_kb/deploy.sh（复用本次已拉取的变动）"
   SKIP_PULL=1 DIFF_BASE="$BEFORE" REBUILD="$KB_REBUILD" FORCE="$FORCE" FULL="$FULL" \
     bash company_kb/deploy.sh || rc=1
+fi
+
+# ── 6. 企业微信通报 (8996 后端 / 6081 前端) ──────
+if want wecom; then
+  need=0
+  if [[ "$FULL" == "1" ]]; then
+    log "[wecom] 全量 → 安装依赖…"; "$(pip_bin)" install -q -r requirements.txt; need=1
+  else
+    changed '^requirements\.txt' && { log "[wecom] 共享依赖变动 → 安装…"; "$(pip_bin)" install -q -r requirements.txt; need=1; }
+    echo "$CHANGED" | grep -qE '^(wecom_notice/|scripts/airscript_qywx_notice_upload\.js)' && need=1
+  fi
+  [[ "$FORCE" == "1" ]] && need=1
+  if [[ "$need" == "1" ]]; then
+    log "[wecom] 重启 $SVC_WECOM"
+    "$(py)" -m py_compile wecom_notice/*.py
+    restart_svc "$SVC_WECOM" || rc=1
+  else
+    log "[wecom] 后端无变动，跳过。"
+  fi
 fi
 
 log "全部完成（退出码 $rc）。"

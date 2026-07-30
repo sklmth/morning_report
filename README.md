@@ -304,6 +304,62 @@ python api.py                 # 监听 8994
 
 ---
 
+---
+
+## 五、企业微信通报（前端 6081 / 后端 8996）
+
+企业微信通报模块接收金山多维表格数据，保存到 `runtime/wecom_notice.db`，并根据规则生成未预约、明日预约汇总、已预约未回填三类通报。6081 由 Nginx 对外提供，FastAPI 只监听本机 8996，避免同一端口冲突。
+
+### 本地运行
+
+```bash
+pip install -r requirements.txt
+WECOM_NOTICE_PORT=8996 python wecom_notice/main.py
+```
+
+浏览器访问 `http://127.0.0.1:8996/docs` 可查看 API；生产环境使用 `wecom_notice/nginx.conf.example` 托管 `wecom_notice/frontend/`。
+
+### 企业微信配置
+
+不要把真实机器人地址写入代码或提交到 git。systemd 或运行环境设置：
+
+```bash
+export WECOM_NOTICE_WEBHOOK_URL='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...'
+export WECOM_NOTICE_UPLOAD_TOKEN='change-this-upload-token'
+export WECOM_NOTICE_ADMIN_TOKEN='change-this-admin-token'
+```
+
+客户经理名单和 3 位经理/副经理名单在 `wecom_notice/config.py` 中维护；补充手机号或企业微信 userid 后，机器人消息即可 @ 对应人员。
+
+### 金山文档脚本
+
+将 `scripts/airscript_qywx_notice_upload.js` 复制到金山多维表格脚本中，把 `SERVER_URL` 改为服务器地址。脚本按字段名分页读取当前活动视图，上传完整预约、回填和商机字段：
+
+```text
+https://你的域名:6081/api/airscript/upload
+```
+
+如果设置了 `WECOM_NOTICE_UPLOAD_TOKEN`，同时在脚本填写 `UPLOAD_TOKEN`。重复上传会按 record_id 或内容 hash 幂等处理。
+
+### Nginx 和 systemd
+
+```bash
+cp wecom_notice/nginx.conf.example /etc/nginx/conf.d/wecom_notice.conf
+cp scripts/wecom-notice.service.example /etc/systemd/system/wecom-notice.service
+nginx -t && nginx -s reload
+systemctl daemon-reload
+systemctl enable --now wecom-notice.service
+```
+
+生产部署可执行 `bash scripts/deploy.sh wecom`。端口验证：
+
+```bash
+curl http://127.0.0.1:8996/health
+curl http://127.0.0.1:6081/api/health
+```
+
+---
+
 ## 部署指南
 
 ### 前置条件

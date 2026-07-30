@@ -1,0 +1,21 @@
+[Unit]
+Description=WeCom Notice Service (internal port 8996, public nginx port 6081)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/morning_report
+ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python wecom_notice/main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/root/.openclaw/workspace/morning_report/runtime/wecom_notice.log
+StandardError=append:/root/.openclaw/workspace/morning_report/runtime/wecom_notice.log
+Environment=WECOM_NOTICE_HOST=127.0.0.1
+Environment=WECOM_NOTICE_PORT=8996
+Environment=WECOM_NOTICE_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=replace-me
+# Environment=WECOM_NOTICE_UPLOAD_TOKEN=replace-me
+# Environment=WECOM_NOTICE_ADMIN_TOKEN=replace-me
+
+[Install]
+WantedBy=multi-user.target

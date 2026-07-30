@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>企业微信通报</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">政企标准化信息收集 V3</p>
+      <h1>企业微信通报</h1>
+    </div>
+    <div class="toolbar">
+      <label>通报日期 <input id="target-date" type="date"></label>
+      <button id="refresh" class="icon-button" title="刷新数据" aria-label="刷新数据">↻</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="status-line" id="upload-status">正在读取数据…</section>
+    <section class="metrics" id="metrics"></section>
+
+    <section class="section">
+      <div class="section-heading">
+        <div><p class="eyebrow">预约达标</p><h2>客户经理明日预约</h2></div>
+        <span class="muted">每人至少 2 户</span>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>客户经理</th><th>预约户数</th><th>缺口</th><th>状态</th></tr></thead><tbody id="progress-table"></tbody></table></div>
+    </section>
+
+    <section class="two-column">
+      <section class="section">
+        <div class="section-heading"><div><p class="eyebrow">发送前检查</p><h2>通报预览</h2></div></div>
+        <div class="form-row">
+          <label>通报规则 <select id="rule-select"></select></label>
+          <label>@ 策略 <span id="recipient-policy" class="readonly">-</span></label>
+        </div>
+        <textarea id="preview" rows="13" readonly placeholder="选择规则后生成通报预览"></textarea>
+        <div class="action-row">
+          <button id="preview-button" class="secondary">生成预览</button>
+          <button id="send-button" class="primary">发送至企业微信</button>
+        </div>
+        <p class="hint">首次发送前需要在页面所在环境设置管理 Token，且服务端需设置企业微信机器人 Webhook。</p>
+      </section>
+
+      <section class="section">
+        <div class="section-heading"><div><p class="eyebrow">配置状态</p><h2>接收对象</h2></div></div>
+        <div id="roster" class="roster"></div>
+        <div class="token-row">
+          <label>管理 Token <input id="admin-token" type="password" placeholder="仅保存在本浏览器"></label>
+        </div>
+      </section>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><div><p class="eyebrow">预约明细</p><h2>当日预约记录</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>客户经理</th><th>企业</th><th>联系人</th><th>时间段</th><th>商机内容</th><th>交付人员</th></tr></thead><tbody id="records-table"></tbody></table></div>
+    </section>
+
+    <section class="section">
+      <div class="section-heading"><div><p class="eyebrow">可追溯</p><h2>发送日志</h2></div></div>
+      <div class="table-wrap"><table><thead><tr><th>发送时间</th><th>规则</th><th>状态</th><th>@ 对象</th><th>错误信息</th></tr></thead><tbody id="logs-table"></tbody></table></div>
+    </section>
+  </main>
+  <div id="toast" role="status"></div>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
