@@ -61,6 +61,10 @@ morning_report/
 │   ├── frontend/index.html  # 聊天前端（部署 3030）
 │   ├── documents/           # 公司原始文档（不入库）
 │   └── nginx.conf.example   # Nginx 反代示例
+├── web_page/                # ── 个人网页（React + Vite，部署 1234）──
+│   ├── src/                 # 页面源码
+│   ├── public/              # 静态资源
+│   └── package.json         # 前端构建命令
 ├── scripts/
 │   ├── deploy.sh          # 全项目统一增量部署（推荐）
 │   ├── deploy_latest.sh   # 旧脚本：仅拉代码重启 8990
@@ -546,6 +550,55 @@ FORCE=1   bash deploy.sh      # 强制重启后端（排障用）
 
 ---
 
+## 五、个人网页部署（端口 1234）
+
+个人网页位于 `web_page/`，采用 React + Vite 构建。生产环境由 Nginx 直接托管构建产物，无需常驻 Node.js 服务。
+
+**第一步：安装依赖并构建**
+
+```bash
+cd morning_report/web_page
+npm ci
+npm run build
+```
+
+构建后的静态文件位于 `web_page/dist/`。
+
+**第二步：配置 Nginx**
+
+新建 `/etc/nginx/conf.d/web-page.conf`，将 `root` 改为服务器上的实际绝对路径：
+
+```nginx
+server {
+    listen 1234;
+    server_name _;
+    charset utf-8;
+
+    root /home/ubuntu/morning_report/web_page/dist;  # ← 改为实际路径
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?)$ {
+        expires 1h;
+        add_header Cache-Control "public";
+    }
+}
+```
+
+```bash
+nginx -t && nginx -s reload
+curl -I http://127.0.0.1:1234/
+```
+
+浏览器打开 `http://服务器IP:1234` 即可访问个人网页。更新页面后执行 `npm run build`，再重新加载 Nginx 即可。
+
+> ⚠️ 云服务器安全组 / 防火墙需放行 **1234** 端口。
+
+---
+
 ### 命名重构后首次迁移（仅一次）
 
 命名规范化重构改了入口脚本路径（`src/web_server.py`→`daily_report/web_server.py`、`run_analytics.py`→`analytics/main.py`）。服务器 `git pull` 后，已安装的 systemd 服务仍指向旧路径，需运行一次迁移脚本就地更新：
@@ -655,5 +708,6 @@ python daily_report/openclaw_bridge.py ingest A.xlsx B.xlsx # 识别并处理入
 | 8992 | 经营分析后端 | FastAPI（内部，systemd: morning-report-analytics） |
 | 3030 | 企业知识库前端 | Nginx 托管，反代到 8994 |
 | 8994 | 企业知识库后端 | FastAPI（内部，systemd: company-kb） |
+| 1234 | 个人网页 | Nginx 托管 `web_page/dist/` |
 
-> 各服务相互独立，可单独部署、重启，互不影响。对外需放行 8990/8991/3030。
+> 各服务相互独立，可单独部署、重启，互不影响。对外需放行 8990/8991/3030/1234。
