@@ -297,8 +297,8 @@ def _v2_summary_row(label, frame):
     visited_count = int(frame["_visited"].sum()) if not frame.empty else 0
     converted = frame[frame["_status"] == "已转化"]
     conversion_count = int(len(converted))
-    conversion_points = float(converted["_points"].sum()) if not converted.empty else 0.0
-    conversion_gaotao = float(converted["_gaotao"].sum()) if not converted.empty else 0.0
+    conversion_points = int(round(converted["_points"].sum())) if not converted.empty else 0
+    conversion_gaotao = int(round(converted["_gaotao"].sum())) if not converted.empty else 0
     return {
         "客户经理": label,
         "预约数": appointment_count,
@@ -306,7 +306,7 @@ def _v2_summary_row(label, frame):
         "转化数": conversion_count,
         "转化积分合计": conversion_points,
         "转化高套合计": conversion_gaotao,
-        "转化率": conversion_count / appointment_count if appointment_count else 0,
+        "转化率": conversion_count / visited_count if visited_count else 0,
     }
 
 

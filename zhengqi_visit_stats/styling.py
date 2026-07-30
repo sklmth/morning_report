@@ -124,8 +124,8 @@ def _write_v2_summary_sheet(wb, summary_df, title):
                 cell.value = float(value)
                 cell.number_format = "0.0%"
             elif header in ("转化积分合计", "转化高套合计"):
-                cell.value = float(value)
-                cell.number_format = "0.000"
+                cell.value = int(value)
+                cell.number_format = "0"
             else:
                 cell.value = value
             cell.font = Font(name=FONT_NAME, size=11, bold=is_total or is_team)
