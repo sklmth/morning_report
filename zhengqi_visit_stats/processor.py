@@ -265,3 +265,121 @@ def process_rows(rows, out_path, ref_date=None):
              f"（{monday:%m.%d}-{sunday:%m.%d} 今周目标 {WEEKLY_TARGET} 户/人）")
     write_styled_table(result, out_path, title=title)
     return result, out_path
+
+
+# ── 第二版：商机转化统计 ────────────────────────────────────────────────
+_COL_OPPORTUNITY_STATUS = "商机转化情况"
+_COL_OPPORTUNITY_POINTS = "商机积分"
+_COL_OPPORTUNITY_GAOTAO = "折合高套数量"
+
+V2_HEADERS = [
+    "客户经理", "预约数", "走访数", "转化数",
+    "转化积分合计", "转化高套合计", "转化率",
+]
+V2_STATUS_ORDER = ["已转化", "储备商机", "无商机"]
+V2_TEAM_PARTY = ["麦海芬", "黄淡妮", "邱海燕", "李东", "王锦添", "黄观霞"]
+V2_TEAM_ENTERPRISE = ["谢卓和", "伍颖敏", "李玉强", "张小敏", "具进康"]
+
+
+def _v2_value(row, logical, column):
+    if logical in row:
+        return row[logical]
+    return row.get(column, "")
+
+
+def _v2_status(value):
+    value = str(value).strip()
+    return value if value in V2_STATUS_ORDER[:2] else "无商机"
+
+
+def _v2_summary_row(label, frame):
+    appointment_count = int(len(frame))
+    visited_count = int(frame["_visited"].sum()) if not frame.empty else 0
+    converted = frame[frame["_status"] == "已转化"]
+    conversion_count = int(len(converted))
+    conversion_points = float(converted["_points"].sum()) if not converted.empty else 0.0
+    conversion_gaotao = float(converted["_gaotao"].sum()) if not converted.empty else 0.0
+    return {
+        "客户经理": label,
+        "预约数": appointment_count,
+        "走访数": visited_count,
+        "转化数": conversion_count,
+        "转化积分合计": conversion_points,
+        "转化高套合计": conversion_gaotao,
+        "转化率": conversion_count / appointment_count if appointment_count else 0,
+    }
+
+
+def compute_stats_v2_from_rows(rows, ref_date=None):
+    """计算第二版累计走访、转化汇总和三个维度的商机状态分布。"""
+    if ref_date is None:
+        ref_date = date.today()
+    elif isinstance(ref_date, datetime):
+        ref_date = ref_date.date()
+
+    data = pd.DataFrame([{
+        "_name": _v2_value(row, "name", _COL_NAME_V3),
+        "_type": _v2_value(row, "type", _COL_TYPE),
+        "_appt_date": _v2_value(row, "appt_date", _COL_APPT_DATE),
+        "_result": _v2_value(row, "result", _COL_RESULT),
+        "_status": _v2_value(row, "opportunity_status", _COL_OPPORTUNITY_STATUS),
+        "_points": _v2_value(row, "opportunity_points", _COL_OPPORTUNITY_POINTS),
+        "_gaotao": _v2_value(row, "opportunity_gaotao", _COL_OPPORTUNITY_GAOTAO),
+    } for row in (rows or [])])
+
+    if data.empty:
+        data = pd.DataFrame(columns=[
+            "_name", "_type", "_appt_date", "_result", "_status", "_points", "_gaotao",
+        ])
+
+    data["_name"] = data["_name"].astype(str).str.strip()
+    data["_type"] = data["_type"].astype(str).str.strip()
+    data["_appt_date"] = pd.to_datetime(data["_appt_date"], errors="coerce").dt.date
+    data = data[
+        (data["_type"] == VISIT_TYPE)
+        & data["_appt_date"].notna()
+        & (data["_appt_date"] <= ref_date)
+        & data["_name"].isin(ROSTER)
+    ].copy()
+    data["_status"] = data["_status"].map(_v2_status)
+    result_values = data["_result"].astype(str).str.strip()
+    data["_visited"] = (
+        (result_values == VISITED_FLAG)
+        | ((result_values != "") & (result_values != "nan"))
+    )
+    data["_points"] = pd.to_numeric(data["_points"], errors="coerce").fillna(0.0)
+    data["_gaotao"] = pd.to_numeric(data["_gaotao"], errors="coerce").fillna(0.0)
+
+    summary_rows = []
+    for name in ROSTER:
+        summary_rows.append(_v2_summary_row(name, data[data["_name"] == name]))
+
+    for team_name, members in (
+        ("党政军团队合计", V2_TEAM_PARTY),
+        ("大企业团队合计", V2_TEAM_ENTERPRISE),
+    ):
+        summary_rows.append(_v2_summary_row(team_name, data[data["_name"].isin(members)]))
+    summary_rows.append(_v2_summary_row("总计", data))
+
+    pie_counts = {}
+    for group_name, members in (
+        ("总体", ROSTER),
+        ("党政军团队", V2_TEAM_PARTY),
+        ("大企业团队", V2_TEAM_ENTERPRISE),
+    ):
+        group = data[data["_name"].isin(members)]
+        counts = group["_status"].value_counts()
+        pie_counts[group_name] = {status: int(counts.get(status, 0)) for status in V2_STATUS_ORDER}
+
+    earliest = data["_appt_date"].min() if not data.empty else None
+    return pd.DataFrame(summary_rows, columns=V2_HEADERS), pie_counts, earliest, ref_date
+
+
+def process_rows_v2(rows, out_path, ref_date=None):
+    """第二版 JSON 行入口：生成累计走访及商机转化统计工作簿。"""
+    summary, pie_counts, earliest, today = compute_stats_v2_from_rows(rows, ref_date=ref_date)
+    range_text = f"{earliest:%Y.%m.%d}-{today:%Y.%m.%d}" if earliest else f"截至 {today:%Y.%m.%d}"
+
+    from .styling import write_v2_workbook
+    write_v2_workbook(summary, pie_counts, out_path, title=f"政企家庭专项走访及商机转化统计（{range_text}）")
+    return summary, out_path

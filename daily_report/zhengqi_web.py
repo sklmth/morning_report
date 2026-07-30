@@ -28,7 +28,15 @@ INPUT_DIR = os.path.join(_BASE, "input")
 OUTPUT_DIR = os.path.join(_BASE, "output")
 LATEST_INPUT = os.path.join(INPUT_DIR, "latest.xlsx")
 LATEST_ROWS = os.path.join(INPUT_DIR, "latest_rows.json")  # AirScript JSON 行推送
+LATEST_ROWS_V2 = os.path.join(INPUT_DIR, "latest_rows_v2.json")
 OUTPUT_XLSX = os.path.join(OUTPUT_DIR, "家庭专项走访统计.xlsx")
+OUTPUT_XLSX_V2 = os.path.join(OUTPUT_DIR, "家庭专项走访统计_V2.xlsx")
+
+
+def _version_paths(version):
+    if version == "v2":
+        return LATEST_ROWS_V2, OUTPUT_XLSX_V2
+    return LATEST_ROWS, OUTPUT_XLSX
 
 
 def _ensure_dirs():
@@ -37,14 +45,12 @@ def _ensure_dirs():
 
 
 def _cleanup_archives(prefix_exts):
-    """删除 INPUT_DIR 下旧的带时间戳归档，每类只保留最新 1 个。
-
-    prefix_exts: list of file extensions to clean, e.g. [".xlsx", ".json"]
-    """
+    """删除 INPUT_DIR 下旧的带时间戳归档，每类只保留最新 1 个。"""
+    latest_files = {"latest.xlsx", "latest_rows.json", "latest_rows_v2.json"}
     for ext in prefix_exts:
         candidates = [
             f for f in os.listdir(INPUT_DIR)
-            if f not in ("latest.xlsx", "latest_rows.json")
+            if f not in latest_files
             and f.endswith(ext)
             and len(f) >= 15
             and f[:8].isdigit()
@@ -79,68 +85,66 @@ def save_input(data, original_name=None):
     return LATEST_INPUT
 
 
-def save_rows(rows, original_name=None):
-    """保存 AirScript / 金山文档脚本推送来的 JSON 行。
-
-    写入 latest_rows.json（覆盖），同时按时间戳存一份归档（只保留最新 1 个）。
-    返回 latest_rows.json 路径。
-    """
+def save_rows(rows, original_name=None, version="v1"):
+    """保存 AirScript / 金山文档脚本推送来的 JSON 行。"""
     _ensure_dirs()
+    rows_path, _ = _version_paths(version)
     payload = json.dumps(rows, ensure_ascii=False)
-    with open(LATEST_ROWS, "w", encoding="utf-8") as f:
+    with open(rows_path, "w", encoding="utf-8") as f:
         f.write(payload)
-    # 归档
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe = (original_name or "rows").replace(os.sep, "_")
-    archive = os.path.join(INPUT_DIR, f"{stamp}_{safe}.json")
+    suffix = "_v2" if version == "v2" else ""
+    archive = os.path.join(INPUT_DIR, f"{stamp}_{safe}{suffix}.json")
     try:
         with open(archive, "w", encoding="utf-8") as f:
             f.write(payload)
     except OSError:
         pass
     _cleanup_archives([".json"])
-    return LATEST_ROWS
+    return rows_path
 
 
-def _newest_source():
-    """返回两种输入源中较新的一个：("xlsx", path) / ("rows", path) / None。"""
-    xlsx_m = os.path.getmtime(LATEST_INPUT) if os.path.exists(LATEST_INPUT) else None
-    rows_m = os.path.getmtime(LATEST_ROWS) if os.path.exists(LATEST_ROWS) else None
+def _newest_source(version="v1"):
+    """返回指定版本中较新的 xlsx 或 JSON 行输入。"""
+    rows_path, _ = _version_paths(version)
+    xlsx_m = os.path.getmtime(LATEST_INPUT) if version == "v1" and os.path.exists(LATEST_INPUT) else None
+    rows_m = os.path.getmtime(rows_path) if os.path.exists(rows_path) else None
     if xlsx_m is None and rows_m is None:
         return None
     if rows_m is None or (xlsx_m is not None and xlsx_m >= rows_m):
         return ("xlsx", LATEST_INPUT)
-    return ("rows", LATEST_ROWS)
+    return ("rows", rows_path)
 
 
-def generate(ref_date=None):
-    """基于最新原始输入（xlsx 或 JSON 行，取较新者）生成结果 Excel。
-
-    返回 (df, out_path)。若尚无任何输入，抛 FileNotFoundError。
-    """
-    src = _newest_source()
+def generate(ref_date=None, version="v1"):
+    """基于指定版本的最新原始输入生成结果 Excel。"""
+    src = _newest_source(version)
     if src is None:
         raise FileNotFoundError("尚未收到任何政企标准化信息收集表。")
     _ensure_dirs()
     kind, path = src
+    _, output_path = _version_paths(version)
     if kind == "xlsx":
         from zhengqi_visit_stats import process_excel
-        return process_excel(path, OUTPUT_XLSX, ref_date=ref_date)
-    # JSON 行
-    from zhengqi_visit_stats import process_rows
+        return process_excel(path, output_path, ref_date=ref_date)
     with open(path, "r", encoding="utf-8") as f:
         rows = json.load(f)
-    return process_rows(rows, OUTPUT_XLSX, ref_date=ref_date)
+    if version == "v2":
+        from zhengqi_visit_stats import process_rows_v2
+        return process_rows_v2(rows, output_path, ref_date=ref_date)
+    from zhengqi_visit_stats import process_rows
+    return process_rows(rows, output_path, ref_date=ref_date)
 
 
-def has_input():
-    """是否已收到过任一来源的原始输入。"""
-    return _newest_source() is not None
+def has_input(version="v1"):
+    """是否已收到指定版本的输入。"""
+    return _newest_source(version) is not None
 
 
-def last_received():
-    """最新原始输入的接收时间（datetime），无则 None。"""
-    src = _newest_source()
+def last_received(version="v1"):
+    """指定版本最新原始输入的接收时间（datetime），无则 None。"""
+    src = _newest_source(version)
     if src is None:
         return None
     return datetime.fromtimestamp(os.path.getmtime(src[1]))

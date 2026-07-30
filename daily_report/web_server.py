@@ -264,6 +264,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # 政企家庭专项走访统计卡片
         zq_recv = _zq.last_received()
+        zq_v2_recv = _zq.last_received(version="v2")
         if zq_recv:
             zq_meta = f"最后接收：{zq_recv.strftime('%Y-%m-%d %H:%M:%S')}（金山文档推送）"
             zq_btn = ('<a class="btn btn-primary" href="/zhengqi/latest">'
@@ -271,12 +272,30 @@ class Handler(BaseHTTPRequestHandler):
         else:
             zq_meta = "尚未收到金山文档推送的政企标准化信息收集表。"
             zq_btn = '<span class="btn" style="opacity:.5;cursor:not-allowed">暂无可下载数据</span>'
+        zq_v2_meta = (
+            f"最后接收：{zq_v2_recv.strftime('%Y-%m-%d %H:%M:%S')}（金山文档推送）"
+            if zq_v2_recv else "尚未收到第二版金山文档推送。"
+        )
+        zq_v2_btn = (
+            '<a class="btn btn-primary" href="/zhengqi/latest?version=v2">下载第二版统计报告</a>'
+            if zq_v2_recv else
+            '<span class="btn" style="opacity:.5;cursor:not-allowed">第二版暂无可下载数据</span>'
+        )
         zhengqi_card = f"""<div class="card">
-  <h2>政企家庭专项走访统计</h2>
+  <h2>政企家庭专项走访统计 V1</h2>
   <div class="meta">{zq_meta}</div>
   <div class="row-link">
-    <span style="font-size:.85rem;color:#8b949e">按当前自然周（周一~周日）实时统计</span>
+    <span style="font-size:.85rem;color:#8b949e">按当前自然周（周一~周日）实时统计，导出原有单 Sheet 报告</span>
     {zq_btn}
+  </div>
+</div>"""
+
+        zhengqi_v2_card = f"""<div class="card">
+  <h2>政企家庭专项走访统计 V2</h2>
+  <div class="meta">{zq_v2_meta}</div>
+  <div class="row-link">
+    <span style="font-size:.85rem;color:#8b949e">最早有效预约日期至今天的累计商机转化统计，导出汇总和饼图两个 Sheet</span>
+    {zq_v2_btn}
   </div>
 </div>"""
 
@@ -314,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
                 parts.append(f'<a class="btn" href="/?page={page+1}">下一页 ›</a>')
             pagination = f'<div class="pagination">{"".join(parts)}<span style="color:#8b949e;font-size:.8rem">共 {total} 条</span></div>'
 
-        body = zhengqi_card + upload_form + poll_form + cards + pagination
+        body = zhengqi_card + zhengqi_v2_card + upload_form + poll_form + cards + pagination
         self._send(200, _page("早会数据处理系统", body))
 
     # ── GET /report/<id> ──
@@ -530,20 +549,27 @@ class Handler(BaseHTTPRequestHandler):
             if isinstance(payload, list):
                 rows = payload
                 filename = "rows"
+                version = "v1"
             elif isinstance(payload, dict):
                 rows = payload.get("rows")
                 filename = payload.get("file_name") or "rows"
+                version = payload.get("report_version", "v1")
             else:
                 rows = None
                 filename = "rows"
+                version = "v1"
+
+            if version not in ("v1", "v2"):
+                self._send_json({"ok": False, "error": "不支持的 report_version"}, 400)
+                return
 
             if not isinstance(rows, list) or not rows:
                 self._send_json({"ok": False, "error": "缺少 rows 数组或为空"}, 400)
                 return
 
-            _zq.save_rows(rows, original_name=filename)
-            df, out_path = _zq.generate()
-            n = max(0, len(df) - 1)  # 去掉合计行
+            _zq.save_rows(rows, original_name=filename, version=version)
+            df, out_path = _zq.generate(version=version)
+            n = max(0, len(df) - (1 if version == "v1" else 3))
             self._send_json({
                 "ok": True,
                 "received": filename,
@@ -557,10 +583,15 @@ class Handler(BaseHTTPRequestHandler):
     # ── GET /zhengqi/latest ── 下载最新统计结果（按当天口径实时生成）
     def _handle_zhengqi_download(self):
         try:
-            if not _zq.has_input():
-                self._send(404, _page("暂无数据", "<p>尚未收到政企标准化信息收集表。</p>"))
+            parsed = urllib.parse.urlparse(self.path)
+            version = urllib.parse.parse_qs(parsed.query).get("version", ["v1"])[0]
+            if version not in ("v1", "v2"):
+                self._send(400, _page("参数错误", "<p>不支持的统计版本。</p>"))
                 return
-            _df, out_path = _zq.generate()
+            if not _zq.has_input(version=version):
+                self._send(404, _page("暂无数据", "<p>尚未收到对应版本的政企标准化信息收集表。</p>"))
+                return
+            _df, out_path = _zq.generate(version=version)
             with open(out_path, "rb") as f:
                 data = f.read()
             fname = os.path.basename(out_path)

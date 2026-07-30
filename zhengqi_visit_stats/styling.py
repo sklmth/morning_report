@@ -9,10 +9,13 @@
 """
 
 from openpyxl import Workbook
+from openpyxl.chart import PieChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .processor import WEEKLY_TARGET
+from .processor import WEEKLY_TARGET, V2_HEADERS, V2_STATUS_ORDER
 
 # —— 复用模板配色 ——
 FONT_NAME = "微软雅黑"
@@ -83,5 +86,123 @@ def write_styled_table(df, out_path, title="政企家庭专项走访统计（今
         ws.column_dimensions[get_column_letter(j)].width = widths.get(h, 10)
     ws.row_dimensions[1].height = 26
 
+    wb.save(out_path)
+    return out_path
+
+
+V2_TEAM_FILL = PatternFill(patternType="solid", fgColor="E8F0FE")
+V2_TOTAL_FILL = PatternFill(patternType="solid", fgColor="FFF4D6")
+V2_PIE_COLORS = ["2A78D6", "EB6834", "1BAF7A"]
+
+
+def _write_v2_summary_sheet(wb, summary_df, title):
+    ws = wb.active
+    ws.title = "统计汇总"
+    last_col = get_column_letter(len(V2_HEADERS))
+    ws.merge_cells(f"A1:{last_col}1")
+    title_cell = ws["A1"]
+    title_cell.value = title
+    title_cell.font = Font(name=FONT_NAME, size=12, bold=True, color=WHITE)
+    title_cell.fill = TITLE_FILL
+    title_cell.alignment = CENTER
+
+    for col, header in enumerate(V2_HEADERS, start=1):
+        cell = ws.cell(row=2, column=col, value=header)
+        cell.font = Font(name=FONT_NAME, size=11, bold=True)
+        cell.fill = HEADER_FILL
+        cell.alignment = CENTER
+        cell.border = BORDER
+
+    for row_idx, (_, row) in enumerate(summary_df.iterrows(), start=3):
+        name = str(row["客户经理"])
+        is_total = name == "总计"
+        is_team = name.endswith("团队合计")
+        for col, header in enumerate(V2_HEADERS, start=1):
+            cell = ws.cell(row=row_idx, column=col)
+            value = row[header]
+            if header == "转化率":
+                cell.value = float(value)
+                cell.number_format = "0.0%"
+            elif header in ("转化积分合计", "转化高套合计"):
+                cell.value = float(value)
+                cell.number_format = "0.000"
+            else:
+                cell.value = value
+            cell.font = Font(name=FONT_NAME, size=11, bold=is_total or is_team)
+            cell.alignment = CENTER
+            cell.border = BORDER
+            if is_total:
+                cell.fill = V2_TOTAL_FILL
+            elif is_team:
+                cell.fill = V2_TEAM_FILL
+
+    widths = {
+        "客户经理": 18, "预约数": 10, "走访数": 10, "转化数": 10,
+        "转化积分合计": 16, "转化高套合计": 16, "转化率": 12,
+    }
+    for col, header in enumerate(V2_HEADERS, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = widths[header]
+    ws.row_dimensions[1].height = 26
+    ws.freeze_panes = "A3"
+
+
+def _write_v2_pie_sheet(wb, pie_counts):
+    ws = wb.create_sheet("商机转化饼图")
+    ws["A1"] = "商机转化情况分布"
+    ws["A1"].font = Font(name=FONT_NAME, size=12, bold=True, color=WHITE)
+    ws["A1"].fill = TITLE_FILL
+    ws["A1"].alignment = CENTER
+    ws.merge_cells("A1:D1")
+
+    group_columns = [("总体", 1), ("党政军团队", 5), ("大企业团队", 9)]
+    for group_name, start_col in group_columns:
+        ws.cell(row=3, column=start_col, value="商机转化情况")
+        ws.cell(row=3, column=start_col + 1, value="数量")
+        for col in (start_col, start_col + 1):
+            cell = ws.cell(row=3, column=col)
+            cell.font = Font(name=FONT_NAME, size=11, bold=True)
+            cell.fill = HEADER_FILL
+            cell.alignment = CENTER
+            cell.border = BORDER
+
+        counts = pie_counts.get(group_name, {})
+        for row_idx, status in enumerate(V2_STATUS_ORDER, start=4):
+            label = ws.cell(row=row_idx, column=start_col, value=status)
+            value = ws.cell(row=row_idx, column=start_col + 1, value=counts.get(status, 0))
+            for cell in (label, value):
+                cell.font = Font(name=FONT_NAME, size=11)
+                cell.alignment = CENTER
+                cell.border = BORDER
+
+        chart = PieChart()
+        labels = Reference(ws, min_col=start_col, min_row=4, max_row=6)
+        values = Reference(ws, min_col=start_col + 1, min_row=3, max_row=6)
+        chart.add_data(values, titles_from_data=True)
+        chart.set_categories(labels)
+        chart.title = group_name
+        chart.height = 8
+        chart.width = 12
+        chart.varyColors = False
+        chart.dataLabels = DataLabelList()
+        chart.dataLabels.showPercent = True
+        chart.dataLabels.showLeaderLines = True
+        series = chart.series[0]
+        series.data_points = []
+        for index, color in enumerate(V2_PIE_COLORS):
+            point = DataPoint(idx=index)
+            point.graphicalProperties.solidFill = color
+            point.graphicalProperties.line.noFill = True
+            series.data_points.append(point)
+        ws.add_chart(chart, f"{get_column_letter(start_col)}9")
+
+    for col in range(1, 12):
+        ws.column_dimensions[get_column_letter(col)].width = 14
+
+
+def write_v2_workbook(summary_df, pie_counts, out_path, title):
+    """生成第二版统计汇总与商机转化饼图工作簿。"""
+    wb = Workbook()
+    _write_v2_summary_sheet(wb, summary_df, title)
+    _write_v2_pie_sheet(wb, pie_counts)
     wb.save(out_path)
     return out_path

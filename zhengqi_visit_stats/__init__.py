@@ -8,13 +8,13 @@
 """
 
 from .processor import (  # noqa: F401
-    process_excel, process_rows,
-    compute_stats, compute_stats_from_rows,
+    process_excel, process_rows, process_rows_v2,
+    compute_stats, compute_stats_from_rows, compute_stats_v2_from_rows,
     VISIT_TYPE,
 )
 
 __all__ = [
-    "process_excel", "process_rows",
-    "compute_stats", "compute_stats_from_rows",
+    "process_excel", "process_rows", "process_rows_v2",
+    "compute_stats", "compute_stats_from_rows", "compute_stats_v2_from_rows",
     "VISIT_TYPE",
 ]
