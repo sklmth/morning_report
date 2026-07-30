@@ -47,6 +47,14 @@ venv/
 /assets/*.xlsx
 !/assets/早会五张表.xlsx
 
+# Frontend build artifacts
+/web_page/node_modules/
+/web_page/dist/
+/web_page/.vite/
+/web_page/.env
+/web_page/.env.*
+!/web_page/.env.example
+
 # IDE files
 .vscode/
 .idea/
