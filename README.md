@@ -325,21 +325,13 @@ WECOM_NOTICE_PORT=8996 python wecom_notice/main.py
 
 ```bash
 export WECOM_NOTICE_WEBHOOK_URL='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...'
-export WECOM_NOTICE_UPLOAD_TOKEN='change-this-upload-token'
-export WECOM_NOTICE_ADMIN_TOKEN='change-this-admin-token'
 ```
 
 客户经理名单和 3 位经理/副经理名单在 `wecom_notice/config.py` 中维护；补充手机号或企业微信 userid 后，机器人消息即可 @ 对应人员。
 
 ### 金山文档脚本
 
-将 `scripts/airscript_qywx_notice_upload.js` 复制到金山多维表格脚本中，把 `SERVER_URL` 改为服务器地址。脚本按字段名分页读取当前活动视图，上传完整预约、回填和商机字段：
-
-```text
-https://你的域名:6081/api/airscript/upload
-```
-
-如果设置了 `WECOM_NOTICE_UPLOAD_TOKEN`，同时在脚本填写 `UPLOAD_TOKEN`。重复上传会按 record_id 或内容 hash 幂等处理。
+将 `scripts/airscript_qywx_notice_upload.js` 复制到金山多维表格脚本中，脚本已预设上传地址 `https://shanguantang.site/api/airscript/upload`。脚本按字段名分页读取当前活动视图，上传完整预约、回填和商机字段。重复上传会按 record_id 或内容 hash 幂等处理。
 
 ### Nginx 和 systemd
 

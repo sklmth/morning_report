@@ -1,7 +1,6 @@
 const dateInput = document.querySelector('#target-date');
 const ruleSelect = document.querySelector('#rule-select');
 const preview = document.querySelector('#preview');
-const adminToken = document.querySelector('#admin-token');
 const policyText = document.querySelector('#recipient-policy');
 let rules = [];
 
@@ -40,7 +39,14 @@ function renderRecords(records) {
   document.querySelector('#records-table').innerHTML = records.length ? records.map(record => `<tr><td>${esc(record.manager_name)}</td><td>${esc(record.company_name || '未填写')}</td><td>${esc(record.contact_name_title || '未填写')}</td><td>${esc(record.appointment_slot || '未填写')}</td><td>${esc(record.opportunity_content || record.opportunity_type || '未填写')}</td><td>${esc(record.delivery_staff_name || '未填写')}</td></tr>`).join('') : '<tr><td colspan="6" class="muted">暂无记录</td></tr>';
 }
 function renderRoster(data) {
-  document.querySelector('#roster').innerHTML = `<div class="roster-group"><strong>客户经理（${data.customer_managers.length}）</strong><div class="roster-names">${data.customer_managers.map(person => esc(person.name)).join('、')}</div></div><div class="roster-group"><strong>经理/副经理（${data.manager_recipients.length}）</strong><div class="roster-names">${data.manager_recipients.map(person => esc(person.name)).join('、')}</div></div>`;
+  const teams = data.customer_managers.reduce((groups, person) => {
+    const team = person.team || '未分组';
+    (groups[team] ||= []).push(person);
+    return groups;
+  }, {});
+  const customerManagers = Object.entries(teams).map(([team, people]) => `<div class="roster-group"><strong>${esc(team)}（${people.length}）</strong><div class="roster-names">${people.map(person => esc(person.name)).join('、')}</div></div>`).join('');
+  const management = `<div class="roster-group"><strong>经理/副经理（${data.manager_recipients.length}）</strong><div class="roster-names">${data.manager_recipients.map(person => esc(person.name)).join('、')}</div></div>`;
+  document.querySelector('#roster').innerHTML = customerManagers + management;
 }
 function renderLogs(logs) {
   document.querySelector('#logs-table').innerHTML = logs.length ? logs.map(log => `<tr><td>${esc(log.sent_at)}</td><td>${esc(log.rule_key)}</td><td>${log.status === 'success' ? '<span class="badge ok">成功</span>' : '<span class="badge fail">失败</span>'}</td><td>${esc(JSON.parse(log.mentioned_json || '[]').map(person => person.name).join('、'))}</td><td>${esc(log.error)}</td></tr>`).join('') : '<tr><td colspan="5" class="muted">暂无发送日志</td></tr>';
@@ -64,7 +70,7 @@ async function previewReport() {
 }
 async function sendReport() {
   if (!preview.value && !window.confirm('还没有生成预览，仍要发送吗？')) return;
-  const result = await Api.send({ rule_key: ruleSelect.value, target_date: dateInput.value }, adminToken.value);
+  const result = await Api.send({ rule_key: ruleSelect.value, target_date: dateInput.value });
   toast(`发送成功，已通知 ${result.mentioned.length} 人`); await refresh();
 }
 dateInput.value = localDate();

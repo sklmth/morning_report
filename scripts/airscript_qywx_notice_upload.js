@@ -1,12 +1,10 @@
 // 企业微信通报：金山多维表格完整记录上传
-var SERVER_URL = 'https://你的域名:6081/api/airscript/upload';
-var UPLOAD_TOKEN = ''; // 如果服务端设置 WECOM_NOTICE_UPLOAD_TOKEN，请填入同值
+var SERVER_URL = 'https://shanguantang.site/api/airscript/upload';
 var FIELDS = [
     '客户经理姓名', '拜访对象类型', '企业名称', '拜访对象姓名+职位', '拜访对象手机号',
     '预约上门日期', '预约时间段', '是否需要集中派单', '预约交付人员姓名', '商机类型',
     '商机类型:补充填空', '商机内容（上门计划）', '智慧座舱图是否已发群', '豆包BEIK图是否已发群',
-    '拜访结果（上门后回填）', '实际上门拜访日期', '拜访情况', '拜访图片_1', '拜访图片_2',
-    '拜访图片_3', '拜访图片_4', '拜访图片_5', '商机转化情况', '商机积分', '折合高套数量',
+    '拜访结果（上门后回填）', '实际上门拜访日期', '拜访情况', '商机转化情况', '商机积分', '折合高套数量',
     '计划受理时间', '改约时间', '改约原因/无法上门原因'
 ];
 
@@ -48,7 +46,6 @@ function main() {
         rows: allRows
     };
     var headers = { 'Content-Type': 'application/json' };
-    if (UPLOAD_TOKEN) headers['X-Wecom-Token'] = UPLOAD_TOKEN;
     try {
         var response = HTTP.fetch(SERVER_URL, {
             method: 'POST', timeout: 30000, headers: headers, body: JSON.stringify(payload)

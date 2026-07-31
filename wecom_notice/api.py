@@ -2,11 +2,11 @@ from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from wecom_notice.config import ADMIN_TOKEN, CUSTOMER_MANAGERS, MANAGER_RECIPIENTS, UPLOAD_TOKEN
+from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
 from wecom_notice.db import add_send_log, get_records, get_rule, get_rules, get_send_logs, init_db, latest_upload, save_rule, upsert_records
 from wecom_notice.parser import normalize_record
 from wecom_notice.reporter import build_report
@@ -50,15 +50,6 @@ def tomorrow() -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
-def validate_token(expected: str, provided: str | None, purpose: str) -> None:
-    if expected and provided != expected:
-        raise HTTPException(status_code=401, detail=f"{purpose} token 无效")
-
-
-def require_admin(token: str | None) -> None:
-    validate_token(ADMIN_TOKEN, token, "管理")
-
-
 def get_report(payload: ReportRequest) -> tuple[dict[str, Any], dict[str, Any]]:
     rule = get_rule(payload.rule_key)
     if not rule:
@@ -74,8 +65,7 @@ def health():
 
 
 @app.post("/api/airscript/upload")
-def airscript_upload(payload: UploadRequest, x_wecom_token: str | None = Header(None)):
-    validate_token(UPLOAD_TOKEN, x_wecom_token, "上传")
+def airscript_upload(payload: UploadRequest):
     if payload.report_version != "wecom_notice_v1":
         raise HTTPException(status_code=400, detail="不支持的 report_version")
     if not payload.rows:
@@ -127,8 +117,7 @@ def rules():
 
 
 @app.put("/api/config/rules/{rule_key}")
-def update_rule(rule_key: str, payload: RuleUpdate, x_admin_token: str | None = Header(None)):
-    require_admin(x_admin_token)
+def update_rule(rule_key: str, payload: RuleUpdate):
     try:
         return {"rule": save_rule(rule_key, payload.model_dump(exclude_none=True))}
     except ValueError as exc:
@@ -142,8 +131,7 @@ def preview_report(payload: ReportRequest):
 
 
 @app.post("/api/report/send")
-def send_report(payload: ReportRequest, x_admin_token: str | None = Header(None)):
-    require_admin(x_admin_token)
+def send_report(payload: ReportRequest):
     rule, report = get_report(payload)
     record_ids = [record["id"] for record in report["records"]]
     try:
@@ -156,8 +144,8 @@ def send_report(payload: ReportRequest, x_admin_token: str | None = Header(None)
 
 
 @app.post("/api/scheduler/run-once")
-def run_once(payload: ReportRequest, x_admin_token: str | None = Header(None)):
-    return send_report(payload, x_admin_token)
+def run_once(payload: ReportRequest):
+    return send_report(payload)
 
 
 @app.get("/api/send-logs")

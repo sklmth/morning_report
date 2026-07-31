@@ -29,7 +29,7 @@ FIELD_MAP = {
     "改约时间": "reschedule_time",
     "改约原因/无法上门原因": "reschedule_reason",
 }
-IMAGE_FIELDS = [f"拜访图片_{index}" for index in range(1, 6)]
+EXCLUDED_UPLOAD_FIELDS = {"拜访照片", *(f"拜访图片_{index}" for index in range(1, 6))}
 
 
 def text(value: Any) -> str:
@@ -61,16 +61,14 @@ def number(value: Any) -> float:
 
 
 def normalize_record(item: dict[str, Any]) -> dict[str, Any]:
-    fields = item.get("fields") if isinstance(item.get("fields"), dict) else item
+    raw_fields = item.get("fields") if isinstance(item.get("fields"), dict) else item
+    fields = {key: value for key, value in raw_fields.items() if key not in EXCLUDED_UPLOAD_FIELDS}
     normalized = {column: "" for column in FIELD_MAP.values()}
     for source, target in FIELD_MAP.items():
         value = fields.get(source, "")
         normalized[target] = date_text(value) if target.endswith("_date") or target.endswith("_time") else text(value)
 
-    normalized["images_json"] = json.dumps(
-        {field: text(fields.get(field, "")) for field in IMAGE_FIELDS if text(fields.get(field, ""))},
-        ensure_ascii=False,
-    )
+    normalized["images_json"] = "{}"
     normalized["opportunity_points"] = number(fields.get("商机积分", ""))
     normalized["gaotao_count"] = number(fields.get("折合高套数量", ""))
     source_record_id = text(item.get("record_id") or item.get("id"))

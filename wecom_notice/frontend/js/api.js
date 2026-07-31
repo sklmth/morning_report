@@ -6,9 +6,9 @@ const Api = (() => {
     if (!response.ok) throw new Error(body.detail || `请求失败：${response.status}`);
     return body;
   }
-  const json = (method, path, body, token) => request(path, {
+  const json = (method, path, body) => request(path, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Admin-Token': token } : {}) },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   return {
@@ -18,6 +18,6 @@ const Api = (() => {
     roster: () => request('/config/roster'),
     logs: () => request('/send-logs'),
     preview: (body) => json('POST', '/report/preview', body),
-    send: (body, token) => json('POST', '/report/send', body, token),
+    send: (body) => json('POST', '/report/send', body),
   };
 })();
