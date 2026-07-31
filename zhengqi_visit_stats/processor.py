@@ -38,6 +38,9 @@ ROSTER = [
 # 实习期（不统计）
 EXCLUDED = {"邓天群"}
 
+# V2 固定统计截至日期
+V2_REPORT_DATE = date(2026, 7, 30)
+
 # 表头名 -> 逻辑字段（按名匹配，容忍列顺序变化）
 # V2/V3 版本列名变化
 _COL_NAME = "填写人员姓名"
@@ -313,7 +316,7 @@ def _v2_summary_row(label, frame):
 def compute_stats_v2_from_rows(rows, ref_date=None):
     """计算第二版累计走访、转化汇总和三个维度的商机状态分布。"""
     if ref_date is None:
-        ref_date = date.today()
+        ref_date = V2_REPORT_DATE
     elif isinstance(ref_date, datetime):
         ref_date = ref_date.date()
 
@@ -376,10 +379,14 @@ def compute_stats_v2_from_rows(rows, ref_date=None):
 
 
 def process_rows_v2(rows, out_path, ref_date=None):
-    """第二版 JSON 行入口：生成累计走访及商机转化统计工作簿。"""
-    summary, pie_counts, earliest, today = compute_stats_v2_from_rows(rows, ref_date=ref_date)
-    range_text = f"{earliest:%Y.%m.%d}-{today:%Y.%m.%d}" if earliest else f"截至 {today:%Y.%m.%d}"
+    """第二版 JSON 行入口：生成 7 月份走访及商机转化统计工作簿。"""
+    summary, pie_counts, _earliest, report_date = compute_stats_v2_from_rows(rows, ref_date=ref_date)
 
     from .styling import write_v2_workbook
-    write_v2_workbook(summary, pie_counts, out_path, title=f"政企家庭专项走访及商机转化统计（{range_text}）")
+    write_v2_workbook(
+        summary,
+        pie_counts,
+        out_path,
+        title=f"政企家庭专项走访及商机转化统计（{report_date:%Y年}{report_date.month}月份，截至{report_date.day}日）",
+    )
     return summary, out_path

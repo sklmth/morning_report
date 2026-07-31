@@ -10,11 +10,11 @@
 from .processor import (  # noqa: F401
     process_excel, process_rows, process_rows_v2,
     compute_stats, compute_stats_from_rows, compute_stats_v2_from_rows,
-    VISIT_TYPE,
+    VISIT_TYPE, V2_REPORT_DATE,
 )
 
 __all__ = [
     "process_excel", "process_rows", "process_rows_v2",
     "compute_stats", "compute_stats_from_rows", "compute_stats_v2_from_rows",
-    "VISIT_TYPE",
+    "VISIT_TYPE", "V2_REPORT_DATE",
 ]

@@ -294,7 +294,7 @@ class Handler(BaseHTTPRequestHandler):
   <h2>政企家庭专项走访统计 V2</h2>
   <div class="meta">{zq_v2_meta}</div>
   <div class="row-link">
-    <span style="font-size:.85rem;color:#8b949e">最早有效预约日期至今天的累计商机转化统计，导出汇总和饼图两个 Sheet</span>
+    <span style="font-size:.85rem;color:#8b949e">7月份累计商机转化统计，数据截至7月30日，导出汇总和饼图两个 Sheet</span>
     {zq_v2_btn}
   </div>
 </div>"""
@@ -580,7 +580,7 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send_json({"ok": False, "error": str(e)}, 500)
 
-    # ── GET /zhengqi/latest ── 下载最新统计结果（按当天口径实时生成）
+    # ── GET /zhengqi/latest ── 下载最新统计结果（按报告口径实时生成）
     def _handle_zhengqi_download(self):
         try:
             parsed = urllib.parse.urlparse(self.path)
