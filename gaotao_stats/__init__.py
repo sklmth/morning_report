@@ -8,7 +8,7 @@
 """
 
 from .processor import (  # noqa: F401
-    process_excel, compute_tables, NAMES,
+    process_excel, compute_tables, NAMES, GAOZHUANG_NAMES,
 )
 
-__all__ = ["process_excel", "compute_tables", "NAMES"]
+__all__ = ["process_excel", "compute_tables", "NAMES", "GAOZHUANG_NAMES"]

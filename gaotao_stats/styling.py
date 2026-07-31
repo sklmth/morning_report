@@ -62,8 +62,8 @@ def _write_sheet(ws, df, title):
     total_row = 2 + len(df) + 1
     ws.cell(row=total_row, column=1, value="合计")
     ws.cell(row=total_row, column=2, value=f"{len(df)} 户")
-    ws.cell(row=total_row, column=4, value=float(df["积分"].sum()) if len(df) else 0)
-    ws.cell(row=total_row, column=5, value=float(df["高套数"].sum()) if len(df) else 0)
+    ws.cell(row=total_row, column=5, value=float(df["积分"].sum()) if len(df) else 0)
+    ws.cell(row=total_row, column=6, value=float(df["高套数"].sum()) if len(df) else 0)
     for j in range(1, ncol + 1):
         c = ws.cell(row=total_row, column=j)
         c.font = Font(name=FONT_NAME, size=11, bold=True)
@@ -84,10 +84,10 @@ def write_styled_workbook(df_new, df_stock, out_path, date_str=""):
     wb = Workbook()
     ws1 = wb.active
     ws1.title = "新增高套"
-    _write_sheet(ws1, df_new, f"客户经理新增高套清单{suffix}")
+    _write_sheet(ws1, df_new, f"客户经理及高端装维新增高套清单{suffix}")
 
     ws2 = wb.create_sheet("存量高套")
-    _write_sheet(ws2, df_stock, f"客户经理存量高套清单{suffix}")
+    _write_sheet(ws2, df_stock, f"客户经理及高端装维存量高套清单{suffix}")
 
     wb.save(out_path)
     return out_path

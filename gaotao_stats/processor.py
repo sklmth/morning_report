@@ -16,20 +16,25 @@
     AK 积分       -> 36
     CS 高套系数   -> 96（作为高套数）
 
-客户经理名单沿用「早会五张表」定义（daily_report.function.names）。
-仅保留名单内客户经理的记录。
+人员名单沿用「早会五张表」定义（daily_report.function.names、gaozhuang_names）。
+仅保留名单内客户经理和高端装维人员的记录。
 """
 
 import os
 
 import pandas as pd
 
-# 客户经理名单（与 daily_report/function.py 的 names 保持一致）
-NAMES = [
+# 客户经理和高端装维人员名单（与 daily_report/function.py 保持一致）
+CUSTOMER_MANAGER_NAMES = [
     "麦海芬", "黄淡妮", "邱海燕", "李东",
     "王锦添", "黄观霞", "谢卓和", "伍颖敏",
-    "李玉强", "张小敏", "具进康", "邓天群", 
+    "李玉强", "张小敏", "具进康", "邓天群",
 ]
+GAOZHUANG_NAMES = [
+    "陈梓铭", "程庆德", "刘奇峻", "龙家宝",
+    "罗紫杰", "莫健铭", "吴广仁", "王洪明",
+]
+NAMES = CUSTOMER_MANAGER_NAMES + GAOZHUANG_NAMES
 
 # sheet 名 -> 列映射（接入号 / 客户经理 / 竣工日期 / 积分 / 高套数）
 NEW_SHEET_SUFFIX = "高套清单"
@@ -96,7 +101,7 @@ def _fmt_date(val):
 
 
 def _extract(data, sheet_name, cols):
-    """从指定 sheet 提取明细，返回列为 HEADERS 的 DataFrame，仅保留名单内客户经理。"""
+    """从指定 sheet 提取明细，仅保留名单内客户经理和高端装维人员。"""
     df = data[sheet_name]
     idx = [cols[h] for h in HEADERS]
     # 首行为表头，从第 2 行起取数据
