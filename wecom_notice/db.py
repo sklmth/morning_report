@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS visit_records (
     raw_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_visit_records_appointment ON visit_records(appointment_date, manager_name);
+CREATE INDEX IF NOT EXISTS idx_visit_records_uploaded_at ON visit_records(uploaded_at);
 
 CREATE TABLE IF NOT EXISTS notification_rules (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,6 +68,7 @@ CREATE TABLE IF NOT EXISTS send_logs (
     webhook_response TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT ''
 );
+CREATE INDEX IF NOT EXISTS idx_send_logs_sent_at ON send_logs(sent_at);
 
 CREATE TABLE IF NOT EXISTS fill_statistics (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
