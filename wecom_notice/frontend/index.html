@@ -395,7 +395,7 @@
             <tr><td colspan="6" class="text-center text-stone-400 py-6">暂无运行日志</td></tr>
           </template>
           <template x-for="l in lg.list" :key="l.id">
-            <tr>
+            <tr class="cursor-pointer" @click="showLogDetail(l)">
               <td class="whitespace-nowrap text-xs text-stone-500" x-text="fmt(l.sent_at)"></td>
               <td class="text-xs font-mono text-stone-600" x-text="l.rule_key"></td>
               <td>
@@ -406,12 +406,10 @@
               <td class="text-xs text-stone-500 whitespace-nowrap" x-text="logRecipients(l)"></td>
               <td class="max-w-xs">
                 <span class="text-xs text-stone-600 block truncate" style="max-width:260px"
-                  :title="l.message_text"
                   x-text="l.message_text?l.message_text.slice(0,60)+(l.message_text.length>60?'…':''):'—'"></span>
               </td>
               <td class="text-xs text-red-500 max-w-xs">
-                <span :title="l.error"
-                  x-text="l.error?l.error.slice(0,40)+(l.error.length>40?'…':''):'—'"></span>
+                <span x-text="l.error?l.error.slice(0,40)+(l.error.length>40?'…':''):'—'"></span>
               </td>
             </tr>
           </template>
@@ -430,6 +428,52 @@
     <div class="flex justify-end gap-2">
       <button class="btn-s" @click="dlg.cb(false)">取消</button>
       <button class="btn-p" @click="dlg.cb(true)">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日志详情弹窗 -->
+<div x-show="logModal.show" x-cloak
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/25"
+  @click.self="logModal.show=false">
+  <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4">
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm font-medium text-stone-700">日志详情</p>
+      <button @click="logModal.show=false"
+        class="w-6 h-6 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 text-base leading-none">✕</button>
+    </div>
+    <template x-if="logModal.item">
+      <div class="space-y-3 text-sm">
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-stone-400 w-14 shrink-0">时间</span>
+          <span class="text-stone-700" x-text="fmt(logModal.item.sent_at)"></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-stone-400 w-14 shrink-0">规则</span>
+          <span class="font-mono text-stone-700" x-text="logModal.item.rule_key"></span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-stone-400 w-14 shrink-0">状态</span>
+          <span x-show="logModal.item.status==='success'" class="badge-g">成功</span>
+          <span x-show="logModal.item.status==='failed'" class="badge-r">失败</span>
+          <span x-show="logModal.item.status!=='success'&&logModal.item.status!=='failed'" class="badge-n" x-text="logModal.item.status"></span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-xs text-stone-400 w-14 shrink-0 mt-0.5">接收人</span>
+          <span class="text-stone-700 leading-relaxed" x-text="logModal.item.mentioned?.map(p=>p.name||p).filter(Boolean).join('、')||'—'"></span>
+        </div>
+        <div class="flex items-start gap-3">
+          <span class="text-xs text-stone-400 w-14 shrink-0 mt-0.5">消息</span>
+          <pre class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed bg-stone-50 rounded-lg p-3 flex-1 border border-stone-100 max-h-52 overflow-y-auto" x-text="logModal.item.message_text||'—'"></pre>
+        </div>
+        <div class="flex items-start gap-3" x-show="logModal.item.error">
+          <span class="text-xs text-stone-400 w-14 shrink-0 mt-0.5">错误</span>
+          <pre class="text-xs text-red-600 whitespace-pre-wrap bg-red-50 rounded-lg p-3 flex-1 border border-red-100 max-h-32 overflow-y-auto" x-text="logModal.item.error"></pre>
+        </div>
+      </div>
+    </template>
+    <div class="flex justify-end mt-5">
+      <button class="btn-s" @click="logModal.show=false">关闭</button>
     </div>
   </div>
 </div>
@@ -453,6 +497,7 @@ function app(){
     sched:{running:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineSaving:false},
     lg:{list:[],lim:100},
+    logModal:{show:false,item:null},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
@@ -659,6 +704,7 @@ function app(){
       const names=l.mentioned.map(p=>p.name||p).filter(Boolean);
       return names.length>3?names.slice(0,3).join('、')+'等'+names.length+'人':names.join('、');
     },
+    showLogDetail(l){this.logModal={show:true,item:l};},
     fmt(str){
       if(!str) return '';
       const d=new Date(str),p=n=>String(n).padStart(2,'0');
