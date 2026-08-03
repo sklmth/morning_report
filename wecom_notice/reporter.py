@@ -85,18 +85,17 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     # 罚款提示（需 fine_enabled=true 时才显示）
     from wecom_notice.db import get_setting
     if get_setting("fine_enabled", "false") == "true":
-        fine_triggered = overtime_count > 5 or missing_count >= 1
-        if fine_triggered:
-            reasons = []
-            if overtime_count > 5:
-                reasons.append(f"本月超时填报 {overtime_count} 次（已超5次）")
-            if missing_count >= 1:
-                reasons.append(f"本月漏填 {missing_count} 次")
+        fine_from_missing = missing_count * 10          # 每次漏填 10元
+        fine_from_overtime = (overtime_count // 5) * 10 # 每累计5次超时 10元
+        total_fine = fine_from_missing + fine_from_overtime
+        if total_fine > 0:
             lines.append("")
             lines.append("☕ 下午茶基金提醒：")
-            for r in reasons:
-                lines.append(f"   · {r}")
-            lines.append("   需上交 10 元至部门下午茶基金，辛苦啦~")
+            if missing_count >= 1:
+                lines.append(f"   · 本月漏填 {missing_count} 次（× 10 元/次）= {fine_from_missing} 元")
+            if overtime_count >= 5:
+                lines.append(f"   · 本月超时填报 {overtime_count} 次（每5次 10 元）= {fine_from_overtime} 元")
+            lines.append(f"   请上交 {total_fine} 元至部门下午茶基金。")
 
     lines.extend([
         "",
