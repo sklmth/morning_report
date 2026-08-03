@@ -21,7 +21,7 @@ CUSTOMER_MANAGERS = [
     {"name": "黄观霞", "team": "党政军团队", "mobile": "18929840777", "wecom_userid": "", "role": "customer_manager"},
     {"name": "谢卓和", "team": "大企业团队", "mobile": "13376562252", "wecom_userid": "", "role": "customer_manager"},
     {"name": "伍颖敏", "team": "大企业团队", "mobile": "13376562181", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "邓天群", "team": "大企业团队", "mobile": "18938310028", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "邓天群", "team": "大企业团队", "mobile": "18938310028", "wecom_userid": "", "role": "customer_manager", "exclude_reminder": True},  # 实习期暂不提醒
     {"name": "李玉强", "team": "大企业团队", "mobile": "13376562080", "wecom_userid": "", "role": "customer_manager"},
     {"name": "张小敏", "team": "大企业团队", "mobile": "18933134919", "wecom_userid": "", "role": "customer_manager"},
     {"name": "具进康", "team": "大企业团队", "mobile": "13822605579", "wecom_userid": "", "role": "customer_manager"},

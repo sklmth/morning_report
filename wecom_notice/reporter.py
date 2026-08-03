@@ -36,7 +36,13 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     """
     客户经理提醒消息：单独@客户经理，显示已填户数、超时/漏填历史、今日提醒次数。
     填了2户及以上的不返回消息（should_send=False）。
+    实习期人员（exclude_reminder=True）不发送提醒。
     """
+    # 检查是否需要排除提醒
+    manager_obj = next((m for m in CUSTOMER_MANAGERS if m["name"] == manager_name), None)
+    if manager_obj and manager_obj.get("exclude_reminder", False):
+        return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name, "excluded": True}
+
     records = get_records(appointment_date=target_date, manager=manager_name)
     current_count = len(records)
 
@@ -98,6 +104,7 @@ def build_manager_brief_notice(target_date: str, required: int = 2) -> dict[str,
     """
     第一个通报（简洁版）：谁填了，谁没填。
     未填的放前面，用❌标红。如果全部人员都填了就不发送（should_send=False）。
+    实习期人员（exclude_reminder=True）不计入统计。
     """
     records = get_records(appointment_date=target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
@@ -106,6 +113,10 @@ def build_manager_brief_notice(target_date: str, required: int = 2) -> dict[str,
     not_filled = []
 
     for manager in CUSTOMER_MANAGERS:
+        # 跳过实习期人员
+        if manager.get("exclude_reminder", False):
+            continue
+
         count = counts[manager["name"]]
         if count >= required:
             filled.append(f"✅ {manager['name']}：已填报 {count} 户")
@@ -145,6 +156,7 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
     第二个通报（详细版）：包含今日情况和累计情况。
     - 今日情况：没填的在前面，填了的显示拜访客户和预约交付人员
     - 累计情况：漏填、超时、准时，做得好的在前面，加emoji
+    实习期人员（exclude_reminder=True）不计入统计。
     """
     records = get_records(appointment_date=target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
@@ -154,6 +166,10 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
     filled_today = []
 
     for manager in CUSTOMER_MANAGERS:
+        # 跳过实习期人员
+        if manager.get("exclude_reminder", False):
+            continue
+
         count = counts[manager["name"]]
         if count < required:
             not_filled_today.append(f"❌ {manager['name']}：已填报 {count} 户，还差 {required - count} 户")
@@ -269,6 +285,7 @@ def build_final_data_collection(target_date: str, required: int = 2) -> dict[str
     """
     23:30最终数据收集：判断每位客户经理的填报状态并更新统计表。
     不发送消息，仅用于数据整理。
+    实习期人员（exclude_reminder=True）不计入统计。
     """
     from wecom_notice.db import upsert_fill_statistics
 
@@ -280,6 +297,10 @@ def build_final_data_collection(target_date: str, required: int = 2) -> dict[str
 
     results = []
     for manager in CUSTOMER_MANAGERS:
+        # 跳过实习期人员
+        if manager.get("exclude_reminder", False):
+            continue
+
         count = counts[manager["name"]]
         mgr_name = manager["name"]
 
