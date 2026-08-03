@@ -211,7 +211,7 @@
 </div>
 <!-- ===== TAB: 发送通报 ===== -->
 <div x-show="tab==='send'">
-  <div class="max-w-lg">
+  <div class="max-w-2xl">
     <div class="card p-5 space-y-4">
       <p class="text-sm font-medium text-stone-700">手动发送通报</p>
       <div>
@@ -219,7 +219,7 @@
         <select class="inp w-full" x-model="snd.rule" @change="doPreview()">
           <option value="">请选择规则</option>
           <template x-for="r in snd.rules" :key="r.rule_key">
-            <option :value="r.rule_key" x-text="r.rule_name||r.rule_key"></option>
+            <option :value="r.rule_key" x-text="ruleDisplayName(r)"></option>
           </template>
         </select>
       </div>
@@ -227,10 +227,15 @@
         <label class="block text-xs text-stone-500 mb-1">通报日期</label>
         <input type="date" class="inp w-full" x-model="snd.date" @change="doPreview()">
       </div>
-      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:5rem">
-        <p class="text-xs text-stone-400 mb-2">消息预览</p>
+      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:10rem">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs text-stone-500 font-medium">消息预览</p>
+          <span x-show="snd.preview" class="text-xs text-stone-400" x-text="snd.previewRecipients"></span>
+        </div>
         <p class="text-sm text-stone-400" x-show="!snd.preview">选择规则和日期后自动预览</p>
-        <pre x-show="snd.preview" class="text-sm text-stone-700 whitespace-pre-wrap" style="font-family:inherit" x-text="snd.preview"></pre>
+        <div x-show="snd.preview" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
+          <pre class="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit" x-text="snd.preview"></pre>
+        </div>
       </div>
       <button class="btn-p w-full py-2.5"
         :disabled="!snd.rule||!snd.date||loading" @click="doSend()">
@@ -251,28 +256,13 @@
           <span x-text="sched.running?'运行中':'已停止'"></span>
         </span>
       </div>
-      <div class="flex gap-2 mb-4">
+      <div class="flex gap-2">
         <button class="btn-s" :disabled="sched.running||loading" @click="startSched()">启动</button>
         <button class="btn-d" :disabled="!sched.running||loading" @click="stopSched()">停止</button>
         <button class="btn-s" @click="loadSys()">刷新</button>
       </div>
-      <template x-if="sched.running&&sched.jobs?.length">
-        <div class="space-y-2">
-          <p class="text-xs text-stone-400">定时任务</p>
-          <template x-for="job in sched.jobs" :key="job.id">
-            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-stone-50 border border-stone-100">
-              <div>
-                <p class="text-sm text-stone-700" x-text="job.name||job.id"></p>
-                <p class="text-xs text-stone-400"
-                  x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
-              </div>
-              <button class="btn-s text-xs py-1 px-2" @click="triggerJob(job.id)">立即执行</button>
-            </div>
-          </template>
-        </div>
-      </template>
-      <p class="text-sm text-stone-400" x-show="!sched.running">启动调度器后显示任务列表</p>
-      <p class="text-sm text-stone-400" x-show="sched.running&&!sched.jobs?.length">暂无已注册任务</p>
+      <p class="text-sm text-stone-400 mt-3" x-show="!sched.running">启动调度器后显示任务列表</p>
+      <p class="text-sm text-stone-400 mt-3" x-show="sched.running&&!sched.jobs?.length">暂无已注册任务</p>
     </div>
     <div class="card p-5">
       <p class="text-sm font-medium text-stone-700 mb-3">客户经理名单</p>
@@ -305,6 +295,63 @@
         <span x-text="sys.fineSaving?'保存中...':'保存设置'"></span>
       </button>
     </div>
+    <!-- 调度任务分组 -->
+    <div class="card p-5 lg:col-span-2" x-show="sched.running&&sched.jobs?.length">
+      <p class="text-sm font-medium text-stone-700 mb-3">定时任务列表</p>
+      <div class="space-y-4">
+        <!-- 客户经理提醒 -->
+        <div>
+          <p class="text-xs text-stone-500 font-medium mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>客户经理提醒
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="job in schedJobsByGroup('customer')" :key="job.id">
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-50 border border-amber-100">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                </div>
+                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- 管理人员通报 -->
+        <div>
+          <p class="text-xs text-stone-500 font-medium mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>管理人员通报
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="job in schedJobsByGroup('manager')" :key="job.id">
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                </div>
+                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- 数据收集与其他 -->
+        <div>
+          <p class="text-xs text-stone-500 font-medium mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>数据收集与周报
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="job in schedJobsByGroup('other')" :key="job.id">
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                </div>
+                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -336,17 +383,19 @@ function app(){
     dlg:{show:false,msg:'',cb:null},
     d:{date:'',sum:null,recs:[]},
     s:{start:'',end:'',data:null},
-    snd:{rules:[],rule:'',date:'',preview:''},
+    snd:{rules:[],rule:'',date:'',preview:'',previewRecipients:''},
     sched:{running:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineSaving:false},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
       const tod=new Date().toISOString().slice(0,10);
+      const monthAgo=()=>{const d=new Date();d.setDate(d.getDate()-30);return d.toISOString().slice(0,10)};
       this.d.date=tom(); this.snd.date=tom();
-      this.s.start=tod; this.s.end=tod;
+      this.s.start=monthAgo(); this.s.end=tod;
       await this.loadToday();
       await this.loadRules();
+      await this.loadStats();
       await this.pollSched();
       setInterval(()=>this.pollSched(),30000);
     },
@@ -399,11 +448,19 @@ function app(){
     },
 
     async doPreview(){
-      if(!this.snd.rule||!this.snd.date){this.snd.preview='';return;}
+      if(!this.snd.rule||!this.snd.date){this.snd.preview='';this.snd.previewRecipients='';return;}
       try{
         const r=await Api.preview({rule_key:this.snd.rule,target_date:this.snd.date});
         this.snd.preview=r.message||'（条件未触发，无需发送）';
-      }catch(e){this.snd.preview='预览失败：'+e.message;}
+        // 显示接收人信息
+        const recipients = r.recipients || [];
+        if (recipients.length > 0) {
+          const names = recipients.map(p => p.name).join('、');
+          this.snd.previewRecipients = `接收人：${names}`;
+        } else {
+          this.snd.previewRecipients = '';
+        }
+      }catch(e){this.snd.preview='预览失败：'+e.message;this.snd.previewRecipients='';}
     },
 
     async doSend(){
@@ -461,6 +518,47 @@ function app(){
       this.loading=true;
       try{await Api.triggerJob(id);this.toast('任务已触发');}
       catch(e){this.toast(e.message,true);}finally{this.loading=false;}
+    },
+
+    schedJobsByGroup(group){
+      if(!this.sched.jobs) return [];
+      const jobs = this.sched.jobs.slice();
+      // 按下次执行时间升序排序
+      jobs.sort((a,b)=>{
+        if(!a.next_run_time) return 1;
+        if(!b.next_run_time) return -1;
+        return new Date(a.next_run_time) - new Date(b.next_run_time);
+      });
+
+      if(group==='customer'){
+        // 客户经理提醒
+        return jobs.filter(j=>j.id?.startsWith('cm_reminder_')||j.name?.includes('客户经理提醒'));
+      }else if(group==='manager'){
+        // 管理人员通报（简洁、详细）
+        return jobs.filter(j=>
+          j.id?.startsWith('brief_')||j.id==='detailed_notice_all'||
+          j.name?.includes('简洁通报')||j.name?.includes('详细通报')
+        );
+      }else{
+        // 数据收集和周报
+        return jobs.filter(j=>
+          j.id==='final_data_collection'||j.id?.startsWith('weekly_report_')||
+          j.name?.includes('数据收集')||j.name?.includes('周通报')
+        );
+      }
+    },
+
+    ruleDisplayName(rule){
+      const nameMap = {
+        'missing_tomorrow_booking': '明日预约不足通报',
+        'tomorrow_schedule_summary': '明日预约汇总',
+        'visit_result_missing': '拜访回填提醒',
+        'customer_manager_reminder': '客户经理提醒',
+        'manager_brief_notice': '管理人员简洁通报',
+        'manager_detailed_notice': '管理人员详细通报',
+        'final_data_collection': '最终数据收集',
+      };
+      return nameMap[rule.rule_key] || rule.rule_name || rule.rule_key;
     },
 
     onTimeRate(){
