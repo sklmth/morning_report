@@ -637,51 +637,158 @@ def build_weekly_report() -> dict[str, Any]:
 
 
 def build_missing_tomorrow_booking(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
+    """明日预约不足通报 - 参考简洁通报风格"""
     required = int(rule.get("filter", {}).get("minimum_bookings", 2))
     records = get_records(appointment_date=target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
-    items = []
+
+    not_filled = []
+    filled = []
+
     for manager in CUSTOMER_MANAGERS:
+        # 跳过实习期人员
+        if manager.get("exclude_reminder", False):
+            continue
+
         booked = counts[manager["name"]]
         if booked < required:
-            items.append({"manager_name": manager["name"], "booked": booked, "gap": required - booked})
-    lines = [f"【明日预约通报】{target_date}", f"预约要求：每人至少 {required} 户。"]
-    if items:
-        lines.append("以下客户经理预约不足，请尽快补齐：")
-        lines.extend(f"{item['manager_name']}：已预约 {item['booked']} 户，缺 {item['gap']} 户" for item in items)
-    else:
-        lines.append("全体客户经理均已完成明日预约要求。")
-    recipients = recipients_for(rule.get("recipient_policy", {}), [item["manager_name"] for item in items])
-    return {"message": "\n".join(lines), "recipients": recipients, "records": [], "items": items}
+            not_filled.append({"name": manager["name"], "booked": booked, "gap": required - booked})
+        else:
+            filled.append({"name": manager["name"], "booked": booked})
+
+    if not not_filled:
+        # 全部达标，返回空消息
+        return {"message": "", "recipients": [], "records": [], "items": [], "should_send": False}
+
+    current_time = datetime.now().strftime("%H:%M")
+    lines = [
+        f"🚨【预约填报督办】{target_date}",
+        f"⏰ 当前时间：{current_time}",
+        f"截至目前，仍有 {len(not_filled)} 名客户经理未完成今日预约填报，请知悉！",
+        "",
+        "⚠️ 未完成填报：",
+    ]
+
+    for item in not_filled:
+        lines.append(f"❌ {item['name']}：已填报 {item['booked']} 户，还差 {item['gap']} 户")
+
+    if filled:
+        lines.extend(["", "✅ 已完成填报："])
+        for item in filled:
+            lines.append(f"✅ {item['name']}：已填报 {item['booked']} 户")
+
+    recipients = recipients_for(rule.get("recipient_policy", {}), [item["name"] for item in not_filled])
+    return {"message": "\n".join(lines), "recipients": recipients, "records": [], "items": not_filled, "should_send": True}
 
 
 def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
+    """明日预约汇总 - 参考详细通报风格，显示所有预约详情"""
     records = get_records(appointment_date=target_date)
-    lines = [f"【明日预约情况】{target_date}", f"共预约 {len(records)} 户。"]
+    current_time = datetime.now().strftime("%H:%M")
+
+    lines = [
+        f"【明日预约情况】{target_date}",
+        f"⏰ 通报时间：{current_time}",
+        f"",
+        f"共预约 {len(records)} 户。",
+    ]
+
     if records:
+        # 按客户经理分组
+        manager_records = {}
         for record in records:
-            contact = record["contact_name_title"] or "未填写联系人"
-            slot = record["appointment_slot"] or "时间待定"
-            content = record["opportunity_content"] or record["opportunity_type"] or "未填写商机内容"
-            delivery = f"，交付：{record['delivery_staff_name']}" if record["delivery_staff_name"] else ""
-            lines.append(f"{record['manager_name']}｜{slot}｜{record['company_name'] or '未填写企业'}（{contact}）｜{content}{delivery}")
+            mgr = record["manager_name"]
+            if mgr not in manager_records:
+                manager_records[mgr] = []
+            manager_records[mgr].append(record)
+
+        lines.append("")
+        # 按客户经理名称排序输出
+        for manager_name in sorted(manager_records.keys()):
+            mgr_recs = manager_records[manager_name]
+            lines.append(f"✅ {manager_name}：{len(mgr_recs)} 户")
+
+            for record in mgr_recs:
+                company = record["company_name"] or "未填写企业"
+                contact = record["contact_name_title"] or ""
+                slot = record["appointment_slot"] or ""
+
+                # 判断交付类型
+                delivery_staff = record["delivery_staff_name"]
+                if delivery_staff:
+                    if delivery_staff in [g["name"] for g in GAOZHUANG_STAFF]:
+                        delivery_type = "高装"
+                    elif delivery_staff in [z["name"] for z in ZHIYUN_ENGINEERS]:
+                        delivery_type = "智云"
+                    else:
+                        delivery_type = "未指定"
+                    delivery_info = f"（{delivery_type}：{delivery_staff}）"
+                else:
+                    delivery_info = "（未指定：无）"
+
+                # 商机内容
+                content = record["opportunity_content"] or record["opportunity_type"] or ""
+
+                # 构建详情行：时段｜企业名称（联系人）｜商机内容
+                detail_parts = []
+                if slot:
+                    detail_parts.append(slot)
+                detail_parts.append(f"{company}（{contact}）" if contact else company)
+                if content:
+                    detail_parts.append(content)
+
+                detail_line = "    · " + "｜".join(detail_parts)
+                if delivery_info:
+                    detail_line += " " + delivery_info
+
+                lines.append(detail_line)
     else:
+        lines.append("")
         lines.append("暂无明日预约记录。")
+
     recipients = recipients_for(rule.get("recipient_policy", {}), [])
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
 
 
 def build_visit_result_missing(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
+    """拜访回填提醒 - 按客户经理分组显示待回填记录"""
     records = [record for record in get_records(status="missing_result") if record["appointment_date"] and record["appointment_date"] < target_date]
-    lines = [f"【拜访回填通报】截至 {target_date}"]
+
+    current_time = datetime.now().strftime("%H:%M")
+    lines = [
+        f"【拜访回填提醒】截至 {target_date}",
+        f"⏰ 通报时间：{current_time}",
+        "",
+    ]
+
     if records:
-        lines.append("以下已预约记录尚未完整回填，请及时处理：")
-        lines.extend(
-            f"{record['manager_name']}｜{record['appointment_date']}｜{record['company_name'] or '未填写企业'}"
-            for record in records
-        )
+        lines.append(f"以下 {len(records)} 条已预约记录尚未完整回填，请及时处理：")
+        lines.append("")
+
+        # 按客户经理分组
+        manager_records = {}
+        for record in records:
+            mgr = record["manager_name"]
+            if mgr not in manager_records:
+                manager_records[mgr] = []
+            manager_records[mgr].append(record)
+
+        # 按客户经理名称排序输出
+        for manager_name in sorted(manager_records.keys()):
+            mgr_recs = manager_records[manager_name]
+            lines.append(f"❌ {manager_name}：{len(mgr_recs)} 条")
+            for record in mgr_recs:
+                appt_date = record["appointment_date"]
+                company = record["company_name"] or "未填写企业"
+                contact = record["contact_name_title"] or ""
+
+                if contact:
+                    lines.append(f"    · {appt_date}｜{company}（{contact}）")
+                else:
+                    lines.append(f"    · {appt_date}｜{company}")
     else:
-        lines.append("暂无待回填记录。")
+        lines.append("✅ 暂无待回填记录，工作进展顺利！")
+
     recipients = recipients_for(rule.get("recipient_policy", {}), [record["manager_name"] for record in records])
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
 

@@ -311,7 +311,6 @@
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
                   <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
                 </div>
-                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
               </div>
             </template>
           </div>
@@ -328,7 +327,6 @@
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
                   <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
                 </div>
-                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
               </div>
             </template>
           </div>
@@ -345,7 +343,6 @@
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
                   <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
                 </div>
-                <button class="btn-s text-xs py-1 px-2 ml-2 shrink-0" @click="triggerJob(job.id)">执行</button>
               </div>
             </template>
           </div>
