@@ -39,13 +39,18 @@ function hideLoading() {
 function formatDate(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}/${month}/${day}`;
 }
 
 function formatTime(dateStr) {
   if (!dateStr) return '';
   const date = new Date(dateStr);
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${hour}:${minute}`;
 }
 
 // 获取明天日期
@@ -199,9 +204,16 @@ async function loadOverview() {
     const summary = await Api.summary(state.targetDate);
     
     // 更新上传状态
-    if (summary.last_upload) {
-      const uploadTime = formatTime(summary.last_upload.upload_time);
-      $('#last-update').textContent = `最后更新: ${uploadTime}`;
+    if (summary.last_upload && summary.last_upload.upload_time) {
+      const uploadDate = new Date(summary.last_upload.upload_time);
+      const year = uploadDate.getFullYear();
+      const month = String(uploadDate.getMonth() + 1).padStart(2, '0');
+      const day = String(uploadDate.getDate()).padStart(2, '0');
+      const hour = String(uploadDate.getHours()).padStart(2, '0');
+      const minute = String(uploadDate.getMinutes()).padStart(2, '0');
+      $('#last-update').textContent = `${year}/${month}/${day} ${hour}:${minute}`;
+    } else {
+      $('#last-update').textContent = '暂无数据';
     }
     
     // 渲染统计卡片
