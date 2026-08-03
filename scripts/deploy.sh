@@ -35,6 +35,8 @@ SVC_MAIN="${SVC_MAIN:-morning-report.service}"
 SVC_ANALYTICS="${SVC_ANALYTICS:-morning-report-analytics.service}"
 SVC_KB="${SVC_KB:-company-kb.service}"
 SVC_WECOM="${SVC_WECOM:-wecom-notice.service}"
+WECOM_FRONTEND_SRC="${WECOM_FRONTEND_SRC:-$REPO_DIR/wecom_notice/frontend}"
+WECOM_FRONTEND_DST="${WECOM_FRONTEND_DST:-/var/www/morning-report-wecom-notice}"
 
 log(){ printf '[%(%F %T)T] %s\n' -1 "$*"; }
 py(){ [[ -x "$PYTHON_BIN" ]] && echo "$PYTHON_BIN" || echo python3; }
@@ -53,6 +55,27 @@ restart_svc(){
     journalctl -u "$svc" -n 25 --no-pager
     return 1
   fi
+}
+
+sync_static_dir(){
+  local src="$1" dst="$2" label="$3"
+  if [[ ! -d "$src" ]]; then log "[$label] 静态源目录不存在，跳过：$src"; return 0; fi
+  if [[ ! -d "$dst" ]]; then log "[$label] 静态目标目录不存在，跳过：$dst"; return 0; fi
+  if diff -qr "$src" "$dst" >/dev/null 2>&1; then
+    log "[$label] 静态文件已一致：$dst"
+    return 0
+  fi
+  local bak="${dst}.backup.$(date +%Y%m%d%H%M%S)"
+  log "[$label] 同步静态文件 → $dst（备份：$bak）"
+  cp -a "$dst" "$bak"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$src/" "$dst/"
+  else
+    find "$dst" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a "$src/." "$dst/"
+  fi
+  if id -u www-data >/dev/null 2>&1; then chown -R www-data:www-data "$dst" || true; fi
+  log "[$label] 静态文件同步完成。"
 }
 cd "$REPO_DIR"
 
@@ -132,11 +155,14 @@ fi
 # ── 6. 企业微信通报 (8996 后端 / 6081 前端) ──────
 if want wecom; then
   need=0
+  frontend_need=0
   if [[ "$FULL" == "1" ]]; then
     log "[wecom] 全量 → 安装依赖…"; "$(pip_bin)" install -q -r requirements.txt; need=1
+    frontend_need=1
   else
     changed '^requirements\.txt' && { log "[wecom] 共享依赖变动 → 安装…"; "$(pip_bin)" install -q -r requirements.txt; need=1; }
     echo "$CHANGED" | grep -qE '^(wecom_notice/|scripts/airscript_qywx_notice_upload\.js)' && need=1
+    changed '^wecom_notice/frontend/' && frontend_need=1
   fi
   [[ "$FORCE" == "1" ]] && need=1
   if [[ "$need" == "1" ]]; then
@@ -145,6 +171,11 @@ if want wecom; then
     restart_svc "$SVC_WECOM" || rc=1
   else
     log "[wecom] 后端无变动，跳过。"
+  fi
+  if [[ "$frontend_need" == "1" ]]; then
+    sync_static_dir "$WECOM_FRONTEND_SRC" "$WECOM_FRONTEND_DST" "wecom"
+  else
+    log "[wecom] 前端无变动，跳过静态同步。"
   fi
 fi
 

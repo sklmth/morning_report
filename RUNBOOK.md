@@ -63,8 +63,9 @@ python -m gaotao_stats.cli \
 python -m wecom_notice.main
 ```
 
-- 启动后访问：http://127.0.0.1:8996
-- 前端由 FastAPI 直接托管，无需 nginx
+- 本地启动后访问：http://127.0.0.1:8996
+- 生产环境：后端监听 127.0.0.1:8996，nginx 6081 托管静态目录 `/var/www/morning-report-wecom-notice` 并反代 `/api/`；执行 `scripts/deploy.sh` 会同步 `wecom_notice/frontend/` 到该静态目录。
+- 金山脚本上传地址 `https://shanguantang.site/api/airscript/upload` 需要主站 HTTPS nginx 将 `/api/airscript/` 反代到 `127.0.0.1:8996/api/airscript/`。
 - 调度器默认不启动，在「系统」Tab 手动启动
 
 ---
