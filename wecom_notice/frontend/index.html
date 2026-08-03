@@ -1,291 +1,447 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>企业微信通报管理系统</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>预约通报系统 - 让数据说话 📊</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">政企标准化信息收集 V3</p>
-      <h1>企业微信通报管理系统</h1>
-    </div>
-    <div class="toolbar">
-      <div class="scheduler-status" id="scheduler-status">
-        <span class="status-dot" id="status-dot"></span>
-        <span id="status-text">调度器状态检测中...</span>
+  <!-- 侧边栏导航 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">📱</span>
+        <div class="logo-text">
+          <h1>预约通报</h1>
+          <p>Dashboard</p>
+        </div>
       </div>
-      <button id="toggle-scheduler" class="icon-button" title="启动/停止调度器">⏯</button>
-      <button id="refresh" class="icon-button" title="刷新数据">↻</button>
-    </div>
-  </header>
-
-  <nav class="tabs">
-    <button class="tab-button active" data-tab="overview">📊 总览</button>
-    <button class="tab-button" data-tab="statistics">📈 累计统计</button>
-    <button class="tab-button" data-tab="reminders">🔔 提醒日志</button>
-    <button class="tab-button" data-tab="send">📤 发送通报</button>
-    <button class="tab-button" data-tab="config">⚙️ 配置</button>
-  </nav>
-
-  <main>
-    <!-- 总览标签页 -->
-    <div class="tab-content active" id="tab-overview">
-      <section class="status-line" id="upload-status">正在读取数据…</section>
-
-      <section class="metrics" id="metrics"></section>
-
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">预约达标</p><h2>客户经理明日预约</h2></div>
-          <div class="date-shortcuts">
-            <label>通报日期 <input id="target-date" type="date"></label>
-            <button class="btn-link" onclick="setDateOffset(0)">今日</button>
-            <button class="btn-link" onclick="setDateOffset(1)">明日</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>客户经理</th>
-                <th>团队</th>
-                <th>预约户数</th>
-                <th>缺口</th>
-                <th>状态</th>
-                <th>历史超时</th>
-                <th>历史漏填</th>
-              </tr>
-            </thead>
-            <tbody id="progress-table"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">预约明细</p><h2>当日预约记录</h2></div>
-          <span class="muted" id="record-count">共 0 条</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>客户经理</th>
-                <th>企业</th>
-                <th>联系人</th>
-                <th>时间段</th>
-                <th>商机内容</th>
-                <th>交付人员</th>
-              </tr>
-            </thead>
-            <tbody id="records-table"></tbody>
-          </table>
-        </div>
-      </section>
+      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="切换侧边栏">
+        <span></span>
+      </button>
     </div>
 
-    <!-- 累计统计标签页 -->
-    <div class="tab-content" id="tab-statistics">
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">数据导出</p><h2>累计统计报表</h2></div>
-          <div class="action-buttons">
-            <label>
-              统计时间范围
-              <input type="date" id="stats-start-date">
-              至
-              <input type="date" id="stats-end-date">
-            </label>
-            <button id="export-excel" class="primary">📥 导出Excel</button>
-          </div>
-        </div>
-        <p class="hint">将导出包含"汇总统计"、"准时填报"、"超时填报"、"漏填统计"四个工作表的Excel文件</p>
-      </section>
+    <nav class="nav">
+      <a href="#overview" class="nav-item active" data-view="overview">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">总览</span>
+      </a>
+      <a href="#statistics" class="nav-item" data-view="statistics">
+        <span class="nav-icon">📈</span>
+        <span class="nav-label">统计分析</span>
+      </a>
+      <a href="#reminders" class="nav-item" data-view="reminders">
+        <span class="nav-icon">🔔</span>
+        <span class="nav-label">提醒日志</span>
+      </a>
+      <a href="#send" class="nav-item" data-view="send">
+        <span class="nav-icon">📤</span>
+        <span class="nav-label">发送通报</span>
+      </a>
+      <a href="#scheduler" class="nav-item" data-view="scheduler">
+        <span class="nav-icon">⏰</span>
+        <span class="nav-label">调度器</span>
+      </a>
+      <a href="#config" class="nav-item" data-view="config">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">配置</span>
+      </a>
+    </nav>
 
-      <section class="stats-grid">
-        <div class="stat-card green">
+    <div class="sidebar-footer">
+      <div class="scheduler-status" id="sidebar-scheduler-status">
+        <span class="status-indicator" id="status-indicator"></span>
+        <div class="status-info">
+          <span class="status-label">调度器</span>
+          <span class="status-text" id="status-text">检测中...</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 主内容区 -->
+  <main class="main-content">
+    <!-- 顶部栏 -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">☰</button>
+        <h2 class="page-title" id="page-title">总览</h2>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-info" id="upload-status">
+          <span class="info-icon">📅</span>
+          <span id="last-update">加载中...</span>
+        </div>
+        <button class="btn-icon" id="refresh-btn" title="刷新数据">
+          <span>🔄</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- 总览视图 -->
+    <div class="view active" id="view-overview">
+      <!-- 数据卡片 -->
+      <div class="stats-grid">
+        <div class="stat-card primary">
           <div class="stat-icon">✅</div>
           <div class="stat-content">
-            <div class="stat-label">准时填报</div>
+            <h3 class="stat-label">准时填报</h3>
             <div class="stat-value" id="stat-ontime">-</div>
-            <div class="stat-desc">19:30前完成</div>
+            <p class="stat-change" id="stat-ontime-change">真棒！继续保持 🎉</p>
+          </div>
+          <div class="stat-chart">
+            <svg class="progress-ring" width="60" height="60">
+              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
+              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-ontime"></circle>
+            </svg>
           </div>
         </div>
-        <div class="stat-card yellow">
-          <div class="stat-icon">⚠️</div>
+
+        <div class="stat-card warning">
+          <div class="stat-icon">⏰</div>
           <div class="stat-content">
-            <div class="stat-label">超时填报</div>
+            <h3 class="stat-label">超时填报</h3>
             <div class="stat-value" id="stat-overtime">-</div>
-            <div class="stat-desc">19:30-23:30</div>
+            <p class="stat-change" id="stat-overtime-change">稍微晚了点 😅</p>
+          </div>
+          <div class="stat-chart">
+            <svg class="progress-ring" width="60" height="60">
+              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
+              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-overtime"></circle>
+            </svg>
           </div>
         </div>
-        <div class="stat-card red">
+
+        <div class="stat-card danger">
           <div class="stat-icon">❌</div>
           <div class="stat-content">
-            <div class="stat-label">漏填记录</div>
+            <h3 class="stat-label">漏填记录</h3>
             <div class="stat-value" id="stat-missing">-</div>
-            <div class="stat-desc">23:30仍未完成</div>
+            <p class="stat-change" id="stat-missing-change">记得提醒哦 📢</p>
+          </div>
+          <div class="stat-chart">
+            <svg class="progress-ring" width="60" height="60">
+              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
+              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-missing"></circle>
+            </svg>
           </div>
         </div>
-        <div class="stat-card blue">
-          <div class="stat-icon">📊</div>
+
+        <div class="stat-card info">
+          <div class="stat-icon">📋</div>
           <div class="stat-content">
-            <div class="stat-label">总计</div>
-            <div class="stat-value" id="stat-total">-</div>
-            <div class="stat-desc">累计统计天数</div>
+            <h3 class="stat-label">今日预约</h3>
+            <div class="stat-value" id="stat-today">-</div>
+            <p class="stat-change">户</p>
           </div>
         </div>
-      </section>
+      </div>
 
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">明细数据</p><h2>填报统计明细</h2></div>
-          <div class="filter-row">
-            <label>筛选状态
-              <select id="status-filter">
-                <option value="">全部</option>
-                <option value="on_time">准时</option>
-                <option value="overtime">超时</option>
-                <option value="missing">漏填</option>
-              </select>
+      <!-- 客户经理预约情况 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">👥</span>
+            <div>
+              <h3>客户经理预约情况</h3>
+              <p class="card-subtitle">实时跟踪每位经理的预约进度</p>
+            </div>
+          </div>
+          <div class="card-actions">
+            <label class="date-picker">
+              <span class="picker-icon">📅</span>
+              <input type="date" id="target-date" class="date-input">
             </label>
-            <button class="secondary" onclick="loadStatistics()">应用筛选</button>
+            <button class="btn-sm" onclick="setDateOffset(0)">今日</button>
+            <button class="btn-sm" onclick="setDateOffset(1)">明日</button>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>客户经理</th>
-                <th>填报状态</th>
-                <th>完成时间</th>
-                <th>提醒次数</th>
-                <th>填报次数</th>
-              </tr>
-            </thead>
-            <tbody id="statistics-table"></tbody>
-          </table>
+        <div class="card-body">
+          <div class="manager-grid" id="manager-grid">
+            <!-- 动态加载客户经理卡片 -->
+          </div>
         </div>
-      </section>
-    </div>
+      </div>
 
-    <!-- 提醒日志标签页 -->
-    <div class="tab-content" id="tab-reminders">
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">提醒记录</p><h2>提醒日志查询</h2></div>
-          <div class="filter-row">
-            <label>日期 <input type="date" id="reminder-date"></label>
-            <label>客户经理
-              <select id="reminder-manager">
-                <option value="">全部</option>
-              </select>
-            </label>
-            <button class="secondary" onclick="loadReminders()">查询</button>
+      <!-- 预约记录列表 -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">📝</span>
+            <div>
+              <h3>预约记录明细</h3>
+              <p class="card-subtitle" id="record-count">共 0 条记录</p>
+            </div>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>提醒时间</th>
-                <th>客户经理</th>
-                <th>提醒序号</th>
-                <th>当前已填</th>
-                <th>当前超时人数</th>
-                <th>当前漏填人数</th>
-              </tr>
-            </thead>
-            <tbody id="reminders-table"></tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <!-- 发送通报标签页 -->
-    <div class="tab-content" id="tab-send">
-      <section class="two-column">
-        <section class="section">
-          <div class="section-heading">
-            <div><p class="eyebrow">发送前检查</p><h2>通报预览</h2></div>
-          </div>
-          <div class="form-row">
-            <label>通报规则 <select id="rule-select"></select></label>
-            <label>@ 策略 <span id="recipient-policy" class="readonly">-</span></label>
-          </div>
-          <textarea id="preview" rows="16" readonly placeholder="选择规则后生成通报预览"></textarea>
-          <div class="action-row">
-            <button id="preview-button" class="secondary">生成预览</button>
-            <button id="send-button" class="primary">发送至企业微信</button>
-          </div>
-          <p class="hint">💡 发送前请确认企业微信机器人 Webhook 已在服务端配置</p>
-        </section>
-
-        <section class="section">
-          <div class="section-heading">
-            <div><p class="eyebrow">最近发送</p><h2>发送日志</h2></div>
-          </div>
-          <div class="table-wrap">
-            <table>
+        <div class="card-body">
+          <div class="table-container">
+            <table class="data-table">
               <thead>
                 <tr>
-                  <th>发送时间</th>
-                  <th>规则</th>
+                  <th>客户经理</th>
+                  <th>企业名称</th>
+                  <th>联系人</th>
+                  <th>预约时段</th>
+                  <th>商机内容</th>
+                  <th>交付人员</th>
                   <th>状态</th>
-                  <th>@ 对象</th>
                 </tr>
               </thead>
-              <tbody id="logs-table"></tbody>
+              <tbody id="records-table">
+                <tr class="empty-state">
+                  <td colspan="7">
+                    <div class="empty-icon">📭</div>
+                    <p>暂无预约记录</p>
+                  </td>
+                </tr>
+              </tbody>
             </table>
           </div>
-        </section>
-      </section>
+        </div>
+      </div>
     </div>
 
-    <!-- 配置标签页 -->
-    <div class="tab-content" id="tab-config">
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">调度器管理</p><h2>定时任务配置</h2></div>
-          <div class="scheduler-controls">
-            <button id="start-scheduler" class="primary">▶️ 启动调度器</button>
-            <button id="stop-scheduler" class="secondary">⏸️ 停止调度器</button>
+    <!-- 统计分析视图 -->
+    <div class="view" id="view-statistics">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">📊</span>
+            <div>
+              <h3>累计统计分析</h3>
+              <p class="card-subtitle">查看历史填报数据趋势</p>
+            </div>
+          </div>
+          <div class="card-actions">
+            <label class="date-picker">
+              <input type="date" id="stats-start-date" class="date-input">
+            </label>
+            <span class="date-separator">至</span>
+            <label class="date-picker">
+              <input type="date" id="stats-end-date" class="date-input">
+            </label>
+            <button class="btn btn-primary" onclick="loadStatistics()">
+              <span>🔍</span> 查询
+            </button>
+            <button class="btn btn-secondary" onclick="exportExcel()">
+              <span>📥</span> 导出Excel
+            </button>
           </div>
         </div>
-        <div class="scheduler-info" id="scheduler-info">
-          <p class="muted">调度器状态加载中...</p>
+        <div class="card-body">
+          <div class="stats-summary" id="stats-summary">
+            <!-- 统计汇总数据 -->
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>客户经理</th>
+                  <th>团队</th>
+                  <th>准时次数</th>
+                  <th>超时次数</th>
+                  <th>漏填次数</th>
+                  <th>准时率</th>
+                </tr>
+              </thead>
+              <tbody id="statistics-table">
+                <tr class="empty-state">
+                  <td colspan="6">
+                    <div class="empty-icon">📈</div>
+                    <p>请选择日期范围查询统计数据</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div class="hint-box">
-          <p><strong>⚠️ 重要提示：</strong></p>
-          <ul>
-            <li>调度器启动后，将按照预设的20个时间点自动发送通报</li>
-            <li>客户经理提醒：18:00, 18:45, 19:15, 19:45, 20:15, 21:00, 22:00, 23:00</li>
-            <li>张端副经理简报：18:30, 19:00, 20:00, 20:30, 21:00, 21:30</li>
-            <li>钟俊杰经理简报：19:30, 20:30, 21:00, 21:30</li>
-            <li>所有管理者详细通报：22:00</li>
-            <li>最终数据收集（不发送）：23:30</li>
-          </ul>
-        </div>
-      </section>
+      </div>
+    </div>
 
-      <section class="section">
-        <div class="section-heading">
-          <div><p class="eyebrow">人员配置</p><h2>接收对象</h2></div>
-          <span class="muted" id="total-personnel">加载中...</span>
+    <!-- 提醒日志视图 -->
+    <div class="view" id="view-reminders">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">🔔</span>
+            <div>
+              <h3>提醒日志</h3>
+              <p class="card-subtitle">查看历史提醒记录</p>
+            </div>
+          </div>
+          <div class="card-actions">
+            <label class="date-picker">
+              <input type="date" id="reminder-date" class="date-input">
+            </label>
+            <select id="reminder-manager" class="select-input">
+              <option value="">全部客户经理</option>
+            </select>
+            <button class="btn btn-primary" onclick="loadReminders()">
+              <span>🔍</span> 查询
+            </button>
+          </div>
         </div>
-        <div id="roster" class="roster"></div>
-      </section>
+        <div class="card-body">
+          <div class="timeline" id="reminders-timeline">
+            <!-- 时间线展示提醒记录 -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 发送通报视图 -->
+    <div class="view" id="view-send">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">📤</span>
+            <div>
+              <h3>手动发送通报</h3>
+              <p class="card-subtitle">选择规则并发送企业微信通报</p>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="send-form">
+            <div class="form-group">
+              <label class="form-label">
+                <span class="label-icon">📋</span>
+                选择通报规则
+              </label>
+              <select id="rule-select" class="select-input" onchange="previewReport()">
+                <option value="">请选择规则</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                <span class="label-icon">📅</span>
+                通报日期
+              </label>
+              <input type="date" id="send-date" class="date-input" onchange="previewReport()">
+            </div>
+
+            <div class="preview-box" id="preview-box">
+              <div class="preview-header">
+                <span class="preview-icon">👁️</span>
+                <h4>消息预览</h4>
+              </div>
+              <div class="preview-content" id="preview-content">
+                <div class="preview-empty">
+                  <span class="empty-icon">📄</span>
+                  <p>请选择规则和日期以预览消息</p>
+                </div>
+              </div>
+              <div class="preview-footer">
+                <p class="preview-tip">💡 提示：预览无误后点击下方按钮发送</p>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-primary btn-lg" onclick="sendReport()">
+                <span>🚀</span> 立即发送
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 调度器视图 -->
+    <div class="view" id="view-scheduler">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">⏰</span>
+            <div>
+              <h3>调度器管理</h3>
+              <p class="card-subtitle">管理定时通报任务</p>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-success" id="start-scheduler-btn" onclick="startScheduler()">
+              <span>▶️</span> 启动
+            </button>
+            <button class="btn btn-danger" id="stop-scheduler-btn" onclick="stopScheduler()">
+              <span>⏸️</span> 停止
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="scheduler-info" id="scheduler-info">
+            <!-- 调度器状态信息 -->
+          </div>
+          <div class="jobs-grid" id="jobs-grid">
+            <!-- 任务卡片 -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 配置视图 -->
+    <div class="view" id="view-config">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">👥</span>
+            <div>
+              <h3>客户经理名单</h3>
+              <p class="card-subtitle">共 12 人</p>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="personnel-grid" id="managers-grid">
+            <!-- 客户经理卡片 -->
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">🔧</span>
+            <div>
+              <h3>高端装维人员</h3>
+              <p class="card-subtitle">共 8 人</p>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="personnel-grid" id="gaozhuang-grid">
+            <!-- 高端装维卡片 -->
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">
+            <span class="card-icon">☁️</span>
+            <div>
+              <h3>智云工程师</h3>
+              <p class="card-subtitle">共 7 人</p>
+            </div>
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="personnel-grid" id="zhiyun-grid">
+            <!-- 智云工程师卡片 -->
+          </div>
+        </div>
+      </div>
     </div>
   </main>
 
-  <div id="toast" role="status"></div>
-  <div id="loading-overlay" class="loading-overlay">
-    <div class="spinner"></div>
-    <p>处理中...</p>
+  <!-- Toast 通知 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 加载遮罩 -->
+  <div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <p class="loading-text">加载中...</p>
   </div>
 
   <script src="js/api.js"></script>
