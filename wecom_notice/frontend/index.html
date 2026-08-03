@@ -176,8 +176,13 @@
     <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-stone-100 border-b border-stone-100" x-show="s.data">
       <div class="p-4"><div class="snum text-emerald-600" x-text="s.data?.summary?.on_time_count??'-'"></div><div class="slbl">准时填报</div></div>
       <div class="p-4"><div class="snum text-amber-500" x-text="s.data?.summary?.overtime_count??'-'"></div><div class="slbl">超时填报</div></div>
-      <div class="p-4"><div class="snum text-red-500" x-text="s.data?.summary?.missing_count??'-'"></div><div class="slbl">漏填记录</div></div>
+      <div class="p-4"><div class="snum text-red-500" x-text="s.data?.summary?.missing_count??'-'"></div><div class="slbl">漏填人天</div></div>
       <div class="p-4"><div class="snum" x-text="onTimeRate()"></div><div class="slbl">准时率</div></div>
+    </div>
+    <div class="px-4 py-2 text-xs text-stone-500 border-b border-stone-100" x-show="s.data">
+      <span>统计天数：</span><span x-text="s.data?.summary?.total_days??0"></span>
+      <span class="mx-2">·</span>
+      <span>统计口径：客户经理 × 有预约日期，合计 </span><span x-text="s.data?.summary?.total_records??0"></span><span> 人天</span>
     </div>
     <div class="overflow-x-auto">
       <table>
@@ -439,21 +444,11 @@ function app(){
     },
     statsRows(){
       if(!this.s.data) return [];
-      const rows={};
-      const add=(items,key)=>{
-        (items||[]).forEach(item=>{
-          const name=item.manager_name||'-';
-          if(!rows[name]) rows[name]={manager_name:name,team:item.team||'',on_time:0,overtime:0,missing:0};
-          rows[name][key]=item.count||0;
-        });
-      };
-      add(this.s.data.on_time,'on_time');
-      add(this.s.data.overtime,'overtime');
-      add(this.s.data.missing,'missing');
-      return Object.values(rows).sort((a,b)=>{
+      const rows=this.s.data.details||[];
+      return rows.slice().sort((a,b)=>{
         const bt=(b.on_time||0)+(b.overtime||0)+(b.missing||0);
         const at=(a.on_time||0)+(a.overtime||0)+(a.missing||0);
-        return bt-at || a.manager_name.localeCompare(b.manager_name,'zh-Hans-CN');
+        return bt-at || (b.missing||0)-(a.missing||0) || a.manager_name.localeCompare(b.manager_name,'zh-Hans-CN');
       });
     },
     rowRate(r){

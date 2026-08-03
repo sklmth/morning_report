@@ -402,10 +402,33 @@ def build_cumulative_statistics(start_date: str = "", end_date: str = "") -> dic
         "missing_rate": round(missing_count / total_records, 3) if total_records > 0 else 0,
     }
 
+    details_by_manager: dict[str, dict[str, Any]] = {}
+    for manager in CUSTOMER_MANAGERS:
+        details_by_manager[manager["name"]] = {
+            "manager_name": manager["name"],
+            "team": manager.get("team", ""),
+            "on_time": 0,
+            "overtime": 0,
+            "missing": 0,
+        }
+    for stat in all_stats:
+        mgr = stat["manager_name"]
+        if mgr not in details_by_manager:
+            details_by_manager[mgr] = {"manager_name": mgr, "team": "", "on_time": 0, "overtime": 0, "missing": 0}
+        status = stat["fill_status"]
+        if status in {"on_time", "overtime", "missing"}:
+            details_by_manager[mgr][status] += 1
+
+    details = sorted(
+        details_by_manager.values(),
+        key=lambda x: (-(x["on_time"] + x["overtime"] + x["missing"]), -x["missing"], x["manager_name"]),
+    )
+
     return {
         "on_time": on_time_list,
         "overtime": overtime_list,
         "missing": missing_list,
+        "details": details,
         "summary": summary,
     }
 
