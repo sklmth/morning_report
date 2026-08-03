@@ -310,3 +310,39 @@ def trigger_job_manually(job_id: str):
     job.func()
 
     return {"ok": True, "message": f"任务 {job_id} 已手动触发"}
+
+
+@app.post("/api/kingsoft/trigger-sync")
+def trigger_kingsoft_sync():
+    """手动触发金山文档数据同步"""
+    from wecom_notice.kingsoft_trigger import trigger_kingsoft_data_sync
+    from wecom_notice.db import add_send_log
+
+    try:
+        result = trigger_kingsoft_data_sync()
+
+        add_send_log(
+            rule_key="kingsoft_data_sync_manual",
+            status="success",
+            message_text="手动触发金山文档数据同步",
+            mentioned=[],
+            record_ids=[],
+            webhook_response=str(result)
+        )
+
+        return {
+            "ok": True,
+            "message": "金山文档数据同步已触发",
+            "response": result
+        }
+
+    except Exception as e:
+        add_send_log(
+            rule_key="kingsoft_data_sync_manual",
+            status="failed",
+            message_text="手动触发金山文档数据同步失败",
+            mentioned=[],
+            record_ids=[],
+            error=str(e)
+        )
+        raise HTTPException(status_code=500, detail=str(e))

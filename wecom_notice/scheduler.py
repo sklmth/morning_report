@@ -15,6 +15,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
 from wecom_notice.db import add_send_log
+from wecom_notice.kingsoft_trigger import trigger_kingsoft_data_sync
 from wecom_notice.reporter import (
     build_customer_manager_reminder,
     build_final_data_collection,
@@ -28,6 +29,18 @@ logger = logging.getLogger(__name__)
 # 定时规则配置
 CUSTOMER_MANAGER_REMINDER_TIMES = [
     "18:00", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
+]
+
+# 金山文档数据同步时间（在提醒前10分钟同步数据）
+DATA_SYNC_TIMES = [
+    "17:50",  # 第一次提醒前
+    "18:35",  # 第二次提醒前
+    "19:05",  # 第三次提醒前
+    "19:35",  # 第四次提醒前
+    "20:05",  # 第五次提醒前
+    "20:50",  # 第六次提醒前
+    "21:50",  # 第七次提醒前
+    "22:50",  # 第八次提醒前
 ]
 
 # 第一个通报（简洁版）- 张端副经理
@@ -204,6 +217,36 @@ def collect_final_data():
         )
 
 
+def sync_kingsoft_data():
+    """触发金山文档同步数据到服务器"""
+    logger.info("触发金山文档数据同步")
+
+    try:
+        result = trigger_kingsoft_data_sync()
+        logger.info(f"金山文档数据同步触发成功：{result}")
+
+        # 记录同步日志
+        add_send_log(
+            rule_key="kingsoft_data_sync",
+            status="success",
+            message_text="触发金山文档数据同步",
+            mentioned=[],
+            record_ids=[],
+            webhook_response=str(result)
+        )
+
+    except Exception as e:
+        logger.error(f"触发金山文档数据同步失败：{e}")
+        add_send_log(
+            rule_key="kingsoft_data_sync",
+            status="failed",
+            message_text="触发金山文档数据同步失败",
+            mentioned=[],
+            record_ids=[],
+            error=str(e)
+        )
+
+
 def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     """
     启动定时调度器。
@@ -219,6 +262,17 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     if not enabled:
         logger.info("调度器已创建但未启用定时任务，请在配置后手动启用")
         return scheduler
+
+    # 0. 金山文档数据同步（在提醒前触发）
+    for time_str in DATA_SYNC_TIMES:
+        hour, minute = time_str.split(":")
+        scheduler.add_job(
+            sync_kingsoft_data,
+            CronTrigger(hour=int(hour), minute=int(minute)),
+            id=f"data_sync_{time_str.replace(':', '')}",
+            name=f"金山数据同步 {time_str}",
+            replace_existing=True
+        )
 
     # 1. 客户经理提醒
     for time_str in CUSTOMER_MANAGER_REMINDER_TIMES:
