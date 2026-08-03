@@ -54,9 +54,22 @@ python -m gaotao_stats.cli \
 
 > TODO：补充运行命令
 
-## analytics · 经营分析
+## wecom_notice · 预约通报系统
 
-> TODO：补充运行命令
+**功能**：管理客户经理预约填报、发送企业微信通报、调度定时任务。
+
+```bash
+# 工作目录：morning_report/
+python -m wecom_notice.main
+```
+
+- 启动后访问：http://127.0.0.1:8996
+- 前端由 FastAPI 直接托管，无需 nginx
+- 调度器默认不启动，在「系统」Tab 手动启动
+
+---
+
+
 
 ## company_kb · 企业知识库 RAG
 

@@ -1,70 +1,51 @@
+// ===== API 工具层 =====
 const Api = (() => {
   const base = '/api';
 
-  async function request(path, options = {}) {
-    const response = await fetch(base + path, options);
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.detail || `请求失败：${response.status}`);
+  async function req(path, opts = {}) {
+    const res = await fetch(base + path, opts);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.detail || `请求失败 ${res.status}`);
     return body;
   }
 
-  const json = (method, path, body) => request(path, {
-    method,
+  const post = (path, data) => req(path, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(data),
   });
 
   return {
-    // 原有API
-    summary: (date) => request(`/summary?date=${encodeURIComponent(date)}`),
-    records: (date) => request(`/records?date=${encodeURIComponent(date)}`),
-    rules: () => request('/config/rules'),
-    roster: () => request('/config/roster'),
-    logs: () => request('/send-logs'),
-    preview: (body) => json('POST', '/report/preview', body),
-    send: (body) => json('POST', '/report/send', body),
+    // 今日预约
+    summary: (date) => req(`/summary?date=${encodeURIComponent(date)}`),
+    records: (date) => req(`/records?date=${encodeURIComponent(date)}`),
 
-    // 新增API - 累计统计
-    statistics: (params = {}) => {
-      const query = new URLSearchParams();
-      if (params.start_date) query.set('start_date', params.start_date);
-      if (params.end_date) query.set('end_date', params.end_date);
-      if (params.fill_status) query.set('fill_status', params.fill_status);
-      if (params.manager_name) query.set('manager_name', params.manager_name);
-      return request(`/statistics/details?${query}`);
+    // 统计
+    cumulativeStats: (p = {}) => {
+      const q = new URLSearchParams();
+      if (p.start_date) q.set('start_date', p.start_date);
+      if (p.end_date)   q.set('end_date',   p.end_date);
+      return req(`/statistics/cumulative?${q}`);
+    },
+    exportExcel: (p = {}) => {
+      const q = new URLSearchParams();
+      if (p.start_date) q.set('start_date', p.start_date);
+      if (p.end_date)   q.set('end_date',   p.end_date);
+      window.open(`${base}/statistics/export?${q}`, '_blank');
     },
 
-    cumulativeStats: (params = {}) => {
-      const query = new URLSearchParams();
-      if (params.start_date) query.set('start_date', params.start_date);
-      if (params.end_date) query.set('end_date', params.end_date);
-      return request(`/statistics/cumulative?${query}`);
-    },
+    // 发送通报
+    rules:   () => req('/config/rules'),
+    preview: (body) => post('/report/preview', body),
+    send:    (body) => post('/report/send', body),
 
-    exportExcel: (params = {}) => {
-      const query = new URLSearchParams();
-      if (params.start_date) query.set('start_date', params.start_date);
-      if (params.end_date) query.set('end_date', params.end_date);
-      const url = `${base}/statistics/export?${query}`;
-      // 触发文件下载
-      window.open(url, '_blank');
-    },
+    // 调度器
+    schedulerStatus: () => req('/scheduler/status'),
+    startScheduler:  () => post('/scheduler/start', {}),
+    stopScheduler:   () => post('/scheduler/stop', {}),
+    triggerJob: (id) => post(`/scheduler/trigger/${id}`, {}),
 
-    // 新增API - 提醒日志
-    reminders: (params = {}) => {
-      const query = new URLSearchParams();
-      if (params.date) query.set('date', params.date);
-      if (params.manager_name) query.set('manager_name', params.manager_name);
-      return request(`/reminders/logs?${query}`);
-    },
-
-    // 新增API - 调度器管理
-    schedulerStatus: () => request('/scheduler/status'),
-    startScheduler: () => json('POST', '/scheduler/start', {}),
-    stopScheduler: () => json('POST', '/scheduler/stop', {}),
-    triggerJob: (jobId) => json('POST', `/scheduler/trigger/${jobId}`, {}),
-
-    // 新增API - 交付人员配置
-    deliveryStaff: () => request('/config/delivery-staff'),
+    // 配置/名单
+    roster: () => req('/config/roster'),
   };
 })();

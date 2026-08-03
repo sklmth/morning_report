@@ -3,448 +3,459 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>预约通报系统 - 让数据说话 📊</title>
-  <link rel="stylesheet" href="css/style.css">
+  <title>预约通报</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak]{display:none!important}
+    body{background:#fafaf8;font-family:system-ui,-apple-system,sans-serif}
+    .card{background:#fff;border:1px solid #e7e5e4;border-radius:8px}
+    .tab-btn{padding:0 2px 10px;font-size:.875rem;color:#78716c;border-bottom:2px solid transparent;
+      transition:color .15s,border-color .15s;cursor:pointer;white-space:nowrap;background:none;border-top:none;border-left:none;border-right:none}
+    .tab-btn:hover{color:#44403c}
+    .tab-btn.on{color:#d97706;border-bottom-color:#d97706;font-weight:500}
+    .badge-g{background:#d1fae5;color:#065f46;font-size:.75rem;padding:1px 8px;border-radius:999px;display:inline-block}
+    .badge-y{background:#fef3c7;color:#92400e;font-size:.75rem;padding:1px 8px;border-radius:999px;display:inline-block}
+    .badge-r{background:#fee2e2;color:#991b1b;font-size:.75rem;padding:1px 8px;border-radius:999px;display:inline-block}
+    .badge-n{background:#f5f5f4;color:#57534e;font-size:.75rem;padding:1px 8px;border-radius:999px;display:inline-block}
+    .btn-p{background:#d97706;color:#fff;padding:6px 14px;border-radius:6px;font-size:.875rem;cursor:pointer;border:none;transition:background .15s}
+    .btn-p:hover{background:#b45309}
+    .btn-p:disabled{opacity:.5;cursor:not-allowed}
+    .btn-s{background:#fff;color:#44403c;padding:6px 14px;border-radius:6px;font-size:.875rem;border:1px solid #d6d3d1;cursor:pointer;transition:background .15s}
+    .btn-s:hover{background:#f5f5f4}
+    .btn-s:disabled{opacity:.5;cursor:not-allowed}
+    .btn-d{background:#fff;color:#dc2626;padding:6px 14px;border-radius:6px;font-size:.875rem;border:1px solid #fca5a5;cursor:pointer;transition:background .15s}
+    .btn-d:hover{background:#fef2f2}
+    .btn-d:disabled{opacity:.5;cursor:not-allowed}
+    .inp{border:1px solid #d6d3d1;border-radius:6px;padding:5px 10px;font-size:.875rem;outline:none;background:#fff}
+    .inp:focus{border-color:#d97706;box-shadow:0 0 0 2px #fef3c7}
+    table{width:100%;border-collapse:collapse;font-size:.875rem}
+    th{text-align:left;padding:8px 12px;font-size:.75rem;font-weight:500;color:#78716c;background:#fafaf8;border-bottom:1px solid #e7e5e4;text-transform:uppercase;letter-spacing:.05em}
+    td{padding:9px 12px;border-bottom:1px solid #f5f5f4;color:#292524;vertical-align:middle}
+    tr:last-child td{border-bottom:none}
+    tr:hover td{background:#fafaf8}
+    .snum{font-size:1.5rem;font-weight:600;color:#292524;line-height:1}
+    .slbl{font-size:.75rem;color:#78716c;margin-top:3px}
+    .pbar-bg{background:#f5f5f4;border-radius:999px;height:5px}
+    .pbar-fill{border-radius:999px;height:5px;transition:width .3s}
+  </style>
 </head>
-<body>
-  <!-- 侧边栏导航 -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-header">
-      <div class="logo">
-        <span class="logo-icon">📱</span>
-        <div class="logo-text">
-          <h1>预约通报</h1>
-          <p>Dashboard</p>
-        </div>
-      </div>
-      <button class="sidebar-toggle" id="sidebar-toggle" aria-label="切换侧边栏">
-        <span></span>
-      </button>
-    </div>
+<body x-data="app()" x-cloak>
 
-    <nav class="nav">
-      <a href="#overview" class="nav-item active" data-view="overview">
-        <span class="nav-icon">📊</span>
-        <span class="nav-label">总览</span>
-      </a>
-      <a href="#statistics" class="nav-item" data-view="statistics">
-        <span class="nav-icon">📈</span>
-        <span class="nav-label">统计分析</span>
-      </a>
-      <a href="#reminders" class="nav-item" data-view="reminders">
-        <span class="nav-icon">🔔</span>
-        <span class="nav-label">提醒日志</span>
-      </a>
-      <a href="#send" class="nav-item" data-view="send">
-        <span class="nav-icon">📤</span>
-        <span class="nav-label">发送通报</span>
-      </a>
-      <a href="#scheduler" class="nav-item" data-view="scheduler">
-        <span class="nav-icon">⏰</span>
-        <span class="nav-label">调度器</span>
-      </a>
-      <a href="#config" class="nav-item" data-view="config">
-        <span class="nav-icon">⚙️</span>
-        <span class="nav-label">配置</span>
-      </a>
-    </nav>
-
-    <div class="sidebar-footer">
-      <div class="scheduler-status" id="sidebar-scheduler-status">
-        <span class="status-indicator" id="status-indicator"></span>
-        <div class="status-info">
-          <span class="status-label">调度器</span>
-          <span class="status-text" id="status-text">检测中...</span>
-        </div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- 主内容区 -->
-  <main class="main-content">
-    <!-- 顶部栏 -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <button class="mobile-menu-toggle" id="mobile-menu-toggle">☰</button>
-        <h2 class="page-title" id="page-title">总览</h2>
-      </div>
-      <div class="topbar-right">
-        <div class="topbar-info" id="upload-status">
-          <span class="info-icon">📅</span>
-          <span id="last-update">加载中...</span>
-        </div>
-        <button class="btn-icon" id="refresh-btn" title="刷新数据">
-          <span>🔄</span>
+<!-- 顶部固定栏 -->
+<header class="bg-white border-b border-stone-200 sticky top-0 z-30">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="flex items-center h-12 gap-6">
+      <span class="font-semibold text-stone-700 text-sm shrink-0">预约通报</span>
+      <nav class="flex items-end gap-6 h-full overflow-x-auto flex-1">
+        <button class="tab-btn" :class="tab==='today'&&'on'" @click="setTab('today')">今日预约</button>
+        <button class="tab-btn" :class="tab==='stats'&&'on'" @click="setTab('stats')">统计分析</button>
+        <button class="tab-btn" :class="tab==='send'&&'on'"  @click="setTab('send')">发送通报</button>
+        <button class="tab-btn" :class="tab==='sys'&&'on'"   @click="setTab('sys')">系统</button>
+      </nav>
+      <div class="flex items-center gap-3 shrink-0">
+        <span class="flex items-center gap-1.5 text-xs text-stone-500">
+          <i class="w-2 h-2 rounded-full inline-block"
+             :class="sched.running?'bg-emerald-400':'bg-stone-300'"></i>
+          <span x-text="sched.running?'调度中':'已停止'"></span>
+        </span>
+        <button @click="refresh()" title="刷新"
+          class="w-7 h-7 flex items-center justify-center rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors">
+          <svg class="w-4 h-4" :class="loading&&'animate-spin'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
         </button>
       </div>
-    </header>
-
-    <!-- 总览视图 -->
-    <div class="view active" id="view-overview">
-      <!-- 数据卡片 -->
-      <div class="stats-grid">
-        <div class="stat-card primary">
-          <div class="stat-icon">✅</div>
-          <div class="stat-content">
-            <h3 class="stat-label">准时填报</h3>
-            <div class="stat-value" id="stat-ontime">-</div>
-            <p class="stat-change" id="stat-ontime-change">真棒！继续保持 🎉</p>
-          </div>
-          <div class="stat-chart">
-            <svg class="progress-ring" width="60" height="60">
-              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
-              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-ontime"></circle>
-            </svg>
-          </div>
-        </div>
-
-        <div class="stat-card warning">
-          <div class="stat-icon">⏰</div>
-          <div class="stat-content">
-            <h3 class="stat-label">超时填报</h3>
-            <div class="stat-value" id="stat-overtime">-</div>
-            <p class="stat-change" id="stat-overtime-change">稍微晚了点 😅</p>
-          </div>
-          <div class="stat-chart">
-            <svg class="progress-ring" width="60" height="60">
-              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
-              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-overtime"></circle>
-            </svg>
-          </div>
-        </div>
-
-        <div class="stat-card danger">
-          <div class="stat-icon">❌</div>
-          <div class="stat-content">
-            <h3 class="stat-label">漏填记录</h3>
-            <div class="stat-value" id="stat-missing">-</div>
-            <p class="stat-change" id="stat-missing-change">记得提醒哦 📢</p>
-          </div>
-          <div class="stat-chart">
-            <svg class="progress-ring" width="60" height="60">
-              <circle class="ring-bg" cx="30" cy="30" r="26"></circle>
-              <circle class="ring-progress" cx="30" cy="30" r="26" id="ring-missing"></circle>
-            </svg>
-          </div>
-        </div>
-
-        <div class="stat-card info">
-          <div class="stat-icon">📋</div>
-          <div class="stat-content">
-            <h3 class="stat-label">今日预约</h3>
-            <div class="stat-value" id="stat-today">-</div>
-            <p class="stat-change">户</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 客户经理预约情况 -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">👥</span>
-            <div>
-              <h3>客户经理预约情况</h3>
-              <p class="card-subtitle">实时跟踪每位经理的预约进度</p>
-            </div>
-          </div>
-          <div class="card-actions">
-            <label class="date-picker">
-              <span class="picker-icon">📅</span>
-              <input type="date" id="target-date" class="date-input">
-            </label>
-            <button class="btn-sm" onclick="setDateOffset(0)">今日</button>
-            <button class="btn-sm" onclick="setDateOffset(1)">明日</button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="manager-grid" id="manager-grid">
-            <!-- 动态加载客户经理卡片 -->
-          </div>
-        </div>
-      </div>
-
-      <!-- 预约记录列表 -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">📝</span>
-            <div>
-              <h3>预约记录明细</h3>
-              <p class="card-subtitle" id="record-count">共 0 条记录</p>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>客户经理</th>
-                  <th>企业名称</th>
-                  <th>联系人</th>
-                  <th>预约时段</th>
-                  <th>商机内容</th>
-                  <th>交付人员</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody id="records-table">
-                <tr class="empty-state">
-                  <td colspan="7">
-                    <div class="empty-icon">📭</div>
-                    <p>暂无预约记录</p>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
     </div>
-
-    <!-- 统计分析视图 -->
-    <div class="view" id="view-statistics">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">📊</span>
-            <div>
-              <h3>累计统计分析</h3>
-              <p class="card-subtitle">查看历史填报数据趋势</p>
-            </div>
-          </div>
-          <div class="card-actions">
-            <label class="date-picker">
-              <input type="date" id="stats-start-date" class="date-input">
-            </label>
-            <span class="date-separator">至</span>
-            <label class="date-picker">
-              <input type="date" id="stats-end-date" class="date-input">
-            </label>
-            <button class="btn btn-primary" onclick="loadStatistics()">
-              <span>🔍</span> 查询
-            </button>
-            <button class="btn btn-secondary" onclick="exportExcel()">
-              <span>📥</span> 导出Excel
-            </button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="stats-summary" id="stats-summary">
-            <!-- 统计汇总数据 -->
-          </div>
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>客户经理</th>
-                  <th>团队</th>
-                  <th>准时次数</th>
-                  <th>超时次数</th>
-                  <th>漏填次数</th>
-                  <th>准时率</th>
-                </tr>
-              </thead>
-              <tbody id="statistics-table">
-                <tr class="empty-state">
-                  <td colspan="6">
-                    <div class="empty-icon">📈</div>
-                    <p>请选择日期范围查询统计数据</p>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 提醒日志视图 -->
-    <div class="view" id="view-reminders">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">🔔</span>
-            <div>
-              <h3>提醒日志</h3>
-              <p class="card-subtitle">查看历史提醒记录</p>
-            </div>
-          </div>
-          <div class="card-actions">
-            <label class="date-picker">
-              <input type="date" id="reminder-date" class="date-input">
-            </label>
-            <select id="reminder-manager" class="select-input">
-              <option value="">全部客户经理</option>
-            </select>
-            <button class="btn btn-primary" onclick="loadReminders()">
-              <span>🔍</span> 查询
-            </button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="timeline" id="reminders-timeline">
-            <!-- 时间线展示提醒记录 -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 发送通报视图 -->
-    <div class="view" id="view-send">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">📤</span>
-            <div>
-              <h3>手动发送通报</h3>
-              <p class="card-subtitle">选择规则并发送企业微信通报</p>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="send-form">
-            <div class="form-group">
-              <label class="form-label">
-                <span class="label-icon">📋</span>
-                选择通报规则
-              </label>
-              <select id="rule-select" class="select-input" onchange="previewReport()">
-                <option value="">请选择规则</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">
-                <span class="label-icon">📅</span>
-                通报日期
-              </label>
-              <input type="date" id="send-date" class="date-input" onchange="previewReport()">
-            </div>
-
-            <div class="preview-box" id="preview-box">
-              <div class="preview-header">
-                <span class="preview-icon">👁️</span>
-                <h4>消息预览</h4>
-              </div>
-              <div class="preview-content" id="preview-content">
-                <div class="preview-empty">
-                  <span class="empty-icon">📄</span>
-                  <p>请选择规则和日期以预览消息</p>
-                </div>
-              </div>
-              <div class="preview-footer">
-                <p class="preview-tip">💡 提示：预览无误后点击下方按钮发送</p>
-              </div>
-            </div>
-
-            <div class="form-actions">
-              <button class="btn btn-primary btn-lg" onclick="sendReport()">
-                <span>🚀</span> 立即发送
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 调度器视图 -->
-    <div class="view" id="view-scheduler">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">⏰</span>
-            <div>
-              <h3>调度器管理</h3>
-              <p class="card-subtitle">管理定时通报任务</p>
-            </div>
-          </div>
-          <div class="card-actions">
-            <button class="btn btn-success" id="start-scheduler-btn" onclick="startScheduler()">
-              <span>▶️</span> 启动
-            </button>
-            <button class="btn btn-danger" id="stop-scheduler-btn" onclick="stopScheduler()">
-              <span>⏸️</span> 停止
-            </button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="scheduler-info" id="scheduler-info">
-            <!-- 调度器状态信息 -->
-          </div>
-          <div class="jobs-grid" id="jobs-grid">
-            <!-- 任务卡片 -->
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- 配置视图 -->
-    <div class="view" id="view-config">
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">👥</span>
-            <div>
-              <h3>客户经理名单</h3>
-              <p class="card-subtitle">共 12 人</p>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="personnel-grid" id="managers-grid">
-            <!-- 客户经理卡片 -->
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">🔧</span>
-            <div>
-              <h3>高端装维人员</h3>
-              <p class="card-subtitle">共 8 人</p>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="personnel-grid" id="gaozhuang-grid">
-            <!-- 高端装维卡片 -->
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title">
-            <span class="card-icon">☁️</span>
-            <div>
-              <h3>智云工程师</h3>
-              <p class="card-subtitle">共 7 人</p>
-            </div>
-          </div>
-        </div>
-        <div class="card-body">
-          <div class="personnel-grid" id="zhiyun-grid">
-            <!-- 智云工程师卡片 -->
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- Toast 通知 -->
-  <div class="toast" id="toast"></div>
-
-  <!-- 加载遮罩 -->
-  <div class="loading-overlay" id="loading-overlay">
-    <div class="loading-spinner"></div>
-    <p class="loading-text">加载中...</p>
   </div>
+</header>
 
-  <script src="js/api.js"></script>
-  <script src="js/app.js"></script>
+<main class="max-w-6xl mx-auto px-4 py-5 space-y-4">
+
+<!-- ===== TAB: 今日预约 ===== -->
+<div x-show="tab==='today'">
+  <div class="flex flex-wrap items-center gap-2 mb-4">
+    <input type="date" class="inp" x-model="d.date" @change="loadToday()">
+    <button class="btn-s text-xs" @click="shiftDate(0)">今日</button>
+    <button class="btn-s text-xs" @click="shiftDate(1)">明日</button>
+    <span class="text-xs text-stone-400 ml-auto" x-show="d.sum">
+      最近上传：<span x-text="d.sum?.latest_upload?.upload_time?fmt(d.sum.latest_upload.upload_time):'暂无'"></span>
+    </span>
+  </div>
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4" x-show="d.sum">
+    <div class="card p-4"><div class="snum" x-text="d.sum?.roster_count??'-'"></div><div class="slbl">名单总人数</div></div>
+    <div class="card p-4"><div class="snum text-amber-600" x-text="d.sum?.booked_manager_count??'-'"></div><div class="slbl">已预约人数</div></div>
+    <div class="card p-4"><div class="snum text-emerald-600" x-text="d.sum?.qualified_manager_count??'-'"></div><div class="slbl">已达标人数</div></div>
+    <div class="card p-4"><div class="snum text-red-500" x-text="d.sum?.shortage_manager_count??'-'"></div><div class="slbl">未达标人数</div></div>
+    <div class="card p-4"><div class="snum" x-text="d.sum?.appointment_count??'-'"></div><div class="slbl">预约总户数</div></div>
+  </div>
+  <!-- 经理进度网格 -->
+  <div class="card mb-4">
+    <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
+      <span class="text-sm font-medium text-stone-700">客户经理预约进度</span>
+      <span class="text-xs text-stone-400" x-text="d.date"></span>
+    </div>
+    <div class="p-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <template x-for="m in (d.sum?.manager_progress??[])" :key="m.name">
+          <div class="flex items-center gap-3 p-3 rounded-lg border border-stone-100 bg-stone-50">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium shrink-0"
+              :class="m.booked>=2?'bg-emerald-100 text-emerald-700':'bg-amber-100 text-amber-700'"
+              x-text="m.name.charAt(0)"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-sm text-stone-700 truncate" x-text="m.name"></span>
+                <span class="text-xs shrink-0 ml-2 font-medium"
+                  :class="m.booked>=2?'text-emerald-600':'text-amber-600'"
+                  x-text="m.booked+'/2'"></span>
+              </div>
+              <div class="pbar-bg">
+                <div class="pbar-fill"
+                  :class="m.booked>=2?'bg-emerald-400':'bg-amber-400'"
+                  :style="'width:'+Math.min(m.booked/2*100,100)+'%'"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template x-if="!d.sum?.manager_progress?.length">
+          <p class="text-sm text-stone-400 py-2 col-span-full">暂无数据</p>
+        </template>
+      </div>
+    </div>
+  </div>
+  <!-- 预约记录表 -->
+  <div class="card">
+    <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
+      <span class="text-sm font-medium text-stone-700">预约记录明细</span>
+      <span class="text-xs text-stone-400" x-text="(d.recs?.length??0)+' 条'"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr>
+          <th>客户经理</th><th>企业名称</th><th>联系人</th>
+          <th>预约时段</th><th>商机内容</th><th>交付人员</th><th>状态</th>
+        </tr></thead>
+        <tbody>
+          <template x-if="!d.recs?.length">
+            <tr><td colspan="7" class="text-center text-stone-400 py-6">暂无预约记录</td></tr>
+          </template>
+          <template x-for="r in (d.recs??[])" :key="r.id??r.company_name">
+            <tr>
+              <td class="font-medium" x-text="r.manager_name||'-'"></td>
+              <td x-text="r.company_name||'-'"></td>
+              <td x-text="r.contact_name||'-'"></td>
+              <td x-text="r.time_slot||'-'"></td>
+              <td class="max-w-xs truncate" :title="r.opportunity_content" x-text="r.opportunity_content||'-'"></td>
+              <td x-text="r.delivery_staff||'-'"></td>
+              <td>
+                <span x-show="r.visit_result" class="badge-g">已回填</span>
+                <span x-show="!r.visit_result&&r.reschedule_time" class="badge-y">已改约</span>
+                <span x-show="!r.visit_result&&!r.reschedule_time" class="badge-n">待拜访</span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<!-- ===== TAB: 统计分析 ===== -->
+<div x-show="tab==='stats'">
+  <div class="card">
+    <div class="px-4 py-3 border-b border-stone-100">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="text-sm text-stone-500">日期范围</span>
+        <input type="date" class="inp" x-model="s.start">
+        <span class="text-stone-400 text-sm">—</span>
+        <input type="date" class="inp" x-model="s.end">
+        <button class="btn-p" @click="loadStats()">查询</button>
+        <button class="btn-s" @click="exportXls()">导出 Excel</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-stone-100 border-b border-stone-100" x-show="s.data">
+      <div class="p-4"><div class="snum text-emerald-600" x-text="s.data?.total_on_time??'-'"></div><div class="slbl">准时填报</div></div>
+      <div class="p-4"><div class="snum text-amber-500" x-text="s.data?.total_overtime??'-'"></div><div class="slbl">超时填报</div></div>
+      <div class="p-4"><div class="snum text-red-500" x-text="s.data?.total_missing??'-'"></div><div class="slbl">漏填记录</div></div>
+      <div class="p-4"><div class="snum" x-text="onTimeRate()"></div><div class="slbl">准时率</div></div>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr>
+          <th>客户经理</th><th>团队</th>
+          <th>准时次数</th><th>超时次数</th><th>漏填次数</th><th>准时率</th>
+        </tr></thead>
+        <tbody>
+          <template x-if="!s.data?.details?.length">
+            <tr><td colspan="6" class="text-center text-stone-400 py-6">请选择日期范围后点击查询</td></tr>
+          </template>
+          <template x-for="row in (s.data?.details??[])" :key="row.manager_name">
+            <tr>
+              <td class="font-medium" x-text="row.manager_name"></td>
+              <td class="text-stone-500" x-text="row.team||'-'"></td>
+              <td><span class="badge-g" x-text="row.on_time"></span></td>
+              <td><span class="badge-y" x-text="row.overtime"></span></td>
+              <td><span class="badge-r" x-text="row.missing"></span></td>
+              <td class="font-medium" x-text="rowRate(row)+'%'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<!-- ===== TAB: 发送通报 ===== -->
+<div x-show="tab==='send'">
+  <div class="max-w-lg">
+    <div class="card p-5 space-y-4">
+      <p class="text-sm font-medium text-stone-700">手动发送通报</p>
+      <div>
+        <label class="block text-xs text-stone-500 mb-1">通报规则</label>
+        <select class="inp w-full" x-model="snd.rule" @change="doPreview()">
+          <option value="">请选择规则</option>
+          <template x-for="r in snd.rules" :key="r.rule_key">
+            <option :value="r.rule_key" x-text="r.rule_name||r.rule_key"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-stone-500 mb-1">通报日期</label>
+        <input type="date" class="inp w-full" x-model="snd.date" @change="doPreview()">
+      </div>
+      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:5rem">
+        <p class="text-xs text-stone-400 mb-2">消息预览</p>
+        <p class="text-sm text-stone-400" x-show="!snd.preview">选择规则和日期后自动预览</p>
+        <pre x-show="snd.preview" class="text-sm text-stone-700 whitespace-pre-wrap" style="font-family:inherit" x-text="snd.preview"></pre>
+      </div>
+      <button class="btn-p w-full py-2.5"
+        :disabled="!snd.rule||!snd.date||loading" @click="doSend()">
+        <span x-text="loading?'发送中...':'立即发送到企业微信'"></span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TAB: 系统 ===== -->
+<div x-show="tab==='sys'">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-sm font-medium text-stone-700">调度器</span>
+        <span class="flex items-center gap-1.5 text-xs text-stone-500">
+          <i class="w-2 h-2 rounded-full inline-block" :class="sched.running?'bg-emerald-400':'bg-stone-300'"></i>
+          <span x-text="sched.running?'运行中':'已停止'"></span>
+        </span>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <button class="btn-s" :disabled="sched.running||loading" @click="startSched()">启动</button>
+        <button class="btn-d" :disabled="!sched.running||loading" @click="stopSched()">停止</button>
+        <button class="btn-s" @click="loadSys()">刷新</button>
+      </div>
+      <template x-if="sched.running&&sched.jobs?.length">
+        <div class="space-y-2">
+          <p class="text-xs text-stone-400">定时任务</p>
+          <template x-for="job in sched.jobs" :key="job.id">
+            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-stone-50 border border-stone-100">
+              <div>
+                <p class="text-sm text-stone-700" x-text="job.name||job.id"></p>
+                <p class="text-xs text-stone-400"
+                  x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+              </div>
+              <button class="btn-s text-xs py-1 px-2" @click="triggerJob(job.id)">立即执行</button>
+            </div>
+          </template>
+        </div>
+      </template>
+      <p class="text-sm text-stone-400" x-show="!sched.running">启动调度器后显示任务列表</p>
+      <p class="text-sm text-stone-400" x-show="sched.running&&!sched.jobs?.length">暂无已注册任务</p>
+    </div>
+    <div class="card p-5">
+      <p class="text-sm font-medium text-stone-700 mb-3">客户经理名单</p>
+      <div class="flex flex-wrap gap-2">
+        <template x-for="m in (sys.roster?.customer_managers??[])" :key="m.name">
+          <div class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-stone-50 border border-stone-100">
+            <div class="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-medium shrink-0"
+              x-text="m.name.charAt(0)"></div>
+            <span class="text-sm text-stone-700" x-text="m.name"></span>
+            <span x-show="m.team" class="text-xs text-stone-400" x-text="m.team"></span>
+          </div>
+        </template>
+        <p class="text-sm text-stone-400" x-show="!sys.roster">加载中...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+<!-- 确认对话框 -->
+<div x-show="dlg.show" x-cloak
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/25">
+  <div class="bg-white rounded-xl shadow-xl p-6 w-72 mx-4">
+    <p class="text-sm text-stone-700 mb-5" x-text="dlg.msg"></p>
+    <div class="flex justify-end gap-2">
+      <button class="btn-s" @click="dlg.cb(false)">取消</button>
+      <button class="btn-p" @click="dlg.cb(true)">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div x-show="tst.on" x-transition.opacity
+  class="fixed top-4 right-4 z-50 px-4 py-2.5 rounded-lg text-sm shadow pointer-events-none"
+  :class="tst.err?'bg-red-50 text-red-700 border border-red-200':'bg-emerald-50 text-emerald-700 border border-emerald-200'"
+  x-text="tst.msg"></div>
+
+<script src="js/api.js"></script>
+<script>
+function app(){
+  return {
+    tab:'today', loading:false,
+    tst:{on:false,msg:'',err:false},
+    dlg:{show:false,msg:'',cb:null},
+    d:{date:'',sum:null,recs:[]},
+    s:{start:'',end:'',data:null},
+    snd:{rules:[],rule:'',date:'',preview:''},
+    sched:{running:false,jobs:[]},
+    sys:{roster:null},
+
+    async init(){
+      const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
+      const tod=new Date().toISOString().slice(0,10);
+      this.d.date=tom(); this.snd.date=tom();
+      this.s.start=tod; this.s.end=tod;
+      await this.loadToday();
+      await this.loadRules();
+      await this.pollSched();
+      setInterval(()=>this.pollSched(),30000);
+    },
+
+    async setTab(name){
+      this.tab=name;
+      if(name==='today') await this.loadToday();
+      if(name==='send')  await this.loadRules();
+      if(name==='sys')   await this.loadSys();
+    },
+
+    async refresh(){
+      if(this.tab==='today') await this.loadToday();
+      if(this.tab==='stats'&&this.s.data) await this.loadStats();
+      if(this.tab==='send')  await this.loadRules();
+      if(this.tab==='sys')   await this.loadSys();
+    },
+
+    shiftDate(n){
+      const d=new Date();d.setDate(d.getDate()+n);
+      this.d.date=d.toISOString().slice(0,10);
+      this.loadToday();
+    },
+
+    async loadToday(){
+      this.loading=true;
+      try{
+        const[a,b]=await Promise.all([Api.summary(this.d.date),Api.records(this.d.date)]);
+        this.d.sum=a; this.d.recs=b.records??[];
+      }catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+
+    async loadStats(){
+      if(!this.s.start||!this.s.end){this.toast('请选择日期范围',true);return;}
+      this.loading=true;
+      try{this.s.data=await Api.cumulativeStats({start_date:this.s.start,end_date:this.s.end});}
+      catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+
+    exportXls(){
+      if(!this.s.start||!this.s.end){this.toast('请先选择日期范围',true);return;}
+      Api.exportExcel({start_date:this.s.start,end_date:this.s.end});
+    },
+
+    async loadRules(){
+      try{const r=await Api.rules();this.snd.rules=r.rules??[];}
+      catch(e){this.toast(e.message,true);}
+    },
+
+    async doPreview(){
+      if(!this.snd.rule||!this.snd.date){this.snd.preview='';return;}
+      try{
+        const r=await Api.preview({rule_key:this.snd.rule,target_date:this.snd.date});
+        this.snd.preview=r.message||'（条件未触发，无需发送）';
+      }catch(e){this.snd.preview='预览失败：'+e.message;}
+    },
+
+    async doSend(){
+      if(!this.snd.rule||!this.snd.date) return;
+      if(!await this.confirm('确认发送此通报到企业微信？')) return;
+      this.loading=true;
+      try{
+        await Api.send({rule_key:this.snd.rule,target_date:this.snd.date});
+        this.toast('通报已发送'); this.snd.preview='';
+      }catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+
+    async loadSys(){
+      this.loading=true;
+      try{
+        const[sc,ro]=await Promise.all([Api.schedulerStatus(),Api.roster()]);
+        this.sched.running=sc.running; this.sched.jobs=sc.jobs??[];
+        this.sys.roster=ro;
+      }catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+
+    async pollSched(){
+      try{const s=await Api.schedulerStatus();this.sched.running=s.running;this.sched.jobs=s.jobs??[];}
+      catch(_){}
+    },
+
+    async startSched(){
+      if(!await this.confirm('启动后将按预设时间自动发送通报，确认？')) return;
+      this.loading=true;
+      try{await Api.startScheduler();this.toast('调度器已启动');await this.loadSys();}
+      catch(e){this.toast(e.message,true);}finally{this.loading=false;}
+    },
+
+    async stopSched(){
+      if(!await this.confirm('停止后不再自动发送通报，确认？')) return;
+      this.loading=true;
+      try{await Api.stopScheduler();this.toast('调度器已停止');await this.loadSys();}
+      catch(e){this.toast(e.message,true);}finally{this.loading=false;}
+    },
+
+    async triggerJob(id){
+      if(!await this.confirm('立即执行任务 '+id+'？')) return;
+      this.loading=true;
+      try{await Api.triggerJob(id);this.toast('任务已触发');}
+      catch(e){this.toast(e.message,true);}finally{this.loading=false;}
+    },
+
+    onTimeRate(){
+      if(!this.s.data) return '-';
+      const t=(this.s.data.total_on_time||0)+(this.s.data.total_overtime||0)+(this.s.data.total_missing||0);
+      return t?((this.s.data.total_on_time/t)*100).toFixed(1)+'%':'0%';
+    },
+    rowRate(r){
+      const t=(r.on_time||0)+(r.overtime||0)+(r.missing||0);
+      return t?((r.on_time/t)*100).toFixed(1):'0';
+    },
+    fmt(str){
+      if(!str) return '';
+      const d=new Date(str),p=n=>String(n).padStart(2,'0');
+      return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+    },
+    toast(msg,err=false){
+      this.tst={on:true,msg,err};
+      setTimeout(()=>this.tst.on=false,3000);
+    },
+    confirm(msg){
+      return new Promise(res=>{
+        this.dlg={show:true,msg,cb:(v)=>{this.dlg.show=false;res(v);}};
+      });
+    },
+  };
+}
+</script>
 </body>
 </html>

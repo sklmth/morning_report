@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from wecom_notice.config import CUSTOMER_MANAGERS, GAOZHUANG_STAFF, MANAGER_RECIPIENTS, ZHIYUN_ENGINEERS
@@ -42,6 +43,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="企业微信通报 API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+_FRONTEND_DIR = Path(__file__).parent / "frontend"
+
+@app.get("/")
+def index():
+    return FileResponse(str(_FRONTEND_DIR / "index.html"))
 
 
 class UploadRequest(BaseModel):
@@ -346,3 +353,7 @@ def trigger_kingsoft_sync():
             error=str(e)
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+# 前端静态文件（放在所有 API 路由之后，不会覆盖 /api/* 路由）
+if _FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")
