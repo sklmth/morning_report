@@ -107,10 +107,24 @@ def records(
 
 @app.get("/api/summary")
 def summary(date_value: str = Query("", alias="date")):
+    from wecom_notice.db import get_manager_history_counts
+
     target_date = date_value or tomorrow()
     records = get_records(appointment_date=target_date)
     report_rule = get_rule("missing_tomorrow_booking")
     shortage = build_report(target_date, report_rule) if report_rule else {"items": []}
+
+    manager_progress = []
+    for manager in CUSTOMER_MANAGERS:
+        booked = sum(1 for record in records if record["manager_name"] == manager["name"])
+        history_counts = get_manager_history_counts(manager["name"], target_date)
+        manager_progress.append({
+            "name": manager["name"],
+            "team": manager.get("team", ""),
+            "booked": booked,
+            "history_counts": history_counts
+        })
+
     return {
         "date": target_date,
         "roster_count": len(CUSTOMER_MANAGERS),
@@ -120,10 +134,7 @@ def summary(date_value: str = Query("", alias="date")):
         "appointment_count": len(records),
         "dispatch_count": sum(1 for record in records if record["need_dispatch"] in {"是", "需要", "1", "true", "True"}),
         "latest_upload": latest_upload(),
-        "manager_progress": [
-            {"name": manager["name"], "booked": sum(1 for record in records if record["manager_name"] == manager["name"])}
-            for manager in CUSTOMER_MANAGERS
-        ],
+        "manager_progress": manager_progress,
     }
 
 
@@ -224,18 +235,18 @@ def export_statistics(start_date: str = "", end_date: str = ""):
 def statistics_details(
     start_date: str = "",
     end_date: str = "",
-    manager: str = "",
+    manager_name: str = "",
     fill_status: str = ""
 ):
     """查询填报统计明细"""
-    records = get_fill_statistics(start_date, end_date, manager, fill_status)
-    return {"records": records, "count": len(records)}
+    records = get_fill_statistics(start_date, end_date, manager_name, fill_status)
+    return {"statistics": records, "count": len(records)}
 
 
 @app.get("/api/reminders/logs")
-def reminder_logs(date: str = "", manager: str = "", limit: int = 100):
+def reminder_logs(date: str = "", manager_name: str = "", limit: int = 100):
     """查询提醒日志"""
-    logs = get_reminder_logs(date, manager, limit)
+    logs = get_reminder_logs(date, manager_name, limit)
     return {"logs": logs, "count": len(logs)}
 
 
@@ -243,7 +254,7 @@ def reminder_logs(date: str = "", manager: str = "", limit: int = 100):
 def scheduler_status():
     """查询调度器状态"""
     if not hasattr(app.state, "scheduler") or app.state.scheduler is None:
-        return {"enabled": False, "jobs": []}
+        return {"running": False, "jobs": []}
 
     jobs = []
     for job in app.state.scheduler.get_jobs():
@@ -253,7 +264,7 @@ def scheduler_status():
             "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
         })
 
-    return {"enabled": True, "jobs": jobs, "count": len(jobs)}
+    return {"running": True, "jobs": jobs, "count": len(jobs)}
 
 
 @app.post("/api/scheduler/start")

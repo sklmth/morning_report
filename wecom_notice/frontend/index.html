@@ -3,65 +3,291 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>企业微信通报</title>
+  <title>企业微信通报管理系统</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div>
       <p class="eyebrow">政企标准化信息收集 V3</p>
-      <h1>企业微信通报</h1>
+      <h1>企业微信通报管理系统</h1>
     </div>
     <div class="toolbar">
-      <label>通报日期 <input id="target-date" type="date"></label>
-      <button id="refresh" class="icon-button" title="刷新数据" aria-label="刷新数据">↻</button>
+      <div class="scheduler-status" id="scheduler-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">调度器状态检测中...</span>
+      </div>
+      <button id="toggle-scheduler" class="icon-button" title="启动/停止调度器">⏯</button>
+      <button id="refresh" class="icon-button" title="刷新数据">↻</button>
     </div>
   </header>
 
+  <nav class="tabs">
+    <button class="tab-button active" data-tab="overview">📊 总览</button>
+    <button class="tab-button" data-tab="statistics">📈 累计统计</button>
+    <button class="tab-button" data-tab="reminders">🔔 提醒日志</button>
+    <button class="tab-button" data-tab="send">📤 发送通报</button>
+    <button class="tab-button" data-tab="config">⚙️ 配置</button>
+  </nav>
+
   <main>
-    <section class="status-line" id="upload-status">正在读取数据…</section>
-    <section class="metrics" id="metrics"></section>
+    <!-- 总览标签页 -->
+    <div class="tab-content active" id="tab-overview">
+      <section class="status-line" id="upload-status">正在读取数据…</section>
 
-    <section class="section">
-      <div class="section-heading">
-        <div><p class="eyebrow">预约达标</p><h2>客户经理明日预约</h2></div>
-        <span class="muted">每人至少 2 户</span>
-      </div>
-      <div class="table-wrap"><table><thead><tr><th>客户经理</th><th>预约户数</th><th>缺口</th><th>状态</th></tr></thead><tbody id="progress-table"></tbody></table></div>
-    </section>
+      <section class="metrics" id="metrics"></section>
 
-    <section class="two-column">
       <section class="section">
-        <div class="section-heading"><div><p class="eyebrow">发送前检查</p><h2>通报预览</h2></div></div>
-        <div class="form-row">
-          <label>通报规则 <select id="rule-select"></select></label>
-          <label>@ 策略 <span id="recipient-policy" class="readonly">-</span></label>
+        <div class="section-heading">
+          <div><p class="eyebrow">预约达标</p><h2>客户经理明日预约</h2></div>
+          <div class="date-shortcuts">
+            <label>通报日期 <input id="target-date" type="date"></label>
+            <button class="btn-link" onclick="setDateOffset(0)">今日</button>
+            <button class="btn-link" onclick="setDateOffset(1)">明日</button>
+          </div>
         </div>
-        <textarea id="preview" rows="13" readonly placeholder="选择规则后生成通报预览"></textarea>
-        <div class="action-row">
-          <button id="preview-button" class="secondary">生成预览</button>
-          <button id="send-button" class="primary">发送至企业微信</button>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>客户经理</th>
+                <th>团队</th>
+                <th>预约户数</th>
+                <th>缺口</th>
+                <th>状态</th>
+                <th>历史超时</th>
+                <th>历史漏填</th>
+              </tr>
+            </thead>
+            <tbody id="progress-table"></tbody>
+          </table>
         </div>
-        <p class="hint">发送前请确认企业微信机器人 Webhook 已在服务端配置。</p>
       </section>
 
       <section class="section">
-        <div class="section-heading"><div><p class="eyebrow">配置状态</p><h2>接收对象</h2></div></div>
+        <div class="section-heading">
+          <div><p class="eyebrow">预约明细</p><h2>当日预约记录</h2></div>
+          <span class="muted" id="record-count">共 0 条</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>客户经理</th>
+                <th>企业</th>
+                <th>联系人</th>
+                <th>时间段</th>
+                <th>商机内容</th>
+                <th>交付人员</th>
+              </tr>
+            </thead>
+            <tbody id="records-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- 累计统计标签页 -->
+    <div class="tab-content" id="tab-statistics">
+      <section class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">数据导出</p><h2>累计统计报表</h2></div>
+          <div class="action-buttons">
+            <label>
+              统计时间范围
+              <input type="date" id="stats-start-date">
+              至
+              <input type="date" id="stats-end-date">
+            </label>
+            <button id="export-excel" class="primary">📥 导出Excel</button>
+          </div>
+        </div>
+        <p class="hint">将导出包含"汇总统计"、"准时填报"、"超时填报"、"漏填统计"四个工作表的Excel文件</p>
+      </section>
+
+      <section class="stats-grid">
+        <div class="stat-card green">
+          <div class="stat-icon">✅</div>
+          <div class="stat-content">
+            <div class="stat-label">准时填报</div>
+            <div class="stat-value" id="stat-ontime">-</div>
+            <div class="stat-desc">19:30前完成</div>
+          </div>
+        </div>
+        <div class="stat-card yellow">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-content">
+            <div class="stat-label">超时填报</div>
+            <div class="stat-value" id="stat-overtime">-</div>
+            <div class="stat-desc">19:30-23:30</div>
+          </div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-icon">❌</div>
+          <div class="stat-content">
+            <div class="stat-label">漏填记录</div>
+            <div class="stat-value" id="stat-missing">-</div>
+            <div class="stat-desc">23:30仍未完成</div>
+          </div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-icon">📊</div>
+          <div class="stat-content">
+            <div class="stat-label">总计</div>
+            <div class="stat-value" id="stat-total">-</div>
+            <div class="stat-desc">累计统计天数</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">明细数据</p><h2>填报统计明细</h2></div>
+          <div class="filter-row">
+            <label>筛选状态
+              <select id="status-filter">
+                <option value="">全部</option>
+                <option value="on_time">准时</option>
+                <option value="overtime">超时</option>
+                <option value="missing">漏填</option>
+              </select>
+            </label>
+            <button class="secondary" onclick="loadStatistics()">应用筛选</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>客户经理</th>
+                <th>填报状态</th>
+                <th>完成时间</th>
+                <th>提醒次数</th>
+                <th>填报次数</th>
+              </tr>
+            </thead>
+            <tbody id="statistics-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- 提醒日志标签页 -->
+    <div class="tab-content" id="tab-reminders">
+      <section class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">提醒记录</p><h2>提醒日志查询</h2></div>
+          <div class="filter-row">
+            <label>日期 <input type="date" id="reminder-date"></label>
+            <label>客户经理
+              <select id="reminder-manager">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <button class="secondary" onclick="loadReminders()">查询</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>提醒时间</th>
+                <th>客户经理</th>
+                <th>提醒序号</th>
+                <th>当前已填</th>
+                <th>当前超时人数</th>
+                <th>当前漏填人数</th>
+              </tr>
+            </thead>
+            <tbody id="reminders-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- 发送通报标签页 -->
+    <div class="tab-content" id="tab-send">
+      <section class="two-column">
+        <section class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">发送前检查</p><h2>通报预览</h2></div>
+          </div>
+          <div class="form-row">
+            <label>通报规则 <select id="rule-select"></select></label>
+            <label>@ 策略 <span id="recipient-policy" class="readonly">-</span></label>
+          </div>
+          <textarea id="preview" rows="16" readonly placeholder="选择规则后生成通报预览"></textarea>
+          <div class="action-row">
+            <button id="preview-button" class="secondary">生成预览</button>
+            <button id="send-button" class="primary">发送至企业微信</button>
+          </div>
+          <p class="hint">💡 发送前请确认企业微信机器人 Webhook 已在服务端配置</p>
+        </section>
+
+        <section class="section">
+          <div class="section-heading">
+            <div><p class="eyebrow">最近发送</p><h2>发送日志</h2></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>发送时间</th>
+                  <th>规则</th>
+                  <th>状态</th>
+                  <th>@ 对象</th>
+                </tr>
+              </thead>
+              <tbody id="logs-table"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <!-- 配置标签页 -->
+    <div class="tab-content" id="tab-config">
+      <section class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">调度器管理</p><h2>定时任务配置</h2></div>
+          <div class="scheduler-controls">
+            <button id="start-scheduler" class="primary">▶️ 启动调度器</button>
+            <button id="stop-scheduler" class="secondary">⏸️ 停止调度器</button>
+          </div>
+        </div>
+        <div class="scheduler-info" id="scheduler-info">
+          <p class="muted">调度器状态加载中...</p>
+        </div>
+        <div class="hint-box">
+          <p><strong>⚠️ 重要提示：</strong></p>
+          <ul>
+            <li>调度器启动后，将按照预设的20个时间点自动发送通报</li>
+            <li>客户经理提醒：18:00, 18:45, 19:15, 19:45, 20:15, 21:00, 22:00, 23:00</li>
+            <li>张端副经理简报：18:30, 19:00, 20:00, 20:30, 21:00, 21:30</li>
+            <li>钟俊杰经理简报：19:30, 20:30, 21:00, 21:30</li>
+            <li>所有管理者详细通报：22:00</li>
+            <li>最终数据收集（不发送）：23:30</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">人员配置</p><h2>接收对象</h2></div>
+          <span class="muted" id="total-personnel">加载中...</span>
+        </div>
         <div id="roster" class="roster"></div>
       </section>
-    </section>
-
-    <section class="section">
-      <div class="section-heading"><div><p class="eyebrow">预约明细</p><h2>当日预约记录</h2></div></div>
-      <div class="table-wrap"><table><thead><tr><th>客户经理</th><th>企业</th><th>联系人</th><th>时间段</th><th>商机内容</th><th>交付人员</th></tr></thead><tbody id="records-table"></tbody></table></div>
-    </section>
-
-    <section class="section">
-      <div class="section-heading"><div><p class="eyebrow">可追溯</p><h2>发送日志</h2></div></div>
-      <div class="table-wrap"><table><thead><tr><th>发送时间</th><th>规则</th><th>状态</th><th>@ 对象</th><th>错误信息</th></tr></thead><tbody id="logs-table"></tbody></table></div>
-    </section>
+    </div>
   </main>
+
   <div id="toast" role="status"></div>
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>处理中...</p>
+  </div>
+
   <script src="js/api.js"></script>
   <script src="js/app.js"></script>
 </body>
