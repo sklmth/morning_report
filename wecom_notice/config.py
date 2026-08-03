@@ -9,7 +9,7 @@ WEBHOOK_URL = os.environ.get("WECOM_NOTICE_WEBHOOK_URL", "")
 # 测试环境配置
 TEST_MODE = os.environ.get("WECOM_NOTICE_TEST_MODE", "false").lower() == "true"
 TEST_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=866c5319-0f4a-42fe-8465-f4b3de554c61"
-KINGSOFT_WEBHOOK_URL = "https://www.kdocs.cn/chatflow/api/v2/func/webhook/3HO1PSFYIAgV1XAsLp6Z36jFb3R"
+KINGSOFT_WEBHOOK_URL = "https://www.kdocs.cn/chatflow/api/v2/func/webhook/3HO9aSGTCOI0baONAtcctbiSu77"
 
 # Excel 中当前出现的客户经理名单。补充手机号或企业微信 userid 后即可支持群内 @。
 CUSTOMER_MANAGERS = [
