@@ -96,6 +96,12 @@ CREATE TABLE IF NOT EXISTS reminder_logs (
     missing_count INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_reminder_logs_date ON reminder_logs(date, manager_name);
+
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
+);
 """
 
 RECORD_COLUMNS = [
@@ -397,3 +403,24 @@ def increment_reminder_count(date: str, manager_name: str) -> int:
                 (date, manager_name, timestamp, timestamp),
             )
             return 1
+
+
+# ====== 应用设置 ======
+
+
+def get_setting(key: str, default: str = "") -> str:
+    """读取应用设置，key不存在时返回default。"""
+    with connection() as conn:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def save_setting(key: str, value: str) -> None:
+    """保存或更新应用设置。"""
+    timestamp = now()
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+            (key, value, timestamp),
+        )

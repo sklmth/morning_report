@@ -76,11 +76,27 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
 
     if overtime_count > 0 or missing_count > 0:
         lines.append("")
-        lines.append("📊 历史记录：")
+        lines.append("📊 本月记录：")
         if overtime_count > 0:
             lines.append(f"   ⏱️ 超时填报：{overtime_count} 次")
         if missing_count > 0:
             lines.append(f"   ❌ 漏填：{missing_count} 次")
+
+    # 罚款提示（需 fine_enabled=true 时才显示）
+    from wecom_notice.db import get_setting
+    if get_setting("fine_enabled", "false") == "true":
+        fine_triggered = overtime_count > 5 or missing_count >= 1
+        if fine_triggered:
+            reasons = []
+            if overtime_count > 5:
+                reasons.append(f"本月超时填报 {overtime_count} 次（已超5次）")
+            if missing_count >= 1:
+                reasons.append(f"本月漏填 {missing_count} 次")
+            lines.append("")
+            lines.append("☕ 下午茶基金提醒：")
+            for r in reasons:
+                lines.append(f"   · {r}")
+            lines.append("   需上交 10 元至部门下午茶基金，辛苦啦~")
 
     lines.extend([
         "",
@@ -128,8 +144,9 @@ def build_manager_brief_notice(target_date: str, required: int = 2) -> dict[str,
 
     current_time = datetime.now().strftime("%H:%M")
     lines = [
-        f"【预约填报提醒】{target_date}",
+        f"🚨【预约填报督办】{target_date}",
         f"⏰ 当前时间：{current_time}",
+        f"截至目前，仍有 {len(not_filled)} 名客户经理未完成今日预约填报，请知悉！",
         "",
         "⚠️ 未完成填报：",
         *not_filled,

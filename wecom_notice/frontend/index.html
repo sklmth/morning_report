@@ -288,6 +288,23 @@
         <p class="text-sm text-stone-400" x-show="!sys.roster">加载中...</p>
       </div>
     </div>
+    <!-- 罚款基金设置 -->
+    <div class="card p-5">
+      <div class="flex items-center justify-between mb-1">
+        <p class="text-sm font-medium text-stone-700">☕ 下午茶基金提醒</p>
+        <!-- toggle switch -->
+        <button type="button" @click="sys.fineEnabled=!sys.fineEnabled"
+          class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+          :class="sys.fineEnabled?'bg-amber-400':'bg-stone-200'">
+          <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+            :class="sys.fineEnabled?'translate-x-6':'translate-x-1'"></span>
+        </button>
+      </div>
+      <p class="text-xs text-stone-400 mb-4">开启后，客户经理提醒中将显示是否需要上交下午茶基金（月内超时填报>5次或漏填≥1次，上交10元）</p>
+      <button class="btn-p text-sm" :disabled="sys.fineSaving" @click="saveFineSettings()">
+        <span x-text="sys.fineSaving?'保存中...':'保存设置'"></span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -321,7 +338,7 @@ function app(){
     s:{start:'',end:'',data:null},
     snd:{rules:[],rule:'',date:'',preview:''},
     sched:{running:false,jobs:[]},
-    sys:{roster:null},
+    sys:{roster:null,fineEnabled:false,fineSaving:false},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
@@ -403,11 +420,21 @@ function app(){
     async loadSys(){
       this.loading=true;
       try{
-        const[sc,ro]=await Promise.all([Api.schedulerStatus(),Api.roster()]);
+        const[sc,ro,cfg]=await Promise.all([Api.schedulerStatus(),Api.roster(),Api.settings()]);
         this.sched.running=sc.running; this.sched.jobs=sc.jobs??[];
         this.sys.roster=ro;
+        this.sys.fineEnabled=cfg.fine_enabled??false;
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
+    },
+
+    async saveFineSettings(){
+      this.sys.fineSaving=true;
+      try{
+        await Api.saveSettings({fine_enabled:this.sys.fineEnabled});
+        this.toast(this.sys.fineEnabled?'罚款基金提醒已开启 ☕':'罚款基金提醒已关闭');
+      }catch(e){this.toast(e.message,true);}
+      finally{this.sys.fineSaving=false;}
     },
 
     async pollSched(){

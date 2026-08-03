@@ -18,9 +18,11 @@ from wecom_notice.db import (
     get_rule,
     get_rules,
     get_send_logs,
+    get_setting,
     init_db,
     latest_upload,
     save_rule,
+    save_setting,
     upsert_records,
 )
 from wecom_notice.excel_export import export_cumulative_stats
@@ -353,6 +355,25 @@ def trigger_kingsoft_sync():
             error=str(e)
         )
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/config/settings")
+def get_settings():
+    """读取应用设置"""
+    return {
+        "fine_enabled": get_setting("fine_enabled", "false") == "true",
+    }
+
+
+class SettingsBody(BaseModel):
+    fine_enabled: bool = Field(..., description="是否开启罚款基金提醒")
+
+
+@app.post("/api/config/settings")
+def post_settings(body: SettingsBody):
+    """保存应用设置"""
+    save_setting("fine_enabled", "true" if body.fine_enabled else "false")
+    return {"ok": True, "fine_enabled": body.fine_enabled}
+
 
 # 前端静态文件（放在所有 API 路由之后，不会覆盖 /api/* 路由）
 if _FRONTEND_DIR.exists():
