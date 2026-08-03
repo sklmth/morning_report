@@ -48,6 +48,9 @@ const Api = (() => {
     // 配置/名单
     roster: () => req('/config/roster'),
 
+    // 运行日志
+    sendLogs: (limit=100) => req(`/send-logs?limit=${limit}`),
+
     // 应用设置
     settings:     () => req('/config/settings'),
     saveSettings: (body) => post('/config/settings', body),

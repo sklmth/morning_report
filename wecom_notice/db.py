@@ -277,7 +277,13 @@ def add_send_log(rule_key: str, status: str, message_text: str, mentioned: list[
 def get_send_logs(limit: int = 100) -> list[dict[str, Any]]:
     with connection() as conn:
         rows = conn.execute("SELECT * FROM send_logs ORDER BY id DESC LIMIT ?", (min(max(limit, 1), 500),)).fetchall()
-    return [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        data = dict(row)
+        data["mentioned"] = json.loads(data.pop("mentioned_json", "[]") or "[]")
+        data["record_ids"] = json.loads(data.pop("record_ids_json", "[]") or "[]")
+        result.append(data)
+    return result
 
 
 def latest_upload() -> str:

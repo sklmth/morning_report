@@ -52,6 +52,7 @@
         <button class="tab-btn" :class="tab==='stats'&&'on'" @click="setTab('stats')">统计分析</button>
         <button class="tab-btn" :class="tab==='send'&&'on'"  @click="setTab('send')">发送通报</button>
         <button class="tab-btn" :class="tab==='sys'&&'on'"   @click="setTab('sys')">系统</button>
+        <button class="tab-btn" :class="tab==='logs'&&'on'" @click="setTab('logs')">运行日志</button>
       </nav>
       <div class="flex items-center gap-3 shrink-0">
         <span class="flex items-center gap-1.5 text-xs text-stone-500">
@@ -352,6 +353,74 @@
   </div>
 </div>
 
+<!-- ===== TAB: 运行日志 ===== -->
+<div x-show="tab==='logs'">
+  <div class="card">
+    <div class="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center gap-2">
+      <span class="text-sm font-medium text-stone-700">运行日志</span>
+      <span class="text-xs text-stone-400 ml-1" x-text="'共 '+lg.list.length+' 条'"></span>
+      <div class="ml-auto flex items-center gap-2">
+        <label class="text-xs text-stone-500">显示</label>
+        <select class="inp text-xs py-1" x-model.number="lg.lim" @change="loadLogs()">
+          <option value="50">50 条</option>
+          <option value="100">100 条</option>
+          <option value="200">200 条</option>
+          <option value="500">500 条</option>
+        </select>
+        <button class="btn-s text-xs py-1 px-3" @click="loadLogs()">刷新</button>
+      </div>
+    </div>
+    <!-- 汇总 -->
+    <div class="grid grid-cols-3 divide-x divide-stone-100 border-b border-stone-100" x-show="lg.list.length">
+      <div class="p-3 text-center">
+        <div class="snum text-base" x-text="lg.list.length"></div>
+        <div class="slbl">总计</div>
+      </div>
+      <div class="p-3 text-center">
+        <div class="snum text-base text-emerald-600" x-text="lg.list.filter(l=>l.status==='success').length"></div>
+        <div class="slbl">成功</div>
+      </div>
+      <div class="p-3 text-center">
+        <div class="snum text-base text-red-500" x-text="lg.list.filter(l=>l.status==='failed').length"></div>
+        <div class="slbl">失败</div>
+      </div>
+    </div>
+    <div class="overflow-x-auto">
+      <table>
+        <thead><tr>
+          <th>时间</th><th>规则</th><th>状态</th><th>接收人</th><th>消息摘要</th><th>错误</th>
+        </tr></thead>
+        <tbody>
+          <template x-if="!lg.list.length">
+            <tr><td colspan="6" class="text-center text-stone-400 py-6">暂无运行日志</td></tr>
+          </template>
+          <template x-for="l in lg.list" :key="l.id">
+            <tr>
+              <td class="whitespace-nowrap text-xs text-stone-500" x-text="fmt(l.sent_at)"></td>
+              <td class="text-xs font-mono text-stone-600" x-text="l.rule_key"></td>
+              <td>
+                <span x-show="l.status==='success'" class="badge-g">成功</span>
+                <span x-show="l.status==='failed'" class="badge-r">失败</span>
+                <span x-show="l.status!=='success'&&l.status!=='failed'" class="badge-n" x-text="l.status"></span>
+              </td>
+              <td class="text-xs text-stone-500 whitespace-nowrap" x-text="logRecipients(l)"></td>
+              <td class="max-w-xs">
+                <span class="text-xs text-stone-600 block truncate" style="max-width:260px"
+                  :title="l.message_text"
+                  x-text="l.message_text?l.message_text.slice(0,60)+(l.message_text.length>60?'…':''):'—'"></span>
+              </td>
+              <td class="text-xs text-red-500 max-w-xs">
+                <span :title="l.error"
+                  x-text="l.error?l.error.slice(0,40)+(l.error.length>40?'…':''):'—'"></span>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 </main>
 <!-- 确认对话框 -->
 <div x-show="dlg.show" x-cloak
@@ -383,6 +452,7 @@ function app(){
     snd:{rules:[],rule:'',date:'',preview:'',previewRecipients:''},
     sched:{running:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineSaving:false},
+    lg:{list:[],lim:100},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
@@ -402,6 +472,7 @@ function app(){
       if(name==='today') await this.loadToday();
       if(name==='send')  await this.loadRules();
       if(name==='sys')   await this.loadSys();
+      if(name==='logs')  await this.loadLogs();
     },
 
     async refresh(){
@@ -409,6 +480,7 @@ function app(){
       if(this.tab==='stats'&&this.s.data) await this.loadStats();
       if(this.tab==='send')  await this.loadRules();
       if(this.tab==='sys')   await this.loadSys();
+      if(this.tab==='logs')  await this.loadLogs();
     },
 
     shiftDate(n){
@@ -482,8 +554,7 @@ function app(){
       finally{this.loading=false;}
     },
 
-    async saveFineSettings(){
-      this.sys.fineSaving=true;
+    async saveFineSettings(){      this.sys.fineSaving=true;
       try{
         await Api.saveSettings({fine_enabled:this.sys.fineEnabled});
         this.toast(this.sys.fineEnabled?'罚款基金提醒已开启 ☕':'罚款基金提醒已关闭');
@@ -576,6 +647,17 @@ function app(){
     rowRate(r){
       const t=(r.on_time||0)+(r.overtime||0)+(r.missing||0);
       return t?((r.on_time/t)*100).toFixed(1):'0';
+    },
+    async loadLogs(){
+      this.loading=true;
+      try{const r=await Api.sendLogs(this.lg.lim);this.lg.list=r.logs??[];}
+      catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+    logRecipients(l){
+      if(!l.mentioned||!l.mentioned.length) return '—';
+      const names=l.mentioned.map(p=>p.name||p).filter(Boolean);
+      return names.length>3?names.slice(0,3).join('、')+'等'+names.length+'人':names.join('、');
     },
     fmt(str){
       if(!str) return '';

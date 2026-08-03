@@ -190,7 +190,7 @@ def send_report(payload: ReportRequest):
     except RuntimeError as exc:
         add_send_log(rule["rule_key"], "failed", report["message"], report["recipients"], record_ids, error=str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    add_send_log(rule["rule_key"], "success", report["mess.age"], report["recipients"], record_ids, webhook_response=str(response))
+    add_send_log(rule["rule_key"], "success", report["message"], report["recipients"], record_ids, webhook_response=str(response))
     return {"ok": True, "response": response, "mentioned": report["recipients"]}
 
 
