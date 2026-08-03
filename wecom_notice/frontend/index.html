@@ -80,7 +80,7 @@
     <button class="btn-s text-xs" @click="shiftDate(0)">今日</button>
     <button class="btn-s text-xs" @click="shiftDate(1)">明日</button>
     <span class="text-xs text-stone-400 ml-auto" x-show="d.sum">
-      最近上传：<span x-text="d.sum?.latest_upload?.upload_time?fmt(d.sum.latest_upload.upload_time):'暂无'"></span>
+      最近上传：<span x-text="d.sum?.latest_upload?fmt(d.sum.latest_upload):'暂无'"></span>
     </span>
   </div>
   <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4" x-show="d.sum">
@@ -144,10 +144,10 @@
             <tr>
               <td class="font-medium" x-text="r.manager_name||'-'"></td>
               <td x-text="r.company_name||'-'"></td>
-              <td x-text="r.contact_name||'-'"></td>
-              <td x-text="r.time_slot||'-'"></td>
+              <td x-text="r.contact_name_title||'-'"></td>
+              <td x-text="r.appointment_slot||'-'"></td>
               <td class="max-w-xs truncate" :title="r.opportunity_content" x-text="r.opportunity_content||'-'"></td>
-              <td x-text="r.delivery_staff||'-'"></td>
+              <td x-text="r.delivery_staff_name||'-'"></td>
               <td>
                 <span x-show="r.visit_result" class="badge-g">已回填</span>
                 <span x-show="!r.visit_result&&r.reschedule_time" class="badge-y">已改约</span>
@@ -174,9 +174,9 @@
       </div>
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y divide-stone-100 border-b border-stone-100" x-show="s.data">
-      <div class="p-4"><div class="snum text-emerald-600" x-text="s.data?.total_on_time??'-'"></div><div class="slbl">准时填报</div></div>
-      <div class="p-4"><div class="snum text-amber-500" x-text="s.data?.total_overtime??'-'"></div><div class="slbl">超时填报</div></div>
-      <div class="p-4"><div class="snum text-red-500" x-text="s.data?.total_missing??'-'"></div><div class="slbl">漏填记录</div></div>
+      <div class="p-4"><div class="snum text-emerald-600" x-text="s.data?.summary?.on_time_count??'-'"></div><div class="slbl">准时填报</div></div>
+      <div class="p-4"><div class="snum text-amber-500" x-text="s.data?.summary?.overtime_count??'-'"></div><div class="slbl">超时填报</div></div>
+      <div class="p-4"><div class="snum text-red-500" x-text="s.data?.summary?.missing_count??'-'"></div><div class="slbl">漏填记录</div></div>
       <div class="p-4"><div class="snum" x-text="onTimeRate()"></div><div class="slbl">准时率</div></div>
     </div>
     <div class="overflow-x-auto">
@@ -186,10 +186,10 @@
           <th>准时次数</th><th>超时次数</th><th>漏填次数</th><th>准时率</th>
         </tr></thead>
         <tbody>
-          <template x-if="!s.data?.details?.length">
+          <template x-if="!statsRows().length">
             <tr><td colspan="6" class="text-center text-stone-400 py-6">请选择日期范围后点击查询</td></tr>
           </template>
-          <template x-for="row in (s.data?.details??[])" :key="row.manager_name">
+          <template x-for="row in statsRows()" :key="row.manager_name">
             <tr>
               <td class="font-medium" x-text="row.manager_name"></td>
               <td class="text-stone-500" x-text="row.team||'-'"></td>
@@ -433,8 +433,28 @@ function app(){
 
     onTimeRate(){
       if(!this.s.data) return '-';
-      const t=(this.s.data.total_on_time||0)+(this.s.data.total_overtime||0)+(this.s.data.total_missing||0);
-      return t?((this.s.data.total_on_time/t)*100).toFixed(1)+'%':'0%';
+      const sum=this.s.data.summary||{};
+      const t=(sum.on_time_count||0)+(sum.overtime_count||0)+(sum.missing_count||0);
+      return t?((sum.on_time_count/t)*100).toFixed(1)+'%':'0%';
+    },
+    statsRows(){
+      if(!this.s.data) return [];
+      const rows={};
+      const add=(items,key)=>{
+        (items||[]).forEach(item=>{
+          const name=item.manager_name||'-';
+          rows[name] ||= {manager_name:name,team:item.team||'',on_time:0,overtime:0,missing:0};
+          rows[name][key]=item.count||0;
+        });
+      };
+      add(this.s.data.on_time,'on_time');
+      add(this.s.data.overtime,'overtime');
+      add(this.s.data.missing,'missing');
+      return Object.values(rows).sort((a,b)=>{
+        const bt=(b.on_time||0)+(b.overtime||0)+(b.missing||0);
+        const at=(a.on_time||0)+(a.overtime||0)+(a.missing||0);
+        return bt-at || a.manager_name.localeCompare(b.manager_name,'zh-Hans-CN');
+      });
     },
     rowRate(r){
       const t=(r.on_time||0)+(r.overtime||0)+(r.missing||0);

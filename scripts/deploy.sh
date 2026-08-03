@@ -164,7 +164,7 @@ if want wecom; then
     echo "$CHANGED" | grep -qE '^(wecom_notice/|scripts/airscript_qywx_notice_upload\.js)' && need=1
     changed '^wecom_notice/frontend/' && frontend_need=1
   fi
-  [[ "$FORCE" == "1" ]] && need=1
+  [[ "$FORCE" == "1" ]] && { need=1; frontend_need=1; }
   if [[ "$need" == "1" ]]; then
     log "[wecom] 重启 $SVC_WECOM"
     "$(py)" -m py_compile wecom_notice/*.py
