@@ -21,6 +21,7 @@ from wecom_notice.reporter import (
     build_final_data_collection,
     build_manager_brief_notice,
     build_manager_detailed_notice,
+    build_weekly_report,
 )
 from wecom_notice.sender import send_text
 
@@ -191,6 +192,38 @@ def send_detailed_notice_to_all():
             mentioned=report.get("recipients", []),
             record_ids=[],
             error=str(e)
+        )
+
+
+def send_weekly_report():
+    """发送周通报（本月预约填报情况汇总）。
+    计划：周三 12:15 / 周日 12:00 各触发一次。
+    """
+    logger.info("开始发送周通报")
+    try:
+        result = build_weekly_report()
+        if result["should_send"]:
+            response = send_text(result["message"], result["recipients"])
+            add_send_log(
+                rule_key="weekly_report",
+                status="success" if response.get("errcode") == 0 else "failed",
+                message_text=result["message"],
+                mentioned=result["recipients"],
+                record_ids=[],
+                webhook_response=str(response),
+            )
+            logger.info("周通报发送完成")
+        else:
+            logger.info("周通报无需发送")
+    except Exception as e:
+        logger.error(f"发送周通报失败：{e}")
+        add_send_log(
+            rule_key="weekly_report",
+            status="failed",
+            message_text="",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
         )
 
 
@@ -368,6 +401,24 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         id="final_data_collection",
         name=f"最终数据收集 {FINAL_COLLECTION_TIME}",
         replace_existing=True
+    )
+
+    # 6. 周通报 - 周三 12:15
+    scheduler.add_job(
+        send_weekly_report,
+        CronTrigger(day_of_week="wed", hour=12, minute=15),
+        id="weekly_report_wed",
+        name="周通报-周三 12:15",
+        replace_existing=True,
+    )
+
+    # 7. 周通报 - 周日 12:00
+    scheduler.add_job(
+        send_weekly_report,
+        CronTrigger(day_of_week="sun", hour=12, minute=0),
+        id="weekly_report_sun",
+        name="周通报-周日 12:00",
+        replace_existing=True,
     )
 
     scheduler.start()

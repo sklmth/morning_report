@@ -523,6 +523,116 @@ def build_fill_statistics_from_records(start_date: str, end_date: str, required:
     return stats
 
 
+def build_weekly_report() -> dict[str, Any]:
+    """
+    周通报：本月预约填报情况汇总（准时/超时/漏填各取前三），附下午茶基金清单。
+    发送对象：全体客户经理 + 管理者。
+    计划：周三 12:15 / 周日 12:00 各发一次。
+    """
+    today = date.today()
+    month_start = today.replace(day=1).isoformat()
+    end_date = today.isoformat()
+
+    all_stats = get_fill_statistics(start_date=month_start, end_date=end_date)
+    if not all_stats:
+        all_stats = build_fill_statistics_from_records(month_start, end_date)
+
+    # 初始化每位参与统计的客户经理
+    manager_stats: dict[str, dict[str, int]] = {}
+    for m in CUSTOMER_MANAGERS:
+        if m.get("exclude_reminder", False):
+            continue
+        manager_stats[m["name"]] = {"on_time": 0, "overtime": 0, "missing": 0}
+
+    for stat in all_stats:
+        mgr = stat["manager_name"]
+        status = stat["fill_status"]
+        if mgr in manager_stats and status in manager_stats[mgr]:
+            manager_stats[mgr][status] += 1
+
+    def top3(key: str) -> list[tuple[str, int]]:
+        ranked = sorted(
+            ((m, s[key]) for m, s in manager_stats.items() if s[key] > 0),
+            key=lambda x: x[1], reverse=True,
+        )
+        return ranked[:3]
+
+    on_time_top3 = top3("on_time")
+    overtime_top3 = top3("overtime")
+    missing_top3 = top3("missing")
+
+    # 罚款计算（按金额倒序）
+    fines = []
+    for mgr, s in manager_stats.items():
+        fine_missing = s["missing"] * 10
+        fine_overtime = (s["overtime"] // 5) * 10
+        total = fine_missing + fine_overtime
+        if total > 0:
+            fines.append({
+                "name": mgr,
+                "missing": s["missing"],
+                "overtime": s["overtime"],
+                "fine_missing": fine_missing,
+                "fine_overtime": fine_overtime,
+                "total": total,
+            })
+    fines.sort(key=lambda x: x["total"], reverse=True)
+
+    # 构建消息
+    now_dt = datetime.now()
+    weekday_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now_dt.weekday()]
+    month_label = f"{today.year}年{today.month}月"
+
+    lines = [
+        f"📊【本月预约填报周报】{month_label}",
+        f"📅 统计周期：{month_start[5:]} ~ {end_date[5:]} | 数据截至 {weekday_cn} {now_dt.strftime('%H:%M')}",
+        "",
+        "━━━━━━ 📈 本月填报情况 ━━━━━━",
+        "",
+        "👍 准时填报（19:30前完成）：",
+    ]
+    if on_time_top3:
+        for name, cnt in on_time_top3:
+            lines.append(f"   🎉 {name}：{cnt} 次")
+    else:
+        lines.append("   暂无准时填报记录")
+
+    lines.extend(["", "⏱️ 超时填报（19:30-23:30）："])
+    if overtime_top3:
+        for name, cnt in overtime_top3:
+            lines.append(f"   {name}：{cnt} 次")
+    else:
+        lines.append("   暂无超时记录")
+
+    lines.extend(["", "❌ 漏填情况（23:30未完成）："])
+    if missing_top3:
+        for name, cnt in missing_top3:
+            lines.append(f"   {name}：{cnt} 次")
+    else:
+        lines.append("   暂无漏填记录 🎉")
+
+    lines.extend(["", "━━━━━━ ☕ 下午茶基金 ━━━━━━", ""])
+    if fines:
+        for f in fines:
+            icon = "💸" if f["total"] >= 40 else ("⚠️" if f["total"] >= 20 else "📌")
+            parts = []
+            if f["missing"] >= 1:
+                parts.append(f"漏填 {f['missing']} 次")
+            if f["overtime"] >= 5:
+                parts.append(f"超时 {f['overtime']} 次（每5次10元）")
+            lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+    else:
+        lines.append("   ✅ 本月暂无应缴记录，继续保持！")
+
+    recipients = [m for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)] + MANAGER_RECIPIENTS
+
+    return {
+        "message": "\n".join(lines),
+        "recipients": recipients,
+        "should_send": True,
+    }
+
+
 # ====== 原有通报构建器（保留兼容） ======
 
 
