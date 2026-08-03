@@ -67,6 +67,33 @@ CREATE TABLE IF NOT EXISTS send_logs (
     webhook_response TEXT NOT NULL DEFAULT '',
     error TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS fill_statistics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    manager_name TEXT NOT NULL,
+    fill_status TEXT NOT NULL,
+    fill_time TEXT,
+    fill_count INTEGER DEFAULT 0,
+    reminder_count INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(date, manager_name)
+);
+CREATE INDEX IF NOT EXISTS idx_fill_stats_date ON fill_statistics(date);
+CREATE INDEX IF NOT EXISTS idx_fill_stats_status ON fill_statistics(fill_status);
+
+CREATE TABLE IF NOT EXISTS reminder_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    manager_name TEXT NOT NULL,
+    reminded_at TEXT NOT NULL,
+    current_count INTEGER DEFAULT 0,
+    reminder_sequence INTEGER DEFAULT 1,
+    overtime_count INTEGER DEFAULT 0,
+    missing_count INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_reminder_logs_date ON reminder_logs(date, manager_name);
 """
 
 RECORD_COLUMNS = [
@@ -230,3 +257,116 @@ def latest_upload() -> str:
     with connection() as conn:
         row = conn.execute("SELECT MAX(uploaded_at) AS uploaded_at FROM visit_records").fetchone()
     return row["uploaded_at"] or ""
+
+
+# ====== 填报统计相关函数 ======
+
+
+def upsert_fill_statistics(date: str, manager_name: str, fill_status: str, fill_time: str = "", fill_count: int = 0) -> None:
+    """更新或插入填报统计记录。"""
+    timestamp = now()
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO fill_statistics (date, manager_name, fill_status, fill_time, fill_count, reminder_count, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, 0, ?, ?)
+               ON CONFLICT(date, manager_name) DO UPDATE SET
+                   fill_status=excluded.fill_status,
+                   fill_time=excluded.fill_time,
+                   fill_count=excluded.fill_count,
+                   updated_at=excluded.updated_at""",
+            (date, manager_name, fill_status, fill_time, fill_count, timestamp, timestamp),
+        )
+
+
+def get_fill_statistics(start_date: str = "", end_date: str = "", manager: str = "", fill_status: str = "") -> list[dict[str, Any]]:
+    """查询填报统计记录。"""
+    clauses = []
+    params: list[Any] = []
+    if start_date:
+        clauses.append("date >= ?")
+        params.append(start_date)
+    if end_date:
+        clauses.append("date <= ?")
+        params.append(end_date)
+    if manager:
+        clauses.append("manager_name = ?")
+        params.append(manager)
+    if fill_status:
+        clauses.append("fill_status = ?")
+        params.append(fill_status)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    with connection() as conn:
+        rows = conn.execute(f"SELECT * FROM fill_statistics {where} ORDER BY date DESC, manager_name", params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_reminder_log(date: str, manager_name: str, current_count: int, reminder_sequence: int, overtime_count: int = 0, missing_count: int = 0) -> None:
+    """记录提醒日志。"""
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO reminder_logs (date, manager_name, reminded_at, current_count, reminder_sequence, overtime_count, missing_count)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (date, manager_name, now(), current_count, reminder_sequence, overtime_count, missing_count),
+        )
+
+
+def get_reminder_logs(date: str = "", manager: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    """查询提醒日志。"""
+    clauses = []
+    params: list[Any] = []
+    if date:
+        clauses.append("date = ?")
+        params.append(date)
+    if manager:
+        clauses.append("manager_name = ?")
+        params.append(manager)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(min(max(limit, 1), 500))
+    with connection() as conn:
+        rows = conn.execute(f"SELECT * FROM reminder_logs {where} ORDER BY reminded_at DESC LIMIT ?", params).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict[str, int]:
+    """获取客户经理的历史超时和漏填次数。"""
+    clauses = ["manager_name = ?"]
+    params: list[Any] = [manager_name]
+    if before_date:
+        clauses.append("date < ?")
+        params.append(before_date)
+    where = " AND ".join(clauses)
+    with connection() as conn:
+        overtime = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM fill_statistics WHERE {where} AND fill_status = 'overtime'", params
+        ).fetchone()["cnt"]
+        missing = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM fill_statistics WHERE {where} AND fill_status = 'missing'", params
+        ).fetchone()["cnt"]
+    return {"overtime_count": overtime, "missing_count": missing}
+
+
+def increment_reminder_count(date: str, manager_name: str) -> int:
+    """增加提醒次数，返回新的提醒次数。"""
+    timestamp = now()
+    with connection() as conn:
+        # 先尝试获取现有记录
+        existing = conn.execute(
+            "SELECT id, reminder_count FROM fill_statistics WHERE date = ? AND manager_name = ?",
+            (date, manager_name),
+        ).fetchone()
+
+        if existing:
+            new_count = existing["reminder_count"] + 1
+            conn.execute(
+                "UPDATE fill_statistics SET reminder_count = ?, updated_at = ? WHERE id = ?",
+                (new_count, timestamp, existing["id"]),
+            )
+            return new_count
+        else:
+            # 如果不存在，创建新记录（状态为pending）
+            conn.execute(
+                """INSERT INTO fill_statistics (date, manager_name, fill_status, fill_count, reminder_count, created_at, updated_at)
+                   VALUES (?, ?, 'pending', 0, 1, ?, ?)""",
+                (date, manager_name, timestamp, timestamp),
+            )
+            return 1

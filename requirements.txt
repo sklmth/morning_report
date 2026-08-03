@@ -12,3 +12,6 @@ python-multipart>=0.0.12
 
 # ── Excel 处理（daily_report 和 company_kb 共用）─────────────────────
 openpyxl>=3.1.0
+
+# ── 定时任务（wecom_notice）──────────────────────────────────────────
+APScheduler>=3.10.0

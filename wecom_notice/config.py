@@ -22,11 +22,34 @@ CUSTOMER_MANAGERS = [
     {"name": "具进康", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
 ]
 
-# 填入实际姓名、手机号或企业微信 userid 后，明日预约汇总会自动 @ 这些管理人员。
+# 高端装维人员（用于"预约交付人员姓名"字段选择）
+GAOZHUANG_STAFF = [
+    {"name": "程庆德", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "刘奇峻", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "龙家宝", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "罗紫杰", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "莫健铭", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "吴广仁", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "王洪明", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+    {"name": "陈梓铭", "mobile": "", "wecom_userid": "", "role": "gaozhuang"},
+]
+
+# 智云工程师（用于"预约交付人员姓名"字段选择）
+ZHIYUN_ENGINEERS = [
+    {"name": "零樑", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "何而恒", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "魏垚晖", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "吴文懿", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "莫尧桂", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "郭剑鸿", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+    {"name": "梁钧鹏", "mobile": "", "wecom_userid": "", "role": "zhiyun"},
+]
+
+# 管理者名单（经理和副经理）
 MANAGER_RECIPIENTS = [
-    {"name": "经理一", "mobile": "", "wecom_userid": "", "role": "manager"},
-    {"name": "经理二", "mobile": "", "wecom_userid": "", "role": "manager"},
-    {"name": "副经理", "mobile": "", "wecom_userid": "", "role": "deputy_manager"},
+    {"name": "钟俊杰", "mobile": "", "wecom_userid": "", "role": "manager", "title": "正经理"},
+    {"name": "张端", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
+    {"name": "梁天霖", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
 ]
 
 DEFAULT_RULES = [

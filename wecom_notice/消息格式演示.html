@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>企业微信通知消息格式演示</title>
+    <style>
+        body {
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f5f7fa;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #4874CB;
+            padding-bottom: 10px;
+        }
+        .message-box {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .message-title {
+            color: #4874CB;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-left: 4px solid #4874CB;
+            padding-left: 10px;
+        }
+        .message-content {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            line-height: 1.6;
+        }
+        .info-box {
+            background: #e8f5e9;
+            border-left: 4px solid #4caf50;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .warning-box {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .feature-list {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .feature-list li {
+            margin: 10px 0;
+            padding-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>📱 企业微信通知消息格式演示</h1>
+
+    <div class="info-box">
+        <strong>说明：</strong>以下是企业微信通知系统生成的消息格式示例。实际运行时会根据真实数据动态生成内容。
+    </div>
+
+    <!-- 客户经理提醒 -->
+    <div class="message-box">
+        <div class="message-title">1. 客户经理提醒消息</div>
+        <div class="message-content">📋 @麦海芬
+
+明日预约填报提醒（第3次）
+📅 日期：2026-08-04
+✅ 已填：1 户
+⚠️ 还需：1 户
+
+📊 历史记录：
+   ⏱️ 超时填报：2 次
+   ❌ 漏填：1 次
+
+💡 温馨提示：请尽快完成填报，确保明日工作顺利开展~</div>
+        <div class="info-box" style="margin-top: 15px;">
+            <strong>特点：</strong>
+            <ul>
+                <li>@功能，单独提醒该客户经理</li>
+                <li>显示当前填报进度和缺口</li>
+                <li>展示历史超时和漏填次数</li>
+                <li>显示今日第几次提醒</li>
+                <li>使用emoji增强可读性</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 管理者简洁通报 -->
+    <div class="message-box">
+        <div class="message-title">2. 管理者简洁通报（第一个通报）</div>
+        <div class="message-content">【预约填报提醒】2026-08-04
+⏰ 当前时间：19:00
+
+⚠️ 未完成填报：
+❌ 李东：已填报 1 户，还差 1 户
+❌ 邱海燕：已填报 0 户，还差 2 户
+❌ 黄观霞：已填报 1 户，还差 1 户
+
+✅ 已完成填报：
+✅ 麦海芬：已填报 2 户
+✅ 黄淡妮：已填报 3 户
+✅ 王锦添：已填报 2 户
+✅ 谢卓和：已填报 2 户
+✅ 伍颖敏：已填报 2 户
+✅ 邓天群：已填报 2 户
+✅ 李玉强：已填报 2 户
+✅ 张小敏：已填报 2 户
+✅ 具进康：已填报 2 户</div>
+        <div class="info-box" style="margin-top: 15px;">
+            <strong>特点：</strong>
+            <ul>
+                <li>简洁明了，一目了然</li>
+                <li>未填的放在前面，❌醒目标识</li>
+                <li>已填的也要列出，方便对比</li>
+                <li>如果全部填了就不发送</li>
+                <li>发送给指定管理者（张端或钟俊杰）</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 管理者详细通报 -->
+    <div class="message-box">
+        <div class="message-title">3. 管理者详细通报（第二个通报）</div>
+        <div class="message-content">【明日预约详细通报】2026-08-04
+⏰ 通报时间：22:00
+
+━━━━━━ 📊 今日填报情况 ━━━━━━
+
+⚠️ 未完成填报：
+❌ 邱海燕：已填报 0 户，还差 2 户
+
+✅ 已完成填报：
+✅ 麦海芬：2 户
+    · 测试企业A（交付：程庆德）
+    · 测试企业B（交付：零樑）
+✅ 黄淡妮：3 户
+    · XX公司（交付：刘奇峻）
+    · YY集团（交付：何而恒）
+    · ZZ科技（交付：龙家宝）
+✅ 李东：2 户
+    · AA企业（交付：罗紫杰）
+    · BB公司（交付：莫健铭）
+
+━━━━━━ 📈 累计填报情况 ━━━━━━
+
+👍 准时填报（19:30前完成）：
+   🎉 麦海芬：15 次
+   🎉 黄淡妮：14 次
+   🎉 王锦添：13 次
+   🎉 伍颖敏：12 次
+
+⏱️ 超时填报（19:30-23:30）：
+   李东：5 次
+   邱海燕：4 次
+   黄观霞：3 次
+
+❌ 漏填情况（23:30未完成）：
+   邱海燕：2 次
+   李东：1 次</div>
+        <div class="info-box" style="margin-top: 15px;">
+            <strong>特点：</strong>
+            <ul>
+                <li>包含今日和累计两部分</li>
+                <li>今日情况：显示拜访客户和预约交付人员</li>
+                <li>累计情况：准时的在前面，漏填的在后面</li>
+                <li>准时的加👍🎉表扬，做得好的突出显示</li>
+                <li>发送给所有管理者（22:00）</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- 功能亮点 -->
+    <div class="feature-list">
+        <h2>✨ 系统功能亮点</h2>
+        <ul>
+            <li><strong>智能提醒：</strong>填了2户及以上的不再提醒，避免打扰</li>
+            <li><strong>多级通报：</strong>客户经理级、管理者级，分层管理</li>
+            <li><strong>历史追踪：</strong>累计超时、漏填次数，长期激励</li>
+            <li><strong>温馨提示：</strong>使用emoji和人性化语言，不生硬</li>
+            <li><strong>灵活调度：</strong>不同管理者不同时间，精准推送</li>
+            <li><strong>数据支撑：</strong>准时/超时/漏填全面统计，可导出Excel</li>
+        </ul>
+    </div>
+
+    <!-- 定时规则 -->
+    <div class="feature-list">
+        <h2>⏰ 定时发送规则</h2>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="background: #4874CB; color: white;">
+                    <th style="padding: 10px; text-align: left;">时间</th>
+                    <th style="padding: 10px; text-align: left;">通知类型</th>
+                    <th style="padding: 10px; text-align: left;">接收人</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px;">18:00-23:00</td>
+                    <td style="padding: 10px;">客户经理提醒（8次）</td>
+                    <td style="padding: 10px;">未达标的客户经理</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;">18:30-21:30</td>
+                    <td style="padding: 10px;">简洁通报（6次）</td>
+                    <td style="padding: 10px;">张端副经理</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px;">19:30-21:30</td>
+                    <td style="padding: 10px;">简洁通报（4次）</td>
+                    <td style="padding: 10px;">钟俊杰经理</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px;">22:00</td>
+                    <td style="padding: 10px;">详细通报</td>
+                    <td style="padding: 10px;">所有管理者</td>
+                </tr>
+                <tr style="background: #f8f9fa;">
+                    <td style="padding: 10px;">23:30</td>
+                    <td style="padding: 10px;">数据收集</td>
+                    <td style="padding: 10px;">系统内部（不发送消息）</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="warning-box">
+        <strong>⚠️ 使用前注意：</strong>
+        <ul>
+            <li>需要配置企业微信webhook URL</li>
+            <li>建议配置人员手机号或wecom_userid以启用@功能</li>
+            <li>首次使用请先测试，避免误发大量消息</li>
+            <li>调度器需要手动启动（防止意外触发）</li>
+        </ul>
+    </div>
+
+    <div style="text-align: center; color: #999; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
+        <p>企业微信通知系统 v2.0 | 2026-08-03</p>
+        <p>完整文档请查看：wecom_notice/README.md</p>
+    </div>
+</body>
+</html>
