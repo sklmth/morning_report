@@ -162,8 +162,17 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
             details = []
             for r in manager_records[:3]:  # 最多显示3条
                 company = r["company_name"] or "未填写企业"
-                delivery = r["delivery_staff_name"] or "未指定"
-                details.append(f"    · {company}（交付：{delivery}）")
+                delivery_staff = r["delivery_staff_name"] or ""
+
+                # 判断交付类型：高装/智云/未指定
+                if delivery_staff in [g["name"] for g in GAOZHUANG_STAFF]:
+                    delivery_type = "高装"
+                elif delivery_staff in [z["name"] for z in ZHIYUN_ENGINEERS]:
+                    delivery_type = "智云"
+                else:
+                    delivery_type = "未指定"
+
+                details.append(f"    · {company}（{delivery_type}：{delivery_staff or '无'}）")
             if len(manager_records) > 3:
                 details.append(f"    ... 还有 {len(manager_records) - 3} 户")
 

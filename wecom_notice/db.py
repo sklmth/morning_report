@@ -347,9 +347,15 @@ def get_reminder_logs(date: str = "", manager: str = "", limit: int = 100) -> li
 
 
 def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict[str, int]:
-    """获取客户经理的历史超时和漏填次数。"""
-    clauses = ["manager_name = ?"]
-    params: list[Any] = [manager_name]
+    """获取客户经理本月累计的历史超时和漏填次数。"""
+    from datetime import date as dt_date
+
+    # 计算本月第一天
+    today = dt_date.fromisoformat(before_date) if before_date else dt_date.today()
+    month_start = today.replace(day=1).isoformat()
+
+    clauses = ["manager_name = ?", "date >= ?"]
+    params: list[Any] = [manager_name, month_start]
     if before_date:
         clauses.append("date < ?")
         params.append(before_date)

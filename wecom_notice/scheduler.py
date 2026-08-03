@@ -1,20 +1,20 @@
 """定时任务调度器 - 管理企业微信通知的定时发送。
 
-使用APScheduler管理所有定时任务，包括：
-- 客户经理提醒（18:00-23:00，8个时间点）
-- 管理者简洁通报（18:30-21:30，不同经理不同时间）
-- 管理者详细通报（22:00）
-- 最终数据收集（23:30）
+使用APScheduler管理所有定时任务。每个发送任务在触发时自动完成完整链路：
+  拉取金山文档数据 → 等待数据入库 → 发送企业微信消息 → 更新填报统计表
+
+同一分钟内多个任务触发时，通过5分钟冷却期避免重复同步。
 """
 
 import logging
+import time
 from datetime import date, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
-from wecom_notice.db import add_send_log
+from wecom_notice.db import add_send_log, latest_upload
 from wecom_notice.kingsoft_trigger import trigger_kingsoft_data_sync
 from wecom_notice.reporter import (
     build_customer_manager_reminder,
@@ -31,23 +31,11 @@ CUSTOMER_MANAGER_REMINDER_TIMES = [
     "18:00", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
 ]
 
-# 金山文档数据同步时间（在提醒前10分钟同步数据）
-DATA_SYNC_TIMES = [
-    "17:50",  # 第一次提醒前
-    "18:35",  # 第二次提醒前
-    "19:05",  # 第三次提醒前
-    "19:35",  # 第四次提醒前
-    "20:05",  # 第五次提醒前
-    "20:50",  # 第六次提醒前
-    "21:50",  # 第七次提醒前
-    "22:50",  # 第八次提醒前
-]
-
 # 第一个通报（简洁版）- 张端副经理
-BRIEF_NOTICE_ZHANG_TIMES = ["18:30", "19:00", "20:00", "20:30", "21:00", "21:30"]
+BRIEF_NOTICE_ZHANG_TIMES = ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"]
 
 # 第一个通报（简洁版）- 钟俊杰经理
-BRIEF_NOTICE_ZHONG_TIMES = ["19:30", "20:30", "21:00", "21:30"]
+BRIEF_NOTICE_ZHONG_TIMES = ["19:00", "19:30", "20:30", "21:00", "21:30"]
 
 # 第二个通报（详细版）- 所有管理者
 DETAILED_NOTICE_TIME = "22:00"
@@ -61,8 +49,26 @@ def get_target_date() -> str:
     return (date.today() + timedelta(days=1)).isoformat()
 
 
+# 上次同步完成的时间戳，用于冷却期判断
+_last_sync_time: float = 0.0
+# 同一分钟内多个任务同时触发时，5分钟内不重复拉取
+_SYNC_COOLDOWN = 300
+
+
+def _sync_with_cooldown():
+    """先同步金山数据再继续，5分钟冷却期内跳过重复同步。"""
+    global _last_sync_time
+    now = time.time()
+    if now - _last_sync_time < _SYNC_COOLDOWN:
+        logger.info(f"距上次同步不足 {_SYNC_COOLDOWN}s，跳过重复同步")
+        return
+    _last_sync_time = now
+    sync_kingsoft_data()
+
+
 def send_customer_manager_reminders():
     """发送客户经理提醒消息（对所有未达标的客户经理）"""
+    _sync_with_cooldown()
     target_date = get_target_date()
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}")
 
@@ -107,6 +113,7 @@ def send_customer_manager_reminders():
 
 def send_brief_notice_to_manager(manager_name: str):
     """发送简洁通报给指定管理者"""
+    _sync_with_cooldown()
     target_date = get_target_date()
     logger.info(f"开始发送简洁通报给 {manager_name}，目标日期：{target_date}")
 
@@ -151,6 +158,7 @@ def send_brief_notice_to_manager(manager_name: str):
 
 def send_detailed_notice_to_all():
     """发送详细通报给所有管理者"""
+    _sync_with_cooldown()
     target_date = get_target_date()
     logger.info(f"开始发送详细通报，目标日期：{target_date}")
 
@@ -218,23 +226,21 @@ def collect_final_data():
 
 
 def sync_kingsoft_data():
-    """触发金山文档同步数据到服务器"""
-    logger.info("触发金山文档数据同步")
+    """触发金山文档数据同步，阻塞等待数据写入服务器后再返回。
+
+    流程：
+    1. 记录当前 latest_upload 时间戳
+    2. 向金山文档发送 webhook，触发 AirScript 上传
+    3. 轮询 latest_upload，直到时间戳更新（数据已写入）或超时
+    4. 数据到位后立即更新填报统计表
+    """
+    logger.info("触发金山文档数据同步（同步模式）")
+
+    before = latest_upload()
 
     try:
         result = trigger_kingsoft_data_sync()
         logger.info(f"金山文档数据同步触发成功：{result}")
-
-        # 记录同步日志
-        add_send_log(
-            rule_key="kingsoft_data_sync",
-            status="success",
-            message_text="触发金山文档数据同步",
-            mentioned=[],
-            record_ids=[],
-            webhook_response=str(result)
-        )
-
     except Exception as e:
         logger.error(f"触发金山文档数据同步失败：{e}")
         add_send_log(
@@ -243,7 +249,55 @@ def sync_kingsoft_data():
             message_text="触发金山文档数据同步失败",
             mentioned=[],
             record_ids=[],
-            error=str(e)
+            error=str(e),
+        )
+        return
+
+    # 轮询等待数据写入（最多等 8 分钟，每 10 秒检查一次）
+    _POLL_INTERVAL = 10
+    _TIMEOUT = 480
+    elapsed = 0
+    while elapsed < _TIMEOUT:
+        time.sleep(_POLL_INTERVAL)
+        elapsed += _POLL_INTERVAL
+        after = latest_upload()
+        if after != before:
+            logger.info(f"金山数据已到达，上传时间：{after}，等待耗时 {elapsed}s")
+            break
+    else:
+        logger.warning(f"等待金山数据超时（{_TIMEOUT}s），继续执行后续任务")
+
+    add_send_log(
+        rule_key="kingsoft_data_sync",
+        status="success",
+        message_text="触发金山文档数据同步",
+        mentioned=[],
+        record_ids=[],
+        webhook_response=str(result),
+    )
+
+    # 数据已更新，立即刷新填报统计表
+    target_date = get_target_date()
+    try:
+        stats_result = build_final_data_collection(target_date)
+        logger.info(f"统计表已更新：处理 {len(stats_result['results'])} 位客户经理")
+        add_send_log(
+            rule_key="final_data_collection",
+            status="success",
+            message_text=f"统计表更新完成，处理 {len(stats_result['results'])} 位客户经理",
+            mentioned=[],
+            record_ids=[],
+            webhook_response=str(stats_result),
+        )
+    except Exception as e:
+        logger.error(f"统计表更新失败：{e}")
+        add_send_log(
+            rule_key="final_data_collection",
+            status="failed",
+            message_text="统计表更新失败",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
         )
 
 
@@ -262,17 +316,6 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     if not enabled:
         logger.info("调度器已创建但未启用定时任务，请在配置后手动启用")
         return scheduler
-
-    # 0. 金山文档数据同步（在提醒前触发）
-    for time_str in DATA_SYNC_TIMES:
-        hour, minute = time_str.split(":")
-        scheduler.add_job(
-            sync_kingsoft_data,
-            CronTrigger(hour=int(hour), minute=int(minute)),
-            id=f"data_sync_{time_str.replace(':', '')}",
-            name=f"金山数据同步 {time_str}",
-            replace_existing=True
-        )
 
     # 1. 客户经理提醒
     for time_str in CUSTOMER_MANAGER_REMINDER_TIMES:
