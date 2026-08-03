@@ -443,7 +443,7 @@ function app(){
       const add=(items,key)=>{
         (items||[]).forEach(item=>{
           const name=item.manager_name||'-';
-          rows[name] ||= {manager_name:name,team:item.team||'',on_time:0,overtime:0,missing:0};
+          if(!rows[name]) rows[name]={manager_name:name,team:item.team||'',on_time:0,overtime:0,missing:0};
           rows[name][key]=item.count||0;
         });
       };
