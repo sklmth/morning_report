@@ -8,6 +8,7 @@ from wecom_notice.db import (
     get_fill_statistics,
     get_manager_history_counts,
     get_records,
+    get_records_by_date_range,
     get_reminder_logs,
     increment_reminder_count,
 )
@@ -329,6 +330,8 @@ def build_cumulative_statistics(start_date: str = "", end_date: str = "") -> dic
         start_date = (date.today() - timedelta(days=30)).isoformat()
 
     all_stats = get_fill_statistics(start_date, end_date)
+    if not all_stats:
+        all_stats = build_fill_statistics_from_records(start_date, end_date)
 
     # 按客户经理分组统计
     manager_stats = {}
@@ -405,6 +408,50 @@ def build_cumulative_statistics(start_date: str = "", end_date: str = "") -> dic
         "missing": missing_list,
         "summary": summary,
     }
+
+
+def build_fill_statistics_from_records(start_date: str, end_date: str, required: int = 2) -> list[dict[str, Any]]:
+    """从预约记录即时计算填报统计，避免依赖 23:30 调度生成统计表。"""
+    records = get_records_by_date_range(start_date=start_date, end_date=end_date)
+    dates = sorted({r["appointment_date"] for r in records if r.get("appointment_date")})
+    if not dates:
+        return []
+
+    by_key: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for record in records:
+        appt_date = record.get("appointment_date")
+        manager_name = record.get("manager_name")
+        if not appt_date or not manager_name:
+            continue
+        by_key.setdefault((appt_date, manager_name), []).append(record)
+
+    stats: list[dict[str, Any]] = []
+    for appt_date in dates:
+        for manager in CUSTOMER_MANAGERS:
+            manager_name = manager["name"]
+            manager_records = by_key.get((appt_date, manager_name), [])
+            fill_count = len(manager_records)
+            fill_time = ""
+            if fill_count < required:
+                fill_status = "missing"
+            else:
+                fill_time = max(r.get("uploaded_at") or "" for r in manager_records)
+                fill_status = "overtime"
+                try:
+                    fill_dt = datetime.fromisoformat(fill_time)
+                    cutoff = datetime.combine(fill_dt.date(), datetime.strptime("19:30", "%H:%M").time())
+                    fill_status = "on_time" if fill_dt <= cutoff else "overtime"
+                except Exception:
+                    pass
+            stats.append({
+                "date": appt_date,
+                "manager_name": manager_name,
+                "fill_status": fill_status,
+                "fill_time": fill_time,
+                "fill_count": fill_count,
+                "reminder_count": 0,
+            })
+    return stats
 
 
 # ====== 原有通报构建器（保留兼容） ======
