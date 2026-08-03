@@ -6,20 +6,25 @@ RUNTIME_DIR = ROOT_DIR / "runtime"
 DB_PATH = Path(os.environ.get("WECOM_NOTICE_DB_PATH", RUNTIME_DIR / "wecom_notice.db"))
 WEBHOOK_URL = os.environ.get("WECOM_NOTICE_WEBHOOK_URL", "")
 
+# 测试环境配置
+TEST_MODE = os.environ.get("WECOM_NOTICE_TEST_MODE", "false").lower() == "true"
+TEST_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=866c5319-0f4a-42fe-8465-f4b3de554c61"
+KINGSOFT_WEBHOOK_URL = "https://www.kdocs.cn/chatflow/api/v2/func/webhook/3HO1PSFYIAgV1XAsLp6Z36jFb3R"
+
 # Excel 中当前出现的客户经理名单。补充手机号或企业微信 userid 后即可支持群内 @。
 CUSTOMER_MANAGERS = [
-    {"name": "麦海芬", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "黄淡妮", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "邱海燕", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "李东", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "王锦添", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "黄观霞", "team": "党政军团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "谢卓和", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "伍颖敏", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "邓天群", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "李玉强", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "张小敏", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
-    {"name": "具进康", "team": "大企业团队", "mobile": "", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "麦海芬", "team": "党政军团队", "mobile": "13360254388", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "黄淡妮", "team": "党政军团队", "mobile": "18902365779", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "邱海燕", "team": "党政军团队", "mobile": "18933133113", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "李东", "team": "党政军团队", "mobile": "18929819998", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "王锦添", "team": "党政军团队", "mobile": "18126555505", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "黄观霞", "team": "党政军团队", "mobile": "18929840777", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "谢卓和", "team": "大企业团队", "mobile": "13376562252", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "伍颖敏", "team": "大企业团队", "mobile": "13376562181", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "邓天群", "team": "大企业团队", "mobile": "18938310028", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "李玉强", "team": "大企业团队", "mobile": "13376562080", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "张小敏", "team": "大企业团队", "mobile": "18933134919", "wecom_userid": "", "role": "customer_manager"},
+    {"name": "具进康", "team": "大企业团队", "mobile": "13822605579", "wecom_userid": "", "role": "customer_manager"},
 ]
 
 # 高端装维人员（用于"预约交付人员姓名"字段选择）
@@ -50,6 +55,12 @@ MANAGER_RECIPIENTS = [
     {"name": "钟俊杰", "mobile": "", "wecom_userid": "", "role": "manager", "title": "正经理"},
     {"name": "张端", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
     {"name": "梁天霖", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
+]
+
+# 测试人员配置（用于测试群聊）
+TEST_PERSONNEL = [
+    {"name": "李璇", "mobile": "18933136676", "wecom_userid": "", "role": "manager", "title": "经理"},
+    {"name": "曾俊宁", "mobile": "18128089992", "wecom_userid": "", "role": "customer_manager", "title": "客户经理"},
 ]
 
 DEFAULT_RULES = [

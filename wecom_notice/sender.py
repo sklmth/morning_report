@@ -2,12 +2,16 @@ import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from wecom_notice.config import WEBHOOK_URL
+from wecom_notice.config import TEST_MODE, TEST_WEBHOOK_URL, WEBHOOK_URL
 
 
 def send_text(message: str, recipients: list[dict[str, str]]) -> dict:
-    if not WEBHOOK_URL:
-        raise RuntimeError("未配置 WECOM_NOTICE_WEBHOOK_URL")
+    # 根据测试模式选择webhook地址
+    webhook_url = TEST_WEBHOOK_URL if TEST_MODE else WEBHOOK_URL
+
+    if not webhook_url:
+        raise RuntimeError("未配置 WECOM_NOTICE_WEBHOOK_URL 或 TEST_WEBHOOK_URL")
+
     userids = [person["wecom_userid"] for person in recipients if person.get("wecom_userid")]
     mobiles = [person["mobile"] for person in recipients if person.get("mobile") and not person.get("wecom_userid")]
     payload = {
@@ -19,7 +23,7 @@ def send_text(message: str, recipients: list[dict[str, str]]) -> dict:
         },
     }
     request = Request(
-        WEBHOOK_URL,
+        webhook_url,
         data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
