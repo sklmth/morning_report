@@ -451,6 +451,63 @@
         <span class="text-xs text-stone-400">快速发送预约填报管理规则</span>
       </div>
 
+      <!-- 消息预览 -->
+      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:8rem">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-xs text-stone-500 font-medium">消息预览</p>
+          <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rules.showPreview=!rules.showPreview" x-text="rules.showPreview?'收起':'展开'"></button>
+        </div>
+        <div x-show="rules.showPreview" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
+          <pre class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit">📋【预约填报管理规则】
+
+━━━━━━ ⏰ 填报时间规则 ━━━━━━
+
+✅ 准时填报：19:30 前完成
+⏱️ 超时填报：19:30 - 23:30 之间完成
+❌ 漏填：23:30 前未完成
+
+━━━━━━ ☕ 下午茶基金 ━━━━━━
+
+💰 扣款标准：
+   · 漏填：10 元/次
+   · 超时：每累计 5 次扣 10 元
+   · 按自然月统计，次月清零
+
+🎴 天命赦令减免：
+   · 抽签奖品可抵扣罚款
+   · 不改变超时/漏填次数记录
+   · 减免额度：5-30 元不等
+
+━━━━━━ 🎰 天命赦令系统 ━━━━━━
+
+📅 休假制度：
+   · 可在系统登记休假日期
+   · 休假当天及前一天无需填报
+   · 休假期间不计入统计
+
+🎴 抽签系统：
+   · 每 3 次准时填报 = 1 次抽签机会
+   · 可选择消耗 3-7 次准时记录抽签
+   · 消耗越多，中奖概率越高
+   · 准时次数仅当月有效，次月清零
+
+🎁 奖品体系（修仙主题）：
+   · 凡尘符咒：0 元（空奖）
+   · 聚灵丹：5 元
+   · 护身符：10 元
+   · 筑基丹：15 元
+   · 天罡令：20 元
+   · 金丹圣果：25 元
+   · 天命赦令：30 元
+
+💡 访问地址：http://shanguantang.site:tianming/
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+祝各位道友修行顺利，早日飞升！✨</pre>
+        </div>
+      </div>
+
       <!-- 接收人选择 -->
       <div>
         <div class="flex items-center justify-between mb-1.5">
@@ -833,7 +890,7 @@ function app(){
     // snd.edited 表示正文被手工改过，重新预览时不覆盖
     snd:{rules:[],rule:'',date:'',preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false},
-    rules:{picked:[]}, // 规则介绍发送的接收人
+    rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
