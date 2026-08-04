@@ -72,6 +72,17 @@ def target_date_label(target_date: str = "") -> str:
     return f"{target.month}月{target.day}日"
 
 
+def delivery_label(delivery_staff: str = "") -> str:
+    """交付人员的展示文本，如「高装：程庆德」「未指定：无」。"""
+    if not delivery_staff:
+        return "未指定：无"
+    if delivery_staff in [g["name"] for g in GAOZHUANG_STAFF]:
+        return f"高装：{delivery_staff}"
+    if delivery_staff in [z["name"] for z in ZHIYUN_ENGINEERS]:
+        return f"智云：{delivery_staff}"
+    return f"未指定：{delivery_staff}"
+
+
 def recipients_for(policy: dict[str, Any], manager_names: list[str]) -> list[dict[str, str]]:
     target = policy.get("target", "customer_managers")
     recipients: list[dict[str, str]] = []
@@ -251,17 +262,7 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
             details = []
             for r in manager_records[:3]:  # 最多显示3条
                 company = r["company_name"] or "未填写企业"
-                delivery_staff = r["delivery_staff_name"] or ""
-
-                # 判断交付类型：高装/智云/未指定
-                if delivery_staff in [g["name"] for g in GAOZHUANG_STAFF]:
-                    delivery_type = "高装"
-                elif delivery_staff in [z["name"] for z in ZHIYUN_ENGINEERS]:
-                    delivery_type = "智云"
-                else:
-                    delivery_type = "未指定"
-
-                details.append(f"    · {company}（{delivery_type}：{delivery_staff or '无'}）")
+                details.append(f"    · {company}（{delivery_label(r['delivery_staff_name'])}）")
             if len(manager_records) > 3:
                 details.append(f"    ... 还有 {len(manager_records) - 3} 户")
 
@@ -740,69 +741,48 @@ def build_missing_tomorrow_booking(target_date: str, rule: dict[str, Any]) -> di
 
 
 def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
-    """明日预约汇总 - 参考详细通报风格，显示所有预约详情"""
+    """明日预约汇总 - 与详细通报同一格式：未完成在前，已完成只列企业和交付人员。
+
+    每人最多列 3 条，超出折叠为「... 还有 N 户」。时段、联系人、商机内容不再展示，
+    避免 20 户以上时消息过长。
+    """
+    required = int(rule.get("filter", {}).get("minimum_bookings", 2))
     records = records_in_window(target_date)
+    counts = Counter(record["manager_name"] for record in records if record["manager_name"])
     current_time = datetime.now().strftime("%H:%M")
+
+    not_filled = []
+    filled = []
+
+    for manager in CUSTOMER_MANAGERS:
+        # 跳过实习期人员
+        if manager.get("exclude_reminder", False):
+            continue
+
+        count = counts[manager["name"]]
+        if count < required:
+            not_filled.append(f"❌ {manager['name']}：已填报 {count} 户，还差 {required - count} 户")
+            continue
+
+        mgr_recs = [r for r in records if r["manager_name"] == manager["name"]]
+        filled.append(f"✅ {manager['name']}：{count} 户")
+        for record in mgr_recs[:3]:
+            company = record["company_name"] or "未填写企业"
+            filled.append(f"    · {company}（{delivery_label(record['delivery_staff_name'])}）")
+        if len(mgr_recs) > 3:
+            filled.append(f"    ... 还有 {len(mgr_recs) - 3} 户")
 
     lines = [
         f"【{target_date_label(target_date)}预约情况】{target_date}",
         f"⏰ 通报时间：{current_time}",
-        f"",
+        "",
         f"共预约 {len(records)} 户。",
     ]
 
-    if records:
-        # 按客户经理分组
-        manager_records = {}
-        for record in records:
-            mgr = record["manager_name"]
-            if mgr not in manager_records:
-                manager_records[mgr] = []
-            manager_records[mgr].append(record)
-
-        lines.append("")
-        # 按客户经理名称排序输出
-        for manager_name in sorted(manager_records.keys()):
-            mgr_recs = manager_records[manager_name]
-            lines.append(f"✅ {manager_name}：{len(mgr_recs)} 户")
-
-            for record in mgr_recs:
-                company = record["company_name"] or "未填写企业"
-                contact = record["contact_name_title"] or ""
-                slot = record["appointment_slot"] or ""
-
-                # 判断交付类型
-                delivery_staff = record["delivery_staff_name"]
-                if delivery_staff:
-                    if delivery_staff in [g["name"] for g in GAOZHUANG_STAFF]:
-                        delivery_type = "高装"
-                    elif delivery_staff in [z["name"] for z in ZHIYUN_ENGINEERS]:
-                        delivery_type = "智云"
-                    else:
-                        delivery_type = "未指定"
-                    delivery_info = f"（{delivery_type}：{delivery_staff}）"
-                else:
-                    delivery_info = "（未指定：无）"
-
-                # 商机内容
-                content = record["opportunity_content"] or record["opportunity_type"] or ""
-
-                # 构建详情行：时段｜企业名称（联系人）｜商机内容
-                detail_parts = []
-                if slot:
-                    detail_parts.append(slot)
-                detail_parts.append(f"{company}（{contact}）" if contact else company)
-                if content:
-                    detail_parts.append(content)
-
-                detail_line = "    · " + "｜".join(detail_parts)
-                if delivery_info:
-                    detail_line += " " + delivery_info
-
-                lines.append(detail_line)
-    else:
-        lines.append("")
-        lines.append(f"暂无{target_date_label(target_date)}预约记录。")
+    if not_filled:
+        lines.extend(["", "⚠️ 未完成填报：", *not_filled])
+    if filled:
+        lines.extend(["", "✅ 已完成填报：", *filled])
 
     recipients = recipients_for(rule.get("recipient_policy", {}), [])
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
