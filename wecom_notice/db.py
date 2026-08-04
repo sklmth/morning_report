@@ -209,8 +209,8 @@ def get_records(appointment_date: str = "", manager: str = "", status: str = "",
     return [dict(row) for row in rows]
 
 
-def get_records_by_date_range(start_date: str = "", end_date: str = "") -> list[dict[str, Any]]:
-    """按预约日期范围查询全部预约记录，用于累计统计。"""
+def get_records_by_date_range(start_date: str = "", end_date: str = "", manager: str = "") -> list[dict[str, Any]]:
+    """按预约日期范围查询预约记录，用于累计统计和周五跨周末窗口统计。"""
     clauses = []
     params: list[Any] = []
     if start_date:
@@ -219,6 +219,9 @@ def get_records_by_date_range(start_date: str = "", end_date: str = "") -> list[
     if end_date:
         clauses.append("appointment_date <= ?")
         params.append(end_date)
+    if manager:
+        clauses.append("manager_name = ?")
+        params.append(manager)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     with connection() as conn:
         rows = conn.execute(

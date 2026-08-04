@@ -31,8 +31,33 @@ def default_target_date() -> str:
     return next_workday().isoformat()
 
 
+def target_window(target_date: str) -> tuple[str, str]:
+    """目标日期对应的考核窗口 (start, end)，闭区间。
+
+    周五发的通报覆盖周六~周一三天：客户经理周末也可能有走访，
+    只要这三天加起来够 2 户即算达标，所以按窗口而非单日计数。
+    其余情况窗口就是目标日当天。
+    """
+    try:
+        target = date.fromisoformat(target_date)
+    except ValueError:
+        return target_date, target_date
+    # 目标日是周一，且今天是周五 → 窗口为周六~周一
+    if target.weekday() == 0 and (target - date.today()).days > 1:
+        return (target - timedelta(days=2)).isoformat(), target.isoformat()
+    return target_date, target_date
+
+
+def records_in_window(target_date: str, manager: str = "") -> list[dict[str, Any]]:
+    """取目标窗口内的预约记录。窗口为单日时等价于按 appointment_date 精确查询。"""
+    start, end = target_window(target_date)
+    if start == end:
+        return get_records(appointment_date=target_date, manager=manager)
+    return get_records_by_date_range(start, end, manager)
+
+
 def target_date_label(target_date: str = "") -> str:
-    """目标日期的口语化称呼：次日为「明日」，跨周末为「下周一」。"""
+    """目标日期的口语化称呼：次日为「明日」，跨周末为「周末至下周一」。"""
     if not target_date:
         return "明日"
     try:
@@ -43,7 +68,7 @@ def target_date_label(target_date: str = "") -> str:
     if delta == 1:
         return "明日"
     if target.weekday() == 0 and delta > 1:
-        return "下周一"
+        return "周末至下周一"
     return f"{target.month}月{target.day}日"
 
 
@@ -72,7 +97,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     if manager_obj and manager_obj.get("exclude_reminder", False):
         return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name, "excluded": True}
 
-    records = get_records(appointment_date=target_date, manager=manager_name)
+    records = records_in_window(target_date, manager_name)
     current_count = len(records)
 
     if current_count >= required:
@@ -94,11 +119,14 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     emojis = ["📋", "⏰", "📝", "✍️", "📊", "🔔", "💼", "📌"]
     emoji = emojis[(reminder_seq - 1) % len(emojis)]
 
+    win_start, win_end = target_window(target_date)
+    date_line = f"📅 日期：{target_date}" if win_start == win_end else f"📅 日期：{win_start} ~ {win_end}（三天合计）"
+
     lines = [
         f"{emoji} @{manager_name}",
         "",
         f"{target_date_label(target_date)}预约填报提醒（第{reminder_seq}次）",
-        f"📅 日期：{target_date}",
+        date_line,
         f"✅ 已填：{current_count} 户",
         f"⚠️ 还需：{gap} 户",
     ]
@@ -150,7 +178,7 @@ def build_manager_brief_notice(target_date: str, required: int = 2) -> dict[str,
     未填的放前面，用❌标红。如果全部人员都填了就不发送（should_send=False）。
     实习期人员（exclude_reminder=True）不计入统计。
     """
-    records = get_records(appointment_date=target_date)
+    records = records_in_window(target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
 
     filled = []
@@ -203,7 +231,7 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
     - 累计情况：漏填、超时、准时，做得好的在前面，加emoji
     实习期人员（exclude_reminder=True）不计入统计。
     """
-    records = get_records(appointment_date=target_date)
+    records = records_in_window(target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
 
     # 今日情况
@@ -334,7 +362,7 @@ def build_final_data_collection(target_date: str, required: int = 2) -> dict[str
     """
     from wecom_notice.db import upsert_fill_statistics
 
-    records = get_records(appointment_date=target_date)
+    records = records_in_window(target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
 
     # 获取今日所有提醒日志，判断最后一次填报完成的时间
@@ -668,7 +696,7 @@ def build_weekly_report() -> dict[str, Any]:
 def build_missing_tomorrow_booking(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
     """明日预约不足通报 - 参考简洁通报风格"""
     required = int(rule.get("filter", {}).get("minimum_bookings", 2))
-    records = get_records(appointment_date=target_date)
+    records = records_in_window(target_date)
     counts = Counter(record["manager_name"] for record in records if record["manager_name"])
 
     not_filled = []
@@ -712,7 +740,7 @@ def build_missing_tomorrow_booking(target_date: str, rule: dict[str, Any]) -> di
 
 def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
     """明日预约汇总 - 参考详细通报风格，显示所有预约详情"""
-    records = get_records(appointment_date=target_date)
+    records = records_in_window(target_date)
     current_time = datetime.now().strftime("%H:%M")
 
     lines = [
