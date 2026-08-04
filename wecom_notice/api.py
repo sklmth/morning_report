@@ -519,7 +519,7 @@ def send_rules_introduction(payload: SendRulesRequest):
    · 消耗越多，中奖概率越高
    · 准时次数仅当月有效，次月清零
 
-🎁 奖品体系（修仙主题）：
+🎁 奖品体系：
    · 凡尘符咒：0 元（空奖）
    · 聚灵丹：5 元
    · 护身符：10 元
