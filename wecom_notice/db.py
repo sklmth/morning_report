@@ -137,6 +137,17 @@ def init_db() -> None:
                     rule["template_key"], timestamp, timestamp,
                 ),
             )
+            # 上面是 INSERT OR IGNORE，已存在的行不会更新。收件人范围属于配置而非
+            # 用户数据（前端不可编辑），所以每次启动都以 config.py 为准同步回来，
+            # 否则改了 DEFAULT_RULES 对已部署的库不生效。
+            conn.execute(
+                "UPDATE notification_rules SET recipient_policy_json = ?, updated_at = ? "
+                "WHERE rule_key = ? AND recipient_policy_json != ?",
+                (
+                    json.dumps(rule["recipient_policy"], ensure_ascii=False), timestamp,
+                    rule["key"], json.dumps(rule["recipient_policy"], ensure_ascii=False),
+                ),
+            )
 
 
 @contextmanager

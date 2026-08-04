@@ -73,6 +73,18 @@
 | `wecom_userid` | `mentioned_list` | 企业微信管理后台 → 通讯录 → 成员详情中的账号，最稳定 |
 | `mobile` | `mentioned_mobile_list` | 需与成员企业微信绑定手机号一致，换号或未绑定会静默失效 |
 
+> 手机号与绑定号不一致时，企业微信仍返回 `errcode: 0`，但实际没人被 @，日志里看不出异常。想彻底避免请填 `wecom_userid`。群机器人的 webhook key **不能**用于调用「手机号获取 userid」接口（`/cgi-bin/user/getuserid` 返回 `40014 invalid access_token`），该接口需要企业自建应用的 corpid + corpsecret 且具备通讯录读取权限，只能在管理后台手工查。
+
+### 手动通报的收件人
+
+| 规则 | target | 实际 @ 到 |
+|---|---|---|
+| 明日预约不足两户通报 | `customer_managers_and_management` | 未达标的客户经理 + 3 位管理者 |
+| 明日预约汇总 | `management` | 仅 3 位管理者 |
+| 拜访回填提醒 | `customer_managers_and_management` | 有待回填记录的客户经理 + 3 位管理者 |
+
+收件人范围由 `config.py` 的 `DEFAULT_RULES` 定义。该表在建库时用 `INSERT OR IGNORE` 写入，已存在的行不会被覆盖，因此 `init_db()` 每次启动都会把 `recipient_policy_json` 按 config 同步一次 —— 否则改了配置对已部署的库不生效。
+
 config.py 中 15 人（12 客户经理 + 3 管理者）均已配置手机号，当前全部可被 @。消息正文里写的 `@麦海芬` 只是普通文字，不会高亮也不会触发提醒 —— 真正让手机响的是同一请求中的 `mentioned_mobile_list`。
 
 ---

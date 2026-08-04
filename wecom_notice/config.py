@@ -63,7 +63,7 @@ DEFAULT_RULES = [
         "trigger_type": "manual",
         "cron_expr": "",
         "filter": {"minimum_bookings": 2},
-        "recipient_policy": {"target": "customer_managers"},
+        "recipient_policy": {"target": "customer_managers_and_management"},
         "template_key": "missing_tomorrow_booking",
     },
     {
