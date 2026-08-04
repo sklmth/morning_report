@@ -18,10 +18,12 @@ from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
 from wecom_notice.db import add_send_log, latest_airscript_upload
 from wecom_notice.kingsoft_trigger import trigger_kingsoft_data_sync
 from wecom_notice.reporter import (
+    build_biweekly_report,
     build_customer_manager_reminder,
     build_final_data_collection,
     build_manager_brief_notice,
     build_manager_detailed_notice,
+    build_monthly_report,
     build_weekly_report,
     default_target_date,
 )
@@ -249,6 +251,72 @@ def send_weekly_report():
         logger.error(f"发送周通报失败：{e}")
         add_send_log(
             rule_key="weekly_report",
+            status="failed",
+            message_text="",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
+        )
+
+
+def send_biweekly_report():
+    """发送半月报（本月1-15号预约填报情况汇总）。
+    计划：每月15号 12:00 触发。
+    """
+    logger.info("开始发送半月报")
+    try:
+        result = build_biweekly_report()
+        if result["should_send"]:
+            response = send_text(result["message"], result["recipients"])
+            add_send_log(
+                rule_key="biweekly_report",
+                status="success" if response.get("errcode") == 0 else "failed",
+                message_text=result["message"],
+                mentioned=result["recipients"],
+                record_ids=[],
+                webhook_response=str(response),
+            )
+            logger.info("半月报发送完成")
+        else:
+            logger.info("半月报无需发送")
+    except Exception as e:
+        logger.error(f"发送半月报失败：{e}")
+        add_send_log(
+            rule_key="biweekly_report",
+            status="failed",
+            message_text="",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
+        )
+
+
+def send_monthly_report():
+    """发送月报（本月全月预约填报情况汇总）。
+    计划：每月最后一天 12:00 触发。
+    月报 @all 群内所有人。
+    """
+    logger.info("开始发送月报")
+    try:
+        result = build_monthly_report()
+        if result["should_send"]:
+            mention_all = result.get("mention_all", False)
+            response = send_text(result["message"], result["recipients"], mention_all=mention_all)
+            add_send_log(
+                rule_key="monthly_report",
+                status="success" if response.get("errcode") == 0 else "failed",
+                message_text=result["message"],
+                mentioned=result["recipients"] if not mention_all else [],
+                record_ids=[],
+                webhook_response=str(response),
+            )
+            logger.info("月报发送完成 (@all)")
+        else:
+            logger.info("月报无需发送")
+    except Exception as e:
+        logger.error(f"发送月报失败：{e}")
+        add_send_log(
+            rule_key="monthly_report",
             status="failed",
             message_text="",
             mentioned=[],
@@ -491,7 +559,25 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # 8. 周末数据同步（周六/周日均执行；仅入库，不影响统计指标）
+    # 8. 半月报 - 每月15号 12:00
+    scheduler.add_job(
+        send_biweekly_report,
+        CronTrigger(day=15, hour=12, minute=0),
+        id="biweekly_report",
+        name="半月报-每月15号 12:00",
+        replace_existing=True,
+    )
+
+    # 9. 月报 - 每月最后一天 12:00
+    scheduler.add_job(
+        send_monthly_report,
+        CronTrigger(day="last", hour=12, minute=0),
+        id="monthly_report",
+        name="月报-每月最后一天 12:00 (@all)",
+        replace_existing=True,
+    )
+
+    # 10. 周末数据同步（周六/周日均执行；仅入库，不影响统计指标）
     for time_str in WEEKEND_SYNC_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
