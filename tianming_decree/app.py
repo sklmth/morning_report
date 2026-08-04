@@ -31,7 +31,10 @@ def index():
 @app.route("/api/managers", methods=["GET"])
 def get_managers():
     """获取所有客户经理列表"""
-    managers = [m["name"] for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)]
+    current_month = date.today().strftime("%Y-%m")
+    configured = [m["name"] for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)]
+    monthly_names = db.get_monthly_manager_names(current_month)
+    managers = list(dict.fromkeys(configured + monthly_names))
     return jsonify({"managers": managers})
 
 

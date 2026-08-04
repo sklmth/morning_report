@@ -60,9 +60,8 @@ def create_test_data():
 
     print("\n测试数据创建完成!")
     print(f"现在可以使用 '{test_manager}' 用户测试抽签功能了。")
-    print(f"访问地址: http://shanguantang.site:tianming/")
+    print("访问地址: https://shanguantang.site/tianming/")
 
 
 if __name__ == "__main__":
     create_test_data()
-

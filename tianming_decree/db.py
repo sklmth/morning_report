@@ -196,6 +196,19 @@ def get_monthly_stats(manager_name: str, month: str) -> dict[str, Any]:
         }
 
 
+def get_monthly_manager_names(month: str) -> list[str]:
+    """获取指定月份已有天命统计的姓名。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT manager_name FROM monthly_lottery_stats WHERE month = ? ORDER BY manager_name",
+        (month,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [row["manager_name"] for row in rows]
+
+
 def update_monthly_stats(manager_name: str, month: str, ontime_count: int):
     """更新月度准时次数统计。"""
     conn = get_connection()
