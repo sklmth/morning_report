@@ -8,6 +8,7 @@
 
 import logging
 import time
+from datetime import datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -73,14 +74,16 @@ def _sync_with_cooldown():
 
 def send_customer_manager_reminders():
     """发送客户经理提醒消息（对所有未达标的客户经理）"""
+    # 在 sync 之前抓触发时刻，确保所有经理消息显示同一个时间点（如18:15）
+    round_notice_time = datetime.now().strftime("%H:%M")
     _sync_with_cooldown()
     target_date = get_target_date()
-    logger.info(f"开始发送客户经理提醒，目标日期：{target_date}")
+    logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
     sent_count = 0
     for manager in CUSTOMER_MANAGERS:
         try:
-            report = build_customer_manager_reminder(target_date, manager["name"])
+            report = build_customer_manager_reminder(target_date, manager["name"], notice_time=round_notice_time)
 
             if not report.get("should_send", False):
                 logger.info(f"{manager['name']} 已达标，跳过提醒")

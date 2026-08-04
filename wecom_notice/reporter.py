@@ -181,7 +181,7 @@ def fine_rules_lines(overtime_count: int = 0, missing_count: int = 0) -> list[st
 # ====== 新增通报构建器 ======
 
 
-def build_customer_manager_reminder(target_date: str, manager_name: str, required: int = 2) -> dict[str, Any]:
+def build_customer_manager_reminder(target_date: str, manager_name: str, required: int = 2, notice_time: str = "") -> dict[str, Any]:
     """
     客户经理提醒消息：单独@客户经理，显示已填户数、超时/漏填历史、今日提醒次数。
     填了2户及以上的不返回消息（should_send=False）。
@@ -222,10 +222,13 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
         date_line = f"📅 日期：{target_date}"
         title_label = f"{target_date_label(target_date)}预约填报"
 
+    # 通报时间：优先使用调用方传入的本轮触发时间，保证同一轮所有经理显示同一时刻
+    current_time = notice_time if notice_time else datetime.now().strftime("%H:%M")
     lines = [
         f"{emoji} @{manager_name}",
         "",
         f"{title_label}（第{reminder_seq}次提醒）",
+        f"⏰ 通报时间：{current_time}",
         date_line,
         f"✅ 已填：{current_count} 户",
         f"⚠️ 还需：{gap} 户",
