@@ -33,11 +33,8 @@ CUSTOMER_MANAGER_REMINDER_TIMES = [
     "18:15", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
 ]
 
-# 第一个通报（简洁版）- 张端副经理
-BRIEF_NOTICE_ZHANG_TIMES = ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"]
-
-# 第一个通报（简洁版）- 钟俊杰经理
-BRIEF_NOTICE_ZHONG_TIMES = ["19:00", "19:30", "20:30", "21:00", "21:30"]
+# 简洁通报时间点（全体管理者，每个时间点@所有人一起发）
+BRIEF_NOTICE_TIMES = ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"]
 
 # 第二个通报（详细版）- 所有管理者
 DETAILED_NOTICE_TIME = "22:00"
@@ -73,137 +70,80 @@ def _sync_with_cooldown():
 
 
 def send_customer_manager_reminders():
-    """发送客户经理提醒消息。
-
-    同一轮中内容相同的多位经理合并为一条消息（@多人），减少刷屏。
-    所有人的消息在发送前统一构建，保证时间戳和剩余分钟数一致。
-    """
+    """发送客户经理提醒消息（对所有未达标的客户经理）"""
     # 在 sync 之前抓触发时刻，确保所有经理消息显示同一个时间点（如18:15）
     round_notice_time = datetime.now().strftime("%H:%M")
     _sync_with_cooldown()
     target_date = get_target_date()
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
-    # 第一步：批量构建（统一时刻，剩余分钟数一致）
-    pending = []
+    sent_count = 0
     for manager in CUSTOMER_MANAGERS:
         try:
             report = build_customer_manager_reminder(target_date, manager["name"], notice_time=round_notice_time)
-            if report.get("should_send", False):
-                pending.append(report)
-            else:
-                logger.info(f"{manager['name']} 已达标或已排除，跳过提醒")
-        except Exception as e:
-            logger.error(f"构建 {manager['name']} 提醒失败：{e}")
-
-    # 第二步：按消息正文分组（第一行是 "{emoji} @{name}"，其余是正文）
-    from collections import OrderedDict
-    groups: dict[str, list] = OrderedDict()
-    for report in pending:
-        lines = report["message"].split("\n")
-        body = "\n".join(lines[1:])   # 正文（不含第一行的@提及）
-        groups.setdefault(body, []).append(report)
-
-    # 第三步：合并同组消息并发送
-    sent_count = 0
-    for body, reports in groups.items():
-        try:
-            if len(reports) == 1:
-                message = reports[0]["message"]
-                recipients = reports[0]["recipients"]
-                names_log = reports[0]["manager_name"]
-            else:
-                # 合并第一行：保留第一条的 emoji，追加其余人的 @name
-                first_lines = [r["message"].split("\n")[0] for r in reports]
-                emoji_char = first_lines[0].split(" @")[0]
-                all_names = [fl.split(" @", 1)[1] for fl in first_lines]
-                combined_first = emoji_char + " " + " ".join(f"@{n}" for n in all_names)
-                message = combined_first + "\n" + body
-                # 合并 recipients（去重保序）
-                seen: set = set()
-                recipients = []
-                for r in reports:
-                    for rec in r["recipients"]:
-                        key = rec.get("wecom_userid") or rec.get("mobile") or rec.get("name")
-                        if key and key not in seen:
-                            seen.add(key)
-                            recipients.append(rec)
-                names_log = "、".join(r["manager_name"] for r in reports)
-
-            response = send_text(message, recipients)
-            for r in reports:
-                add_send_log(
-                    rule_key="customer_manager_reminder",
-                    status="success",
-                    message_text=message,
-                    mentioned=recipients,
-                    record_ids=[],
-                    webhook_response=str(response),
-                )
+            if not report.get("should_send", False):
+                logger.info(f"{manager['name']} 已达标，跳过提醒")
+                continue
+            response = send_text(report["message"], report["recipients"])
+            add_send_log(
+                rule_key="customer_manager_reminder",
+                status="success",
+                message_text=report["message"],
+                mentioned=report["recipients"],
+                record_ids=[],
+                webhook_response=str(response),
+            )
             sent_count += 1
-            logger.info(f"成功发送提醒（合并）：{names_log}")
-
-            # 每组之间间隔1分钟，避免刷屏
-            if sent_count < len(groups):
-                time.sleep(60)
-
+            logger.info(f"成功发送提醒给 {manager['name']}")
+            time.sleep(60)
         except Exception as e:
-            logger.error(f"发送合并提醒失败：{e}")
-            for r in reports:
-                add_send_log(
-                    rule_key="customer_manager_reminder",
-                    status="failed",
-                    message_text=r.get("message", ""),
-                    mentioned=r.get("recipients", []),
-                    record_ids=[],
-                    error=str(e),
-                )
+            logger.error(f"发送提醒给 {manager['name']} 失败：{e}")
+            add_send_log(
+                rule_key="customer_manager_reminder",
+                status="failed",
+                message_text=report.get("message", ""),
+                mentioned=report.get("recipients", []),
+                record_ids=[],
+                error=str(e),
+            )
 
-    logger.info(f"客户经理提醒完成，共发送 {sent_count} 条（合并前 {len(pending)} 位经理）")
+    logger.info(f"客户经理提醒完成，共发送 {sent_count} 条")
 
 
-def send_brief_notice_to_manager(manager_name: str):
-    """发送简洁通报给指定管理者"""
+def send_brief_notice_to_all_managers():
+    """发送简洁通报给全体管理者（正经理+副经理一起@）"""
     _sync_with_cooldown()
     target_date = get_target_date()
-    logger.info(f"开始发送简洁通报给 {manager_name}，目标日期：{target_date}")
+    logger.info(f"开始发送简洁通报，目标日期：{target_date}")
 
     try:
         report = build_manager_brief_notice(target_date)
 
         if not report.get("should_send", False):
-            logger.info(f"全部人员已填报，跳过简洁通报")
+            logger.info("全部人员已填报，跳过简洁通报")
             return
 
-        # 只发送给指定管理者
-        manager_obj = next((m for m in MANAGER_RECIPIENTS if m["name"] == manager_name), None)
-        if not manager_obj:
-            logger.warning(f"未找到管理者：{manager_name}")
-            return
-
-        recipients = [manager_obj]
-        response = send_text(report["message"], recipients)
+        response = send_text(report["message"], MANAGER_RECIPIENTS)
 
         add_send_log(
-            rule_key=f"brief_notice_{manager_name}",
+            rule_key="brief_notice_all",
             status="success",
             message_text=report["message"],
-            mentioned=recipients,
+            mentioned=MANAGER_RECIPIENTS,
             record_ids=[],
-            webhook_response=str(response)
+            webhook_response=str(response),
         )
-
-        logger.info(f"成功发送简洁通报给 {manager_name}")
+        logger.info("成功发送简洁通报给全体管理者")
 
     except Exception as e:
-        logger.error(f"发送简洁通报给 {manager_name} 失败：{e}")
+        logger.error(f"发送简洁通报失败：{e}")
         add_send_log(
-            rule_key=f"brief_notice_{manager_name}",
+            rule_key="brief_notice_all",
             status="failed",
             message_text=report.get("message", ""),
-            mentioned=[manager_obj] if manager_obj else [],
+            mentioned=MANAGER_RECIPIENTS,
             record_ids=[],
-            error=str(e)
+            error=str(e),
         )
 
 
@@ -472,27 +412,14 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
             replace_existing=True
         )
 
-    # 2. 简洁通报 - 张端（周一~周五）
-    for time_str in BRIEF_NOTICE_ZHANG_TIMES:
+    # 2. 简洁通报 - 全体管理者（周一~周五）
+    for time_str in BRIEF_NOTICE_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
-            send_brief_notice_to_manager,
+            send_brief_notice_to_all_managers,
             CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
-            args=["张端"],
-            id=f"brief_zhang_{time_str.replace(':', '')}",
-            name=f"简洁通报-张端 {time_str}",
-            replace_existing=True
-        )
-
-    # 3. 简洁通报 - 钟俊杰（周一~周五）
-    for time_str in BRIEF_NOTICE_ZHONG_TIMES:
-        hour, minute = time_str.split(":")
-        scheduler.add_job(
-            send_brief_notice_to_manager,
-            CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
-            args=["钟俊杰"],
-            id=f"brief_zhong_{time_str.replace(':', '')}",
-            name=f"简洁通报-钟俊杰 {time_str}",
+            id=f"brief_all_{time_str.replace(':', '')}",
+            name=f"简洁通报-全体管理者 {time_str}",
             replace_existing=True
         )
 
