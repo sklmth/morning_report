@@ -4,11 +4,9 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 RUNTIME_DIR = ROOT_DIR / "runtime"
 DB_PATH = Path(os.environ.get("WECOM_NOTICE_DB_PATH", RUNTIME_DIR / "wecom_notice.db"))
-WEBHOOK_URL = os.environ.get("WECOM_NOTICE_WEBHOOK_URL", "")
-
-# 测试环境配置
-TEST_MODE = os.environ.get("WECOM_NOTICE_TEST_MODE", "false").lower() == "true"
-TEST_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=866c5319-0f4a-42fe-8465-f4b3de554c61"
+# 端州政企群机器人 webhook。默认值即正式群，可用环境变量 WECOM_NOTICE_WEBHOOK_URL 覆盖。
+DEFAULT_WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=866c5319-0f4a-42fe-8465-f4b3de554c61"
+WEBHOOK_URL = os.environ.get("WECOM_NOTICE_WEBHOOK_URL", DEFAULT_WEBHOOK_URL)
 KINGSOFT_WEBHOOK_URL = "https://www.kdocs.cn/chatflow/api/v2/func/webhook/3HO9aSGTCOI0baONAtcctbiSu77"
 
 # Excel 中当前出现的客户经理名单。补充手机号或企业微信 userid 后即可支持群内 @。
@@ -52,15 +50,9 @@ ZHIYUN_ENGINEERS = [
 
 # 管理者名单（经理和副经理）
 MANAGER_RECIPIENTS = [
-    {"name": "钟俊杰", "mobile": "", "wecom_userid": "", "role": "manager", "title": "正经理"},
-    {"name": "张端", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
-    {"name": "梁天霖", "mobile": "", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
-]
-
-# 测试人员配置（用于测试群聊）
-TEST_PERSONNEL = [
-    {"name": "李璇", "mobile": "18933136676", "wecom_userid": "", "role": "manager", "title": "经理"},
-    {"name": "曾俊宁", "mobile": "18128089992", "wecom_userid": "", "role": "customer_manager", "title": "客户经理"},
+    {"name": "钟俊杰", "mobile": "18929809369", "wecom_userid": "", "role": "manager", "title": "正经理"},
+    {"name": "张端", "mobile": "13376568281", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
+    {"name": "梁天霖", "mobile": "18933131302", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
 ]
 
 DEFAULT_RULES = [

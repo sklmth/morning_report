@@ -165,8 +165,9 @@
 # 安装依赖
 pip install APScheduler>=3.10.0
 
-# 配置 Webhook（在 .env 中）
-WECOM_NOTICE_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
+# Webhook 已内置端州政企群地址（config.py 的 DEFAULT_WEBHOOK_URL），无需配置。
+# 要发到其他群时才需覆盖：
+# WECOM_NOTICE_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=YOUR_KEY
 
 # 启动服务
 python wecom_notice/main.py

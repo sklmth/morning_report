@@ -321,13 +321,13 @@ WECOM_NOTICE_PORT=8996 python wecom_notice/main.py
 
 ### 企业微信配置
 
-不要把真实机器人地址写入代码或提交到 git。systemd 或运行环境设置：
+端州政企群的机器人地址已作为默认值写在 `wecom_notice/config.py` 的 `DEFAULT_WEBHOOK_URL`，开箱即用。需要发到别的群时用环境变量覆盖：
 
 ```bash
 export WECOM_NOTICE_WEBHOOK_URL='https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...'
 ```
 
-客户经理名单和 3 位经理/副经理名单在 `wecom_notice/config.py` 中维护；补充手机号或企业微信 userid 后，机器人消息即可 @ 对应人员。
+客户经理名单和 3 位经理/副经理名单在 `wecom_notice/config.py` 中维护，15 人均已配置手机号，机器人消息可 @ 到全部人员。填 `wecom_userid` 会优先于手机号使用。
 
 ### 金山文档脚本
 
