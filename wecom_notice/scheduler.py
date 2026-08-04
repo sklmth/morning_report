@@ -73,54 +73,93 @@ def _sync_with_cooldown():
 
 
 def send_customer_manager_reminders():
-    """发送客户经理提醒消息（对所有未达标的客户经理）"""
+    """发送客户经理提醒消息。
+
+    同一轮中内容相同的多位经理合并为一条消息（@多人），减少刷屏。
+    所有人的消息在发送前统一构建，保证时间戳和剩余分钟数一致。
+    """
     # 在 sync 之前抓触发时刻，确保所有经理消息显示同一个时间点（如18:15）
     round_notice_time = datetime.now().strftime("%H:%M")
     _sync_with_cooldown()
     target_date = get_target_date()
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
-    sent_count = 0
+    # 第一步：批量构建（统一时刻，剩余分钟数一致）
+    pending = []
     for manager in CUSTOMER_MANAGERS:
         try:
             report = build_customer_manager_reminder(target_date, manager["name"], notice_time=round_notice_time)
+            if report.get("should_send", False):
+                pending.append(report)
+            else:
+                logger.info(f"{manager['name']} 已达标或已排除，跳过提醒")
+        except Exception as e:
+            logger.error(f"构建 {manager['name']} 提醒失败：{e}")
 
-            if not report.get("should_send", False):
-                logger.info(f"{manager['name']} 已达标，跳过提醒")
-                continue
+    # 第二步：按消息正文分组（第一行是 "{emoji} @{name}"，其余是正文）
+    from collections import OrderedDict
+    groups: dict[str, list] = OrderedDict()
+    for report in pending:
+        lines = report["message"].split("\n")
+        body = "\n".join(lines[1:])   # 正文（不含第一行的@提及）
+        groups.setdefault(body, []).append(report)
 
-            # 发送消息
-            response = send_text(report["message"], report["recipients"])
+    # 第三步：合并同组消息并发送
+    sent_count = 0
+    for body, reports in groups.items():
+        try:
+            if len(reports) == 1:
+                message = reports[0]["message"]
+                recipients = reports[0]["recipients"]
+                names_log = reports[0]["manager_name"]
+            else:
+                # 合并第一行：保留第一条的 emoji，追加其余人的 @name
+                first_lines = [r["message"].split("\n")[0] for r in reports]
+                emoji_char = first_lines[0].split(" @")[0]
+                all_names = [fl.split(" @", 1)[1] for fl in first_lines]
+                combined_first = emoji_char + " " + " ".join(f"@{n}" for n in all_names)
+                message = combined_first + "\n" + body
+                # 合并 recipients（去重保序）
+                seen: set = set()
+                recipients = []
+                for r in reports:
+                    for rec in r["recipients"]:
+                        key = rec.get("wecom_userid") or rec.get("mobile") or rec.get("name")
+                        if key and key not in seen:
+                            seen.add(key)
+                            recipients.append(rec)
+                names_log = "、".join(r["manager_name"] for r in reports)
 
-            # 记录日志
-            add_send_log(
-                rule_key="customer_manager_reminder",
-                status="success",
-                message_text=report["message"],
-                mentioned=report["recipients"],
-                record_ids=[],
-                webhook_response=str(response)
-            )
-
+            response = send_text(message, recipients)
+            for r in reports:
+                add_send_log(
+                    rule_key="customer_manager_reminder",
+                    status="success",
+                    message_text=message,
+                    mentioned=recipients,
+                    record_ids=[],
+                    webhook_response=str(response),
+                )
             sent_count += 1
-            logger.info(f"成功发送提醒给 {manager['name']}")
+            logger.info(f"成功发送提醒（合并）：{names_log}")
 
-            # 每条消息间隔1分钟，避免刷屏
-            import time
-            time.sleep(60)
+            # 每组之间间隔1分钟，避免刷屏
+            if sent_count < len(groups):
+                time.sleep(60)
 
         except Exception as e:
-            logger.error(f"发送提醒给 {manager['name']} 失败：{e}")
-            add_send_log(
-                rule_key="customer_manager_reminder",
-                status="failed",
-                message_text=report.get("message", ""),
-                mentioned=report.get("recipients", []),
-                record_ids=[],
-                error=str(e)
-            )
+            logger.error(f"发送合并提醒失败：{e}")
+            for r in reports:
+                add_send_log(
+                    rule_key="customer_manager_reminder",
+                    status="failed",
+                    message_text=r.get("message", ""),
+                    mentioned=r.get("recipients", []),
+                    record_ids=[],
+                    error=str(e),
+                )
 
-    logger.info(f"客户经理提醒完成，共发送 {sent_count} 条")
+    logger.info(f"客户经理提醒完成，共发送 {sent_count} 条（合并前 {len(pending)} 位经理）")
 
 
 def send_brief_notice_to_manager(manager_name: str):
