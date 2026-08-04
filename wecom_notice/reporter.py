@@ -14,6 +14,29 @@ from wecom_notice.db import (
 )
 
 
+def get_prize_discount(manager_name: str, month: str) -> int:
+    """
+    获取指定客户经理在指定月份的天命赦令奖品减免总额。
+
+    参数：
+        manager_name: 客户经理姓名
+        month: 月份，格式 YYYY-MM
+
+    返回：
+        减免金额（元）
+    """
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from tianming_decree import db as tianming_db
+        stats = tianming_db.get_monthly_stats(manager_name, month)
+        return stats.get("total_prize_amount", 0)
+    except Exception:
+        # 如果天命赦令模块不可用，返回0
+        return 0
+
+
 def next_workday(from_date: date | None = None) -> date:
     """下一个工作日（跳过周末）。
 
@@ -776,21 +799,29 @@ def build_weekly_report() -> dict[str, Any]:
     missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
 
     # 罚款计算（按金额倒序）
+    current_month = today.strftime("%Y-%m")
     fines = []
     for mgr, s in manager_stats.items():
         fine_missing = s["missing"] * 10
         fine_overtime = (s["overtime"] // 5) * 10
-        total = fine_missing + fine_overtime
-        if total > 0:
+        total_before_discount = fine_missing + fine_overtime
+
+        # 获取天命赦令奖品减免
+        discount = get_prize_discount(mgr, current_month)
+        total_after_discount = max(0, total_before_discount - discount)
+
+        if total_before_discount > 0:
             fines.append({
                 "name": mgr,
                 "missing": s["missing"],
                 "overtime": s["overtime"],
                 "fine_missing": fine_missing,
                 "fine_overtime": fine_overtime,
-                "total": total,
+                "total": total_before_discount,
+                "discount": discount,
+                "final_amount": total_after_discount,
             })
-    fines.sort(key=lambda x: x["total"], reverse=True)
+    fines.sort(key=lambda x: x["final_amount"], reverse=True)
 
     # 构建消息
     now_dt = datetime.now()
@@ -830,13 +861,19 @@ def build_weekly_report() -> dict[str, Any]:
     lines.extend(["", "━━━━━━ ☕ 下午茶基金 ━━━━━━", ""])
     if fines:
         for f in fines:
-            icon = "💸" if f["total"] >= 40 else ("⚠️" if f["total"] >= 20 else "📌")
+            icon = "💸" if f["final_amount"] >= 40 else ("⚠️" if f["final_amount"] >= 20 else "📌")
             parts = []
             if f["missing"] >= 1:
                 parts.append(f"漏填 {f['missing']} 次")
             if f["overtime"] >= 5:
                 parts.append(f"超时 {f['overtime']} 次（每5次10元）")
-            lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+
+            # 显示奖品减免
+            if f["discount"] > 0:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+                lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，实缴 {f['final_amount']} 元")
+            else:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:
         lines.append("   ✅ 本月暂无应缴记录，继续保持！")
 
@@ -882,21 +919,29 @@ def build_biweekly_report() -> dict[str, Any]:
     missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
 
     # 罚款计算
+    current_month = today.strftime("%Y-%m")
     fines = []
     for mgr, s in manager_stats.items():
         fine_missing = s["missing"] * 10
         fine_overtime = (s["overtime"] // 5) * 10
-        total = fine_missing + fine_overtime
-        if total > 0:
+        total_before_discount = fine_missing + fine_overtime
+
+        # 获取天命赦令奖品减免
+        discount = get_prize_discount(mgr, current_month)
+        total_after_discount = max(0, total_before_discount - discount)
+
+        if total_before_discount > 0:
             fines.append({
                 "name": mgr,
                 "missing": s["missing"],
                 "overtime": s["overtime"],
                 "fine_missing": fine_missing,
                 "fine_overtime": fine_overtime,
-                "total": total,
+                "total": total_before_discount,
+                "discount": discount,
+                "final_amount": total_after_discount,
             })
-    fines.sort(key=lambda x: x["total"], reverse=True)
+    fines.sort(key=lambda x: x["final_amount"], reverse=True)
 
     # 构建消息
     now_dt = datetime.now()
@@ -936,13 +981,19 @@ def build_biweekly_report() -> dict[str, Any]:
     lines.extend(["", "━━━━━━ ☕ 下午茶基金 ━━━━━━", ""])
     if fines:
         for f in fines:
-            icon = "💸" if f["total"] >= 40 else ("⚠️" if f["total"] >= 20 else "📌")
+            icon = "💸" if f["final_amount"] >= 40 else ("⚠️" if f["final_amount"] >= 20 else "📌")
             parts = []
             if f["missing"] >= 1:
                 parts.append(f"漏填 {f['missing']} 次")
             if f["overtime"] >= 5:
                 parts.append(f"超时 {f['overtime']} 次（每5次10元）")
-            lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+
+            # 显示奖品减免
+            if f["discount"] > 0:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+                lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，实缴 {f['final_amount']} 元")
+            else:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:
         lines.append("   ✅ 本月暂无应缴记录，继续保持！")
 
@@ -989,21 +1040,29 @@ def build_monthly_report() -> dict[str, Any]:
     missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
 
     # 罚款计算
+    current_month = today.strftime("%Y-%m")
     fines = []
     for mgr, s in manager_stats.items():
         fine_missing = s["missing"] * 10
         fine_overtime = (s["overtime"] // 5) * 10
-        total = fine_missing + fine_overtime
-        if total > 0:
+        total_before_discount = fine_missing + fine_overtime
+
+        # 获取天命赦令奖品减免
+        discount = get_prize_discount(mgr, current_month)
+        total_after_discount = max(0, total_before_discount - discount)
+
+        if total_before_discount > 0:
             fines.append({
                 "name": mgr,
                 "missing": s["missing"],
                 "overtime": s["overtime"],
                 "fine_missing": fine_missing,
                 "fine_overtime": fine_overtime,
-                "total": total,
+                "total": total_before_discount,
+                "discount": discount,
+                "final_amount": total_after_discount,
             })
-    fines.sort(key=lambda x: x["total"], reverse=True)
+    fines.sort(key=lambda x: x["final_amount"], reverse=True)
 
     # 构建消息
     now_dt = datetime.now()
@@ -1043,13 +1102,19 @@ def build_monthly_report() -> dict[str, Any]:
     lines.extend(["", "━━━━━━ ☕ 下午茶基金 ━━━━━━", ""])
     if fines:
         for f in fines:
-            icon = "💸" if f["total"] >= 40 else ("⚠️" if f["total"] >= 20 else "📌")
+            icon = "💸" if f["final_amount"] >= 40 else ("⚠️" if f["final_amount"] >= 20 else "📌")
             parts = []
             if f["missing"] >= 1:
                 parts.append(f"漏填 {f['missing']} 次")
             if f["overtime"] >= 5:
                 parts.append(f"超时 {f['overtime']} 次（每5次10元）")
-            lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+
+            # 显示奖品减免
+            if f["discount"] > 0:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
+                lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，实缴 {f['final_amount']} 元")
+            else:
+                lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:
         lines.append("   ✅ 本月暂无应缴记录，继续保持！")
 
