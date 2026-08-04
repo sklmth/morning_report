@@ -114,6 +114,15 @@ def send_customer_manager_reminders():
                 error=str(e),
             )
 
+    if sent_count == 0:
+        add_send_log(
+            rule_key="customer_manager_reminder",
+            status="success",
+            message_text=f"客户经理提醒完成：本轮无需发送（目标日期 {target_date} 的人员均已达标）",
+            mentioned=[],
+            record_ids=[],
+            webhook_response="no_reminder_needed",
+        )
     logger.info(f"客户经理提醒完成，共发送 {sent_count} 条")
 
 

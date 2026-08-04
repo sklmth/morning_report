@@ -362,6 +362,7 @@ def scheduler_status():
             "name": job.name,
             "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
         })
+    jobs.sort(key=lambda job: (job["next_run_time"] is None, job["next_run_time"] or ""))
 
     return {"running": True, "desired": desired, "jobs": jobs, "count": len(jobs)}
 
