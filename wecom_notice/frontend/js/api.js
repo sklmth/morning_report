@@ -50,7 +50,7 @@ const Api = (() => {
     roster: () => req('/config/roster'),
 
     // 运行日志
-    sendLogs: (limit=100, offset=0) => req(`/send-logs?limit=${limit}&offset=${offset}`),
+    sendLogs: (limit=20, offset=0) => req(`/send-logs?limit=${limit}&offset=${offset}`),
 
     // 应用设置
     settings:     () => req('/config/settings'),

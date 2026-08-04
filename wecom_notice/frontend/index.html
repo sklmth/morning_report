@@ -782,13 +782,15 @@ function app(){
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
-    lg:{list:[],lim:100,page:1,total:0,pages:1,succ:0,fail:0},
+    lg:{list:[],lim:20,page:1,total:0,pages:1,succ:0,fail:0},
     logModal:{show:false,item:null},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
       const tod=new Date().toISOString().slice(0,10);
       const monthAgo=()=>{const d=new Date();d.setDate(d.getDate()-30);return d.toISOString().slice(0,10)};
+      const savedLogPage=Number(localStorage.getItem('wecom_notice_logs_page'));
+      if(Number.isInteger(savedLogPage)&&savedLogPage>0) this.lg.page=savedLogPage;
       this.d.date=tom(); this.snd.date=tom();
       this.s.start=monthAgo(); this.s.end=tod;
       await this.loadToday();
@@ -1023,6 +1025,7 @@ function app(){
     async loadLogs(){
       this.loading=true;
       try{
+        const requestedPage=this.lg.page;
         const r=await Api.sendLogs(this.lg.lim,(this.lg.page-1)*this.lg.lim);
         this.lg.list=r.logs??[];
         this.lg.total=r.total??this.lg.list.length;
@@ -1030,7 +1033,12 @@ function app(){
         this.lg.succ=r.success_count??0;
         this.lg.fail=r.failed_count??0;
         // 期间有日志被清理导致当前页越界时回落到末页
-        if(this.lg.page>this.lg.pages){this.lg.page=this.lg.pages;return this.loadLogs();}
+        if(requestedPage>this.lg.pages){
+          this.lg.page=this.lg.pages;
+          localStorage.setItem('wecom_notice_logs_page',String(this.lg.page));
+          return this.loadLogs();
+        }
+        localStorage.setItem('wecom_notice_logs_page',String(this.lg.page));
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
     },
@@ -1038,6 +1046,7 @@ function app(){
       const target=Math.min(Math.max(p,1),this.lg.pages);
       if(target===this.lg.page) return;
       this.lg.page=target;
+      localStorage.setItem('wecom_notice_logs_page',String(target));
       this.loadLogs();
     },
     // 当前页附近最多 5 个页码，靠边时自动补齐

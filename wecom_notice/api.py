@@ -276,7 +276,7 @@ def run_once(payload: ReportRequest):
 
 
 @app.get("/api/send-logs")
-def send_logs(limit: int = 100, offset: int = 0):
+def send_logs(limit: int = 20, offset: int = 0):
     """分页取运行日志。counts 为全量统计，不随分页变化。"""
     counts = count_send_logs()
     logs = get_send_logs(limit, offset)
