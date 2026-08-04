@@ -8,7 +8,6 @@
 
 import logging
 import time
-from datetime import date, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,6 +21,7 @@ from wecom_notice.reporter import (
     build_manager_brief_notice,
     build_manager_detailed_notice,
     build_weekly_report,
+    default_target_date,
 )
 from wecom_notice.sender import send_text
 
@@ -45,9 +45,13 @@ DETAILED_NOTICE_TIME = "22:00"
 FINAL_COLLECTION_TIME = "23:30"
 
 
+# 通报仅在周一至周五发送（周末不产生预约）
+WORKDAY_CRON = "mon-fri"
+
+
 def get_target_date() -> str:
-    """获取目标日期（明日）"""
-    return (date.today() + timedelta(days=1)).isoformat()
+    """获取目标日期：周一~周四为次日，周五为下周一。"""
+    return default_target_date()
 
 
 # 上次同步完成的时间戳，用于冷却期判断
@@ -350,54 +354,56 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         logger.info("调度器已创建但未启用定时任务，请在配置后手动启用")
         return scheduler
 
-    # 1. 客户经理提醒
+    # 1. 客户经理提醒（周一~周五）
     for time_str in CUSTOMER_MANAGER_REMINDER_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
             send_customer_manager_reminders,
-            CronTrigger(hour=int(hour), minute=int(minute)),
+            CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
             id=f"cm_reminder_{time_str.replace(':', '')}",
             name=f"客户经理提醒 {time_str}",
             replace_existing=True
         )
 
-    # 2. 简洁通报 - 张端
+    # 2. 简洁通报 - 张端（周一~周五）
     for time_str in BRIEF_NOTICE_ZHANG_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
-            lambda: send_brief_notice_to_manager("张端"),
-            CronTrigger(hour=int(hour), minute=int(minute)),
+            send_brief_notice_to_manager,
+            CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
+            args=["张端"],
             id=f"brief_zhang_{time_str.replace(':', '')}",
             name=f"简洁通报-张端 {time_str}",
             replace_existing=True
         )
 
-    # 3. 简洁通报 - 钟俊杰
+    # 3. 简洁通报 - 钟俊杰（周一~周五）
     for time_str in BRIEF_NOTICE_ZHONG_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
-            lambda: send_brief_notice_to_manager("钟俊杰"),
-            CronTrigger(hour=int(hour), minute=int(minute)),
+            send_brief_notice_to_manager,
+            CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
+            args=["钟俊杰"],
             id=f"brief_zhong_{time_str.replace(':', '')}",
             name=f"简洁通报-钟俊杰 {time_str}",
             replace_existing=True
         )
 
-    # 4. 详细通报 - 所有管理者
+    # 4. 详细通报 - 所有管理者（周一~周五）
     hour, minute = DETAILED_NOTICE_TIME.split(":")
     scheduler.add_job(
         send_detailed_notice_to_all,
-        CronTrigger(hour=int(hour), minute=int(minute)),
+        CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
         id="detailed_notice_all",
         name=f"详细通报-所有管理者 {DETAILED_NOTICE_TIME}",
         replace_existing=True
     )
 
-    # 5. 最终数据收集
+    # 5. 最终数据收集（周一~周五）
     hour, minute = FINAL_COLLECTION_TIME.split(":")
     scheduler.add_job(
         collect_final_data,
-        CronTrigger(hour=int(hour), minute=int(minute)),
+        CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
         id="final_data_collection",
         name=f"最终数据收集 {FINAL_COLLECTION_TIME}",
         replace_existing=True

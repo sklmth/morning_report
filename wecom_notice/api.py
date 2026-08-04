@@ -27,7 +27,7 @@ from wecom_notice.db import (
 )
 from wecom_notice.excel_export import export_cumulative_stats
 from wecom_notice.parser import normalize_record
-from wecom_notice.reporter import build_cumulative_statistics, build_report
+from wecom_notice.reporter import build_cumulative_statistics, build_report, default_target_date
 from wecom_notice.sender import send_text
 
 
@@ -77,7 +77,8 @@ class RuleUpdate(BaseModel):
 
 
 def tomorrow() -> str:
-    return (date.today() + timedelta(days=1)).isoformat()
+    """下一个工作日：周一~周四为次日，周五为下周一。"""
+    return default_target_date()
 
 
 def get_report(payload: ReportRequest) -> tuple[dict[str, Any], dict[str, Any]]:

@@ -14,8 +14,37 @@ from wecom_notice.db import (
 )
 
 
+def next_workday(from_date: date | None = None) -> date:
+    """下一个工作日（跳过周末）。
+
+    周一~周四取次日；周五取下周一（周末不产生预约）。
+    周六/周日兜底也取下周一，便于手动触发时口径一致。
+    """
+    base = from_date or date.today()
+    weekday = base.weekday()  # 0=周一 … 6=周日
+    if weekday <= 3:  # 周一~周四 → 次日
+        return base + timedelta(days=1)
+    return base + timedelta(days=7 - weekday)  # 周五+3 / 周六+2 / 周日+1 → 下周一
+
+
 def default_target_date() -> str:
-    return (date.today() + timedelta(days=1)).isoformat()
+    return next_workday().isoformat()
+
+
+def target_date_label(target_date: str = "") -> str:
+    """目标日期的口语化称呼：次日为「明日」，跨周末为「下周一」。"""
+    if not target_date:
+        return "明日"
+    try:
+        target = date.fromisoformat(target_date)
+    except ValueError:
+        return "明日"
+    delta = (target - date.today()).days
+    if delta == 1:
+        return "明日"
+    if target.weekday() == 0 and delta > 1:
+        return "下周一"
+    return f"{target.month}月{target.day}日"
 
 
 def recipients_for(policy: dict[str, Any], manager_names: list[str]) -> list[dict[str, str]]:
@@ -68,7 +97,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     lines = [
         f"{emoji} @{manager_name}",
         "",
-        f"明日预约填报提醒（第{reminder_seq}次）",
+        f"{target_date_label(target_date)}预约填报提醒（第{reminder_seq}次）",
         f"📅 日期：{target_date}",
         f"✅ 已填：{current_count} 户",
         f"⚠️ 还需：{gap} 户",
@@ -99,7 +128,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
 
     lines.extend([
         "",
-        "💡 温馨提示：请尽快完成填报，确保明日工作顺利开展~"
+        f"💡 温馨提示：请尽快完成填报，确保{target_date_label(target_date)}工作顺利开展~"
     ])
 
     manager_obj = next((m for m in CUSTOMER_MANAGERS if m["name"] == manager_name), None)
@@ -232,7 +261,7 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
     # 构建消息
     current_time = datetime.now().strftime("%H:%M")
     lines = [
-        f"【明日预约详细通报】{target_date}",
+        f"【{target_date_label(target_date)}预约详细通报】{target_date}",
         f"⏰ 通报时间：{current_time}",
         "",
         "━━━━━━ 📊 今日填报情况 ━━━━━━",
@@ -687,7 +716,7 @@ def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> d
     current_time = datetime.now().strftime("%H:%M")
 
     lines = [
-        f"【明日预约情况】{target_date}",
+        f"【{target_date_label(target_date)}预约情况】{target_date}",
         f"⏰ 通报时间：{current_time}",
         f"",
         f"共预约 {len(records)} 户。",
@@ -744,7 +773,7 @@ def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> d
                 lines.append(detail_line)
     else:
         lines.append("")
-        lines.append("暂无明日预约记录。")
+        lines.append(f"暂无{target_date_label(target_date)}预约记录。")
 
     recipients = recipients_for(rule.get("recipient_policy", {}), [])
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
