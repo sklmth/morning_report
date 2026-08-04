@@ -203,7 +203,7 @@ def upsert_records(records: list[dict[str, Any]]) -> dict[str, int]:
 def mark_airscript_upload_received() -> str:
     """记录金山脚本最近一次成功上传时间，即使数据内容完全重复也更新。"""
     timestamp = now()
-    set_setting("last_airscript_upload_at", timestamp)
+    save_setting("last_airscript_upload_at", timestamp)
     return timestamp
 
 

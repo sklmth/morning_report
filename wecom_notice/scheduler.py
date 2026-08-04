@@ -7,6 +7,7 @@
 """
 
 import logging
+import threading
 import time
 from datetime import datetime
 
@@ -63,24 +64,31 @@ def get_target_date() -> str:
 _last_sync_time: float = 0.0
 # 同一分钟内多个任务同时触发时，5分钟内不重复拉取
 _SYNC_COOLDOWN = 300
+_SYNC_LOCK = threading.Lock()
 
 
 def _sync_with_cooldown():
     """先同步金山数据再继续，5分钟冷却期内跳过重复同步。"""
     global _last_sync_time
-    now = time.time()
-    if now - _last_sync_time < _SYNC_COOLDOWN:
-        logger.info(f"距上次同步不足 {_SYNC_COOLDOWN}s，跳过重复同步")
-        return
-    _last_sync_time = now
-    sync_kingsoft_data()
+    # 不同 APScheduler 任务可能并发执行，避免同时触发两个 AirScript。
+    with _SYNC_LOCK:
+        current = time.time()
+        if current - _last_sync_time < _SYNC_COOLDOWN:
+            logger.info(f"距上次同步不足 {_SYNC_COOLDOWN}s，跳过重复同步")
+            return True
+        if not sync_kingsoft_data():
+            return False
+        _last_sync_time = time.time()
+        return True
 
 
 def send_customer_manager_reminders():
     """发送客户经理提醒消息（对所有未达标的客户经理）"""
     # 在 sync 之前抓触发时刻，确保所有经理消息显示同一个时间点（如18:15）
     round_notice_time = datetime.now().strftime("%H:%M")
-    _sync_with_cooldown()
+    if not _sync_with_cooldown():
+        logger.error("金山数据同步失败，本轮客户经理提醒不使用旧数据发送")
+        return
     target_date = get_target_date()
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
@@ -128,7 +136,9 @@ def send_customer_manager_reminders():
 
 def send_brief_notice_to_managers(manager_names: list[str]):
     """发送简洁通报给指定管理者（支持同时@多人）"""
-    _sync_with_cooldown()
+    if not _sync_with_cooldown():
+        logger.error("金山数据同步失败，本轮简洁通报不使用旧数据发送")
+        return
     target_date = get_target_date()
     names_str = "、".join(manager_names)
     logger.info(f"开始发送简洁通报给 {names_str}，目标日期：{target_date}")
@@ -173,7 +183,9 @@ def send_brief_notice_to_managers(manager_names: list[str]):
 
 def send_detailed_notice_to_all():
     """发送详细通报给所有管理者"""
-    _sync_with_cooldown()
+    if not _sync_with_cooldown():
+        logger.error("金山数据同步失败，本轮详细通报不使用旧数据发送")
+        return
     target_date = get_target_date()
     logger.info(f"开始发送详细通报，目标日期：{target_date}")
 
@@ -298,11 +310,11 @@ def sync_kingsoft_data():
             record_ids=[],
             error=str(e),
         )
-        return
+        return False
 
-    # 轮询等待数据写入（最多等 8 分钟，每 10 秒检查一次）
-    _POLL_INTERVAL = 10
-    _TIMEOUT = 480
+    # 轮询等待数据写入（最多 2 分钟，每 5 秒检查一次）
+    _POLL_INTERVAL = 5
+    _TIMEOUT = 120
     elapsed = 0
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
@@ -347,6 +359,8 @@ def sync_kingsoft_data():
             error=str(e),
         )
 
+    return True
+
 
 # 周末数据同步时间点（周六、周日均执行；仅入库，不影响填报统计指标）
 WEEKEND_SYNC_TIMES = ["12:00", "18:00", "22:00", "23:30"]
@@ -377,9 +391,9 @@ def sync_kingsoft_data_only():
         )
         return
 
-    # 轮询等待数据写入（最多8分钟）
-    _POLL_INTERVAL = 10
-    _TIMEOUT = 480
+    # 轮询等待数据写入（最多 2 分钟，每 5 秒检查一次）
+    _POLL_INTERVAL = 5
+    _TIMEOUT = 120
     elapsed = 0
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
