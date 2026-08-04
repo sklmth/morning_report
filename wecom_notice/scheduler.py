@@ -33,8 +33,15 @@ CUSTOMER_MANAGER_REMINDER_TIMES = [
     "18:15", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
 ]
 
-# 简洁通报时间点（全体管理者，每个时间点@所有人一起发）
-BRIEF_NOTICE_TIMES = ["18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30"]
+# 简洁通报时间表：相同时间点的管理者合并为一条消息@多人（按时间升序）
+BRIEF_NOTICE_SCHEDULE: dict[str, list[str]] = {
+    "18:30": ["张端"],
+    "19:00": ["张端", "钟俊杰"],
+    "19:30": ["张端", "钟俊杰"],
+    "20:00": ["张端"],
+    "21:00": ["张端"],
+    "21:30": ["张端", "钟俊杰"],
+}
 
 # 第二个通报（详细版）- 所有管理者
 DETAILED_NOTICE_TIME = "22:00"
@@ -110,11 +117,12 @@ def send_customer_manager_reminders():
     logger.info(f"客户经理提醒完成，共发送 {sent_count} 条")
 
 
-def send_brief_notice_to_all_managers():
-    """发送简洁通报给全体管理者（正经理+副经理一起@）"""
+def send_brief_notice_to_managers(manager_names: list[str]):
+    """发送简洁通报给指定管理者（支持同时@多人）"""
     _sync_with_cooldown()
     target_date = get_target_date()
-    logger.info(f"开始发送简洁通报，目标日期：{target_date}")
+    names_str = "、".join(manager_names)
+    logger.info(f"开始发送简洁通报给 {names_str}，目标日期：{target_date}")
 
     try:
         report = build_manager_brief_notice(target_date)
@@ -123,25 +131,32 @@ def send_brief_notice_to_all_managers():
             logger.info("全部人员已填报，跳过简洁通报")
             return
 
-        response = send_text(report["message"], MANAGER_RECIPIENTS)
+        # 筛选指定的管理者
+        recipients = [m for m in MANAGER_RECIPIENTS if m["name"] in manager_names]
+        if not recipients:
+            logger.warning(f"未找到管理者：{manager_names}")
+            return
+
+        response = send_text(report["message"], recipients)
 
         add_send_log(
-            rule_key="brief_notice_all",
+            rule_key=f"brief_notice_{'_'.join(manager_names)}",
             status="success",
             message_text=report["message"],
-            mentioned=MANAGER_RECIPIENTS,
+            mentioned=recipients,
             record_ids=[],
             webhook_response=str(response),
         )
-        logger.info("成功发送简洁通报给全体管理者")
+        logger.info(f"成功发送简洁通报给 {names_str}")
 
     except Exception as e:
-        logger.error(f"发送简洁通报失败：{e}")
+        logger.error(f"发送简洁通报给 {names_str} 失败：{e}")
+        recipients = [m for m in MANAGER_RECIPIENTS if m["name"] in manager_names]
         add_send_log(
-            rule_key="brief_notice_all",
+            rule_key=f"brief_notice_{'_'.join(manager_names)}",
             status="failed",
             message_text=report.get("message", ""),
-            mentioned=MANAGER_RECIPIENTS,
+            mentioned=recipients,
             record_ids=[],
             error=str(e),
         )
@@ -412,14 +427,16 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
             replace_existing=True
         )
 
-    # 2. 简洁通报 - 全体管理者（周一~周五）
-    for time_str in BRIEF_NOTICE_TIMES:
+    # 2. 简洁通报 - 按时间表@对应管理者（周一~周五）
+    for time_str, manager_names in BRIEF_NOTICE_SCHEDULE.items():
         hour, minute = time_str.split(":")
+        names_label = "&".join(manager_names)
         scheduler.add_job(
-            send_brief_notice_to_all_managers,
+            send_brief_notice_to_managers,
             CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
-            id=f"brief_all_{time_str.replace(':', '')}",
-            name=f"简洁通报-全体管理者 {time_str}",
+            args=[manager_names],
+            id=f"brief_{'_'.join(manager_names)}_{time_str.replace(':', '')}",
+            name=f"简洁通报-{names_label} {time_str}",
             replace_existing=True
         )
 
