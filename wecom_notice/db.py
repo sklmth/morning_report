@@ -402,8 +402,11 @@ def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict
     today = dt_date.fromisoformat(before_date) if before_date else dt_date.today()
     month_start = today.replace(day=1).isoformat()
 
+    # 2026-08-04 是本次系统启用日，整天按准时处理；8月从 08-05 起算。
+    # 这个临时基线只影响 2026 年 8 月，进入下月后恢复按自然月第一天统计。
+    statistics_start = "2026-08-05" if month_start == "2026-08-01" else month_start
     clauses = ["manager_name = ?", "date >= ?"]
-    params: list[Any] = [manager_name, month_start]
+    params: list[Any] = [manager_name, statistics_start]
     if before_date:
         clauses.append("date < ?")
         params.append(before_date)

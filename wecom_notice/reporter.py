@@ -498,6 +498,8 @@ def build_final_data_collection(target_date: str, required: int = 2) -> dict[str
 
     # 获取今日所有提醒日志，判断最后一次填报完成的时间
     today_str = date.today().isoformat()
+    # 2026-08-04 为系统启用基线日，全天按准时处理；从 08-05 开始正常计入。
+    baseline_day = today_str == "2026-08-04"
 
     results = []
     for manager in CUSTOMER_MANAGERS:
@@ -508,7 +510,10 @@ def build_final_data_collection(target_date: str, required: int = 2) -> dict[str
         count = counts[manager["name"]]
         mgr_name = manager["name"]
 
-        if count < required:
+        if baseline_day:
+            upsert_fill_statistics(today_str, mgr_name, "on_time", "", count)
+            results.append({"manager": mgr_name, "status": "on_time", "count": count})
+        elif count < required:
             # 漏填
             upsert_fill_statistics(today_str, mgr_name, "missing", "", count)
             results.append({"manager": mgr_name, "status": "missing", "count": count})
