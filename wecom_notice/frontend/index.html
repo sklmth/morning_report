@@ -538,7 +538,7 @@
               <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-50 border border-amber-100">
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
-                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmtSchedule(job.next_run_time):'未安排'"></p>
                 </div>
               </div>
             </template>
@@ -554,7 +554,7 @@
               <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
-                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmtSchedule(job.next_run_time):'未安排'"></p>
                 </div>
               </div>
             </template>
@@ -570,7 +570,7 @@
               <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-100">
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
-                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmt(job.next_run_time):'未安排'"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmtSchedule(job.next_run_time):'未安排'"></p>
                 </div>
               </div>
             </template>
@@ -973,30 +973,19 @@ function app(){
 
     schedJobsByGroup(group){
       if(!this.sched.jobs) return [];
-      const jobs = this.sched.jobs.slice();
-      // 按下次执行时间升序排序
+      const jobs = this.sched.jobs.filter(j=>{
+        if(group==='customer') return j.id?.startsWith('cm_reminder_')||j.name?.includes('客户经理提醒');
+        if(group==='manager') return j.id?.startsWith('brief_')||j.id==='detailed_notice_all'||j.name?.includes('简洁通报')||j.name?.includes('详细通报');
+        return j.id==='final_data_collection'||j.id?.startsWith('weekly_report_')||j.name?.includes('数据收集')||j.name?.includes('周通报');
+      });
+      // 每个分组都按完整的下次执行时间升序，不能只按时分排序。
       jobs.sort((a,b)=>{
         if(!a.next_run_time) return 1;
         if(!b.next_run_time) return -1;
-        return new Date(a.next_run_time) - new Date(b.next_run_time);
+        const diff=new Date(a.next_run_time)-new Date(b.next_run_time);
+        return diff || String(a.id||'').localeCompare(String(b.id||''));
       });
-
-      if(group==='customer'){
-        // 客户经理提醒
-        return jobs.filter(j=>j.id?.startsWith('cm_reminder_')||j.name?.includes('客户经理提醒'));
-      }else if(group==='manager'){
-        // 管理人员通报（简洁、详细）
-        return jobs.filter(j=>
-          j.id?.startsWith('brief_')||j.id==='detailed_notice_all'||
-          j.name?.includes('简洁通报')||j.name?.includes('详细通报')
-        );
-      }else{
-        // 数据收集和周报
-        return jobs.filter(j=>
-          j.id==='final_data_collection'||j.id?.startsWith('weekly_report_')||
-          j.name?.includes('数据收集')||j.name?.includes('周通报')
-        );
-      }
+      return jobs;
     },
 
     ruleDisplayName(rule){
@@ -1075,6 +1064,14 @@ function app(){
       if(!str) return '';
       const d=new Date(str),p=n=>String(n).padStart(2,'0');
       return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+    },
+    fmtSchedule(str){
+      if(!str) return '';
+      const d=new Date(str),now=new Date(),p=n=>String(n).padStart(2,'0');
+      const day=d.toDateString()===now.toDateString()?'今天':
+        d.toDateString()===new Date(now.getTime()+86400000).toDateString()?'明天':
+        `${d.getMonth()+1}/${d.getDate()}`;
+      return `${day} ${p(d.getHours())}:${p(d.getMinutes())}`;
     },
     toast(msg,err=false){
       this.tst={on:true,msg,err};
