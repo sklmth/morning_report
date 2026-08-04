@@ -477,6 +477,79 @@ def post_settings(body: SettingsBody):
     return {"ok": True, **get_settings()}
 
 
+class SendRulesRequest(BaseModel):
+    recipient_names: list[str] = Field(default_factory=list, description="接收人姓名列表")
+
+
+@app.post("/api/report/send-rules")
+def send_rules_introduction(payload: SendRulesRequest):
+    """发送规则介绍消息到企业微信"""
+
+    # 规则介绍消息内容
+    message = """📋【预约填报管理规则】
+
+━━━━━━ ⏰ 填报时间规则 ━━━━━━
+
+✅ 准时填报：19:30 前完成
+⏱️ 超时填报：19:30 - 23:30 之间完成
+❌ 漏填：23:30 前未完成
+
+━━━━━━ ☕ 下午茶基金 ━━━━━━
+
+💰 扣款标准：
+   · 漏填：10 元/次
+   · 超时：每累计 5 次扣 10 元
+   · 按自然月统计，次月清零
+
+🎴 天命赦令减免：
+   · 抽签奖品可抵扣罚款
+   · 不改变超时/漏填次数记录
+   · 减免额度：5-30 元不等
+
+━━━━━━ 🎰 天命赦令系统 ━━━━━━
+
+📅 休假制度：
+   · 可在系统登记休假日期
+   · 休假当天及前一天无需填报
+   · 休假期间不计入统计
+
+🎴 抽签系统：
+   · 每 3 次准时填报 = 1 次抽签机会
+   · 可选择消耗 3-7 次准时记录抽签
+   · 消耗越多，中奖概率越高
+   · 准时次数仅当月有效，次月清零
+
+🎁 奖品体系（修仙主题）：
+   · 凡尘符咒：0 元（空奖）
+   · 聚灵丹：5 元
+   · 护身符：10 元
+   · 筑基丹：15 元
+   · 天罡令：20 元
+   · 金丹圣果：25 元
+   · 天命赦令：30 元
+
+💡 访问地址：http://shanguantang.site:tianming/
+
+━━━━━━━━━━━━━━━━━━━━━━
+
+祝各位道友修行顺利，早日飞升！✨"""
+
+    # 查找接收人
+    recipients = find_recipients(payload.recipient_names) if payload.recipient_names else []
+
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="消息内容为空，无法发送")
+
+    try:
+        response = send_text(message, recipients)
+    except RuntimeError as exc:
+        add_send_log("rules_introduction", "failed", message, recipients, [], error=str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    add_send_log("rules_introduction", "success", message, recipients, [], webhook_response=str(response))
+    return {"ok": True, "response": response, "mentioned": recipients}
+
+
 # 前端静态文件（放在所有 API 路由之后，不会覆盖 /api/* 路由）
 if _FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")

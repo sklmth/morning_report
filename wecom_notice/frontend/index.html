@@ -443,6 +443,60 @@
         <span x-text="loading?'发送中...':'立即发送到企业微信'"></span>
       </button>
     </div>
+
+    <!-- 规则介绍发送卡片 -->
+    <div class="card p-5 space-y-4 mt-4">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-stone-700">📋 发送规则介绍</p>
+        <span class="text-xs text-stone-400">快速发送预约填报管理规则</span>
+      </div>
+
+      <!-- 接收人选择 -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-xs text-stone-500">
+            接收人（群内 @）
+            <span class="text-stone-400" x-text="'· 已选 '+rules.picked.length+' 人'"></span>
+          </label>
+          <div class="flex items-center gap-1.5">
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rulesPickAll()">全选</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rules.picked=[]">清空</button>
+          </div>
+        </div>
+        <div class="rounded-lg border border-stone-200 p-3 space-y-3">
+          <template x-for="g in snd.groups" :key="g.key">
+            <div>
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="text-xs font-medium text-stone-500" x-text="g.label"></span>
+                <button type="button" class="text-xs text-amber-600 hover:text-amber-700"
+                  @click="rulesToggleGroup(g)" x-text="rulesGroupAllPicked(g)?'取消本组':'选择本组'"></button>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <template x-for="m in g.members" :key="m.name">
+                  <button type="button" @click="rulesTogglePick(m.name)"
+                    class="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors"
+                    :class="rules.picked.includes(m.name)
+                      ? 'bg-amber-50 border-amber-300 text-amber-800'
+                      : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'">
+                    <span x-text="m.name"></span>
+                    <span x-show="!m.mentionable" class="text-red-400" title="未配置手机号或 userid，无法 @">!</span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+          <p class="text-sm text-stone-400" x-show="!snd.groups.length">加载中...</p>
+          <p class="text-xs text-stone-400 leading-relaxed">
+            不选任何人则消息正常发送到群里、但不 @ 任何人。
+          </p>
+        </div>
+      </div>
+
+      <button class="btn-p w-full py-2.5"
+        :disabled="loading" @click="sendRulesIntroduction()">
+        <span x-text="loading?'发送中...':'📤 立即发送规则介绍'"></span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -779,6 +833,7 @@ function app(){
     // snd.edited 表示正文被手工改过，重新预览时不覆盖
     snd:{rules:[],rule:'',date:'',preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false},
+    rules:{picked:[]}, // 规则介绍发送的接收人
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
@@ -919,6 +974,34 @@ function app(){
         });
         this.toast('通报已发送');
         this.snd.editing=false;
+      }catch(e){this.toast(e.message,true);}
+      finally{this.loading=false;}
+    },
+
+    // 规则介绍相关方法
+    rulesTogglePick(name){
+      const i=this.rules.picked.indexOf(name);
+      if(i<0) this.rules.picked.push(name); else this.rules.picked.splice(i,1);
+    },
+    rulesGroupAllPicked(g){
+      return g.members.length>0&&g.members.every(m=>this.rules.picked.includes(m.name));
+    },
+    rulesToggleGroup(g){
+      const names=g.members.map(m=>m.name);
+      this.rules.picked=this.rulesGroupAllPicked(g)
+        ? this.rules.picked.filter(n=>!names.includes(n))
+        : [...new Set([...this.rules.picked,...names])];
+    },
+    rulesPickAll(){
+      this.rules.picked=[...new Set(this.snd.groups.flatMap(g=>g.members.map(m=>m.name)))];
+    },
+    async sendRulesIntroduction(){
+      const who=this.rules.picked.length?`将 @ ${this.rules.picked.length} 人：${this.rules.picked.join('、')}`:'不 @ 任何人';
+      if(!await this.confirm(`确认发送规则介绍到企业微信？${who}`)) return;
+      this.loading=true;
+      try{
+        await Api.sendRules({recipient_names:this.rules.picked});
+        this.toast('规则介绍已发送 📋');
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
     },
