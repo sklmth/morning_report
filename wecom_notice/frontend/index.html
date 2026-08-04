@@ -38,6 +38,77 @@
     .slbl{font-size:.75rem;color:#78716c;margin-top:3px}
     .pbar-bg{background:#f5f5f4;border-radius:999px;height:5px}
     .pbar-fill{border-radius:999px;height:5px;transition:width .3s}
+
+    /* 移动端适配 */
+    @media (max-width: 768px) {
+      /* 为底部导航腾出空间 */
+      body { padding-bottom: 64px; }
+
+      /* 顶部导航改为底部固定 */
+      header { position: fixed; bottom: 0; top: auto; left: 0; right: 0; border-top: 1px solid #e7e5e4; border-bottom: none; z-index: 40; }
+      header .max-w-6xl { padding: 0; }
+      header .flex { height: auto; flex-direction: column; gap: 0; }
+      header .shrink-0:first-child { display: none; } /* 隐藏标题 */
+      header nav { width: 100%; justify-content: space-around; align-items: stretch; height: 64px; overflow-x: visible; }
+
+      /* Tab 按钮改为纵向图标+文字 */
+      .tab-btn {
+        flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 6px 4px; font-size: 0.625rem; gap: 2px; border-bottom: none; border-top: 3px solid transparent;
+      }
+      .tab-btn.on { border-top-color: #d97706; border-bottom-color: transparent; }
+      .tab-btn::before { content: attr(data-icon); font-size: 1.25rem; line-height: 1; }
+
+      /* 隐藏右侧工具栏（刷新按钮移到各 tab 内） */
+      header .shrink-0:last-child { display: none; }
+
+      /* 主内容区上边距调整 */
+      main { padding-top: 12px; padding-bottom: 12px; }
+
+      /* 按钮触摸目标加大 */
+      .btn-p, .btn-s, .btn-d { padding: 10px 16px; min-height: 44px; }
+
+      /* 输入框和选择器在移动端字号加大 */
+      .inp, select.inp { font-size: 1rem; padding: 8px 12px; }
+
+      /* 统计数字卡片网格调整 */
+      .grid.grid-cols-2.sm\:grid-cols-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      /* 表格在移动端隐藏 */
+      .table-wrapper { display: none; }
+
+      /* 卡片列表在移动端显示 */
+      .card-list-mobile { display: block !important; }
+
+      /* 弹窗从底部滑出 */
+      .modal-wrapper { align-items: flex-end; }
+      .modal-wrapper > div {
+        margin: 0; width: 100%; max-width: 100%;
+        border-radius: 16px 16px 0 0; max-height: 90vh; overflow-y: auto;
+      }
+
+      /* 分页控件简化 */
+      .pagination-first-last { display: none; }
+      .pagination-numbers { max-width: 120px; overflow-x: auto; }
+    }
+
+    /* 桌面端隐藏移动卡片视图 */
+    @media (min-width: 769px) {
+      .card-list-mobile { display: none; }
+    }
+
+    /* 移动端卡片样式 */
+    .mobile-card {
+      background: #fff; border: 1px solid #e7e5e4; border-radius: 8px;
+      padding: 12px; margin-bottom: 8px;
+    }
+    .mobile-card-row {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 6px; font-size: 0.875rem;
+    }
+    .mobile-card-row:last-child { margin-bottom: 0; }
+    .mobile-card-label { color: #78716c; font-size: 0.75rem; min-width: 60px; }
+    .mobile-card-value { color: #292524; flex: 1; text-align: right; word-break: break-all; }
   </style>
 </head>
 <body x-data="app()" x-cloak>
@@ -48,11 +119,11 @@
     <div class="flex items-center h-12 gap-6">
       <span class="font-semibold text-stone-700 text-sm shrink-0">预约通报</span>
       <nav class="flex items-end gap-6 h-full overflow-x-auto flex-1">
-        <button class="tab-btn" :class="tab==='today'&&'on'" @click="setTab('today')">今日预约</button>
-        <button class="tab-btn" :class="tab==='stats'&&'on'" @click="setTab('stats')">统计分析</button>
-        <button class="tab-btn" :class="tab==='send'&&'on'"  @click="setTab('send')">发送通报</button>
-        <button class="tab-btn" :class="tab==='sys'&&'on'"   @click="setTab('sys')">系统</button>
-        <button class="tab-btn" :class="tab==='logs'&&'on'" @click="setTab('logs')">运行日志</button>
+        <button class="tab-btn" :class="tab==='today'&&'on'" @click="setTab('today')" data-icon="📅">今日预约</button>
+        <button class="tab-btn" :class="tab==='stats'&&'on'" @click="setTab('stats')" data-icon="📊">统计分析</button>
+        <button class="tab-btn" :class="tab==='send'&&'on'"  @click="setTab('send')" data-icon="📤">发送通报</button>
+        <button class="tab-btn" :class="tab==='sys'&&'on'"   @click="setTab('sys')" data-icon="⚙️">系统</button>
+        <button class="tab-btn" :class="tab==='logs'&&'on'" @click="setTab('logs')" data-icon="📋">运行日志</button>
       </nav>
       <div class="flex items-center gap-3 shrink-0">
         <span class="flex items-center gap-1.5 text-xs text-stone-500">
@@ -131,7 +202,8 @@
       <span class="text-sm font-medium text-stone-700">预约记录明细</span>
       <span class="text-xs text-stone-400" x-text="(d.recs?.length??0)+' 条'"></span>
     </div>
-    <div class="overflow-x-auto">
+    <!-- 桌面端表格 -->
+    <div class="overflow-x-auto table-wrapper">
       <table>
         <thead><tr>
           <th>客户经理</th><th>企业名称</th><th>联系人</th>
@@ -158,6 +230,42 @@
           </template>
         </tbody>
       </table>
+    </div>
+    <!-- 移动端卡片 -->
+    <div class="card-list-mobile p-3">
+      <template x-if="!d.recs?.length">
+        <p class="text-center text-stone-400 py-6 text-sm">暂无预约记录</p>
+      </template>
+      <template x-for="r in (d.recs??[])" :key="'m-'+(r.id??r.company_name)">
+        <div class="mobile-card">
+          <div class="flex items-center justify-between mb-2">
+            <span class="font-medium text-stone-700" x-text="r.manager_name||'-'"></span>
+            <span x-show="r.visit_result" class="badge-g">已回填</span>
+            <span x-show="!r.visit_result&&r.reschedule_time" class="badge-y">已改约</span>
+            <span x-show="!r.visit_result&&!r.reschedule_time" class="badge-n">待拜访</span>
+          </div>
+          <div class="mobile-card-row">
+            <span class="mobile-card-label">企业</span>
+            <span class="mobile-card-value" x-text="r.company_name||'-'"></span>
+          </div>
+          <div class="mobile-card-row">
+            <span class="mobile-card-label">联系人</span>
+            <span class="mobile-card-value" x-text="r.contact_name_title||'-'"></span>
+          </div>
+          <div class="mobile-card-row">
+            <span class="mobile-card-label">预约时段</span>
+            <span class="mobile-card-value" x-text="r.appointment_slot||'-'"></span>
+          </div>
+          <div class="mobile-card-row">
+            <span class="mobile-card-label">商机内容</span>
+            <span class="mobile-card-value text-xs" x-text="r.opportunity_content||'-'"></span>
+          </div>
+          <div class="mobile-card-row">
+            <span class="mobile-card-label">交付人员</span>
+            <span class="mobile-card-value" x-text="r.delivery_staff_name||'-'"></span>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </div>
@@ -186,27 +294,62 @@
       <span>统计口径：客户经理 × 有预约日期，合计 </span><span x-text="s.data?.summary?.total_records??0"></span><span> 人天</span>
     </div>
     <div class="overflow-x-auto">
-      <table>
-        <thead><tr>
-          <th>客户经理</th><th>团队</th>
-          <th>准时次数</th><th>超时次数</th><th>漏填次数</th><th>准时率</th>
-        </tr></thead>
-        <tbody>
-          <template x-if="!statsRows().length">
-            <tr><td colspan="6" class="text-center text-stone-400 py-6">请选择日期范围后点击查询</td></tr>
-          </template>
-          <template x-for="row in statsRows()" :key="row.manager_name">
-            <tr>
-              <td class="font-medium" x-text="row.manager_name"></td>
-              <td class="text-stone-500" x-text="row.team||'-'"></td>
-              <td><span class="badge-g" x-text="row.on_time"></span></td>
-              <td><span class="badge-y" x-text="row.overtime"></span></td>
-              <td><span class="badge-r" x-text="row.missing"></span></td>
-              <td class="font-medium" x-text="rowRate(row)+'%'"></td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+      <!-- 桌面端表格 -->
+      <div class="table-wrapper">
+        <table>
+          <thead><tr>
+            <th>客户经理</th><th>团队</th>
+            <th>准时次数</th><th>超时次数</th><th>漏填次数</th><th>准时率</th>
+          </tr></thead>
+          <tbody>
+            <template x-if="!statsRows().length">
+              <tr><td colspan="6" class="text-center text-stone-400 py-6">请选择日期范围后点击查询</td></tr>
+            </template>
+            <template x-for="row in statsRows()" :key="row.manager_name">
+              <tr>
+                <td class="font-medium" x-text="row.manager_name"></td>
+                <td class="text-stone-500" x-text="row.team||'-'"></td>
+                <td><span class="badge-g" x-text="row.on_time"></span></td>
+                <td><span class="badge-y" x-text="row.overtime"></span></td>
+                <td><span class="badge-r" x-text="row.missing"></span></td>
+                <td class="font-medium" x-text="rowRate(row)+'%'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <!-- 移动端卡片 -->
+      <div class="card-list-mobile p-3">
+        <template x-if="!statsRows().length">
+          <p class="text-center text-stone-400 py-6 text-sm">请选择日期范围后点击查询</p>
+        </template>
+        <template x-for="row in statsRows()" :key="'m-'+row.manager_name">
+          <div class="mobile-card">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium text-stone-700" x-text="row.manager_name"></span>
+              <span class="text-lg font-semibold text-amber-600" x-text="rowRate(row)+'%'"></span>
+            </div>
+            <div class="mobile-card-row" x-show="row.team">
+              <span class="mobile-card-label">团队</span>
+              <span class="mobile-card-value text-stone-500" x-text="row.team"></span>
+            </div>
+            <div class="flex gap-2 mt-2">
+              <div class="flex-1 text-center py-1.5 rounded bg-emerald-50 border border-emerald-100">
+                <div class="text-xs text-stone-500 mb-0.5">准时</div>
+                <div class="text-sm font-medium text-emerald-700" x-text="row.on_time"></div>
+              </div>
+              <div class="flex-1 text-center py-1.5 rounded bg-amber-50 border border-amber-100">
+                <div class="text-xs text-stone-500 mb-0.5">超时</div>
+                <div class="text-sm font-medium text-amber-700" x-text="row.overtime"></div>
+              </div>
+              <div class="flex-1 text-center py-1.5 rounded bg-red-50 border border-red-100">
+                <div class="text-xs text-stone-500 mb-0.5">漏填</div>
+                <div class="text-sm font-medium text-red-700" x-text="row.missing"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
   </div>
 </div>
@@ -471,51 +614,88 @@
       </div>
     </div>
     <div class="overflow-x-auto">
-      <table>
-        <thead><tr>
-          <th>时间</th><th>规则</th><th>状态</th><th>接收人</th><th>消息摘要</th><th>错误</th>
-        </tr></thead>
-        <tbody>
-          <template x-if="!lg.list.length">
-            <tr><td colspan="6" class="text-center text-stone-400 py-6">暂无运行日志</td></tr>
-          </template>
-          <template x-for="l in lg.list" :key="l.id">
-            <tr class="cursor-pointer" @click="showLogDetail(l)">
-              <td class="whitespace-nowrap text-xs text-stone-500" x-text="fmt(l.sent_at)"></td>
-              <td class="text-xs font-mono text-stone-600" x-text="l.rule_key"></td>
-              <td>
-                <span x-show="l.status==='success'" class="badge-g">成功</span>
-                <span x-show="l.status==='failed'" class="badge-r">失败</span>
-                <span x-show="l.status!=='success'&&l.status!=='failed'" class="badge-n" x-text="l.status"></span>
-              </td>
-              <td class="text-xs text-stone-500 whitespace-nowrap" x-text="logRecipients(l)"></td>
-              <td class="max-w-xs">
-                <span class="text-xs text-stone-600 block truncate" style="max-width:260px"
-                  x-text="l.message_text?l.message_text.slice(0,60)+(l.message_text.length>60?'…':''):'—'"></span>
-              </td>
-              <td class="text-xs text-red-500 max-w-xs">
-                <span x-text="l.error?l.error.slice(0,40)+(l.error.length>40?'…':''):'—'"></span>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
+      <!-- 桌面端表格 -->
+      <div class="table-wrapper">
+        <table>
+          <thead><tr>
+            <th>时间</th><th>规则</th><th>状态</th><th>接收人</th><th>消息摘要</th><th>错误</th>
+          </tr></thead>
+          <tbody>
+            <template x-if="!lg.list.length">
+              <tr><td colspan="6" class="text-center text-stone-400 py-6">暂无运行日志</td></tr>
+            </template>
+            <template x-for="l in lg.list" :key="l.id">
+              <tr class="cursor-pointer" @click="showLogDetail(l)">
+                <td class="whitespace-nowrap text-xs text-stone-500" x-text="fmt(l.sent_at)"></td>
+                <td class="text-xs font-mono text-stone-600" x-text="l.rule_key"></td>
+                <td>
+                  <span x-show="l.status==='success'" class="badge-g">成功</span>
+                  <span x-show="l.status==='failed'" class="badge-r">失败</span>
+                  <span x-show="l.status!=='success'&&l.status!=='failed'" class="badge-n" x-text="l.status"></span>
+                </td>
+                <td class="text-xs text-stone-500 whitespace-nowrap" x-text="logRecipients(l)"></td>
+                <td class="max-w-xs">
+                  <span class="text-xs text-stone-600 block truncate" style="max-width:260px"
+                    x-text="l.message_text?l.message_text.slice(0,60)+(l.message_text.length>60?'…':''):'—'"></span>
+                </td>
+                <td class="text-xs text-red-500 max-w-xs">
+                  <span x-text="l.error?l.error.slice(0,40)+(l.error.length>40?'…':''):'—'"></span>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <!-- 移动端卡片 -->
+      <div class="card-list-mobile p-3">
+        <template x-if="!lg.list.length">
+          <p class="text-center text-stone-400 py-6 text-sm">暂无运行日志</p>
+        </template>
+        <template x-for="l in lg.list" :key="'m-'+l.id">
+          <div class="mobile-card" @click="showLogDetail(l)">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs text-stone-500" x-text="fmt(l.sent_at)"></span>
+              <span x-show="l.status==='success'" class="badge-g">成功</span>
+              <span x-show="l.status==='failed'" class="badge-r">失败</span>
+              <span x-show="l.status!=='success'&&l.status!=='failed'" class="badge-n" x-text="l.status"></span>
+            </div>
+            <div class="mobile-card-row">
+              <span class="mobile-card-label">规则</span>
+              <span class="mobile-card-value font-mono text-xs" x-text="l.rule_key"></span>
+            </div>
+            <div class="mobile-card-row">
+              <span class="mobile-card-label">接收人</span>
+              <span class="mobile-card-value text-xs" x-text="logRecipients(l)"></span>
+            </div>
+            <div class="mobile-card-row">
+              <span class="mobile-card-label">消息</span>
+              <span class="mobile-card-value text-xs truncate" x-text="l.message_text?l.message_text.slice(0,40)+(l.message_text.length>40?'…':''):'—'"></span>
+            </div>
+            <div class="mobile-card-row" x-show="l.error">
+              <span class="mobile-card-label text-red-500">错误</span>
+              <span class="mobile-card-value text-xs text-red-500 truncate" x-text="l.error"></span>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
     <!-- 分页 -->
     <div class="px-4 py-3 border-t border-stone-100 flex flex-wrap items-center gap-2" x-show="lg.total">
       <span class="text-xs text-stone-400" x-text="logRangeText()"></span>
       <div class="ml-auto flex items-center gap-1">
-        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page<=1||loading" @click="gotoPage(1)">首页</button>
+        <button class="btn-s text-xs py-1 px-2.5 pagination-first-last" :disabled="lg.page<=1||loading" @click="gotoPage(1)">首页</button>
         <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page<=1||loading" @click="gotoPage(lg.page-1)">上一页</button>
-        <template x-for="p in pageWindow()" :key="p">
-          <button class="text-xs py-1 px-2.5 rounded-md border transition-colors"
-            :class="p===lg.page
-              ? 'bg-amber-500 text-white border-amber-500'
-              : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'"
-            :disabled="loading" @click="gotoPage(p)" x-text="p"></button>
-        </template>
+        <div class="flex items-center gap-1 pagination-numbers">
+          <template x-for="p in pageWindow()" :key="p">
+            <button class="text-xs py-1 px-2.5 rounded-md border transition-colors"
+              :class="p===lg.page
+                ? 'bg-amber-500 text-white border-amber-500'
+                : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'"
+              :disabled="loading" @click="gotoPage(p)" x-text="p"></button>
+          </template>
+        </div>
         <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page>=lg.pages||loading" @click="gotoPage(lg.page+1)">下一页</button>
-        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page>=lg.pages||loading" @click="gotoPage(lg.pages)">末页</button>
+        <button class="btn-s text-xs py-1 px-2.5 pagination-first-last" :disabled="lg.page>=lg.pages||loading" @click="gotoPage(lg.pages)">末页</button>
       </div>
     </div>
   </div>
@@ -536,7 +716,7 @@
 
 <!-- 日志详情弹窗 -->
 <div x-show="logModal.show" x-cloak
-  class="fixed inset-0 z-50 flex items-center justify-center bg-black/25"
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/25 modal-wrapper"
   @click.self="logModal.show=false">
   <div class="bg-white rounded-xl shadow-xl p-6 w-full max-w-lg mx-4">
     <div class="flex items-center justify-between mb-4">
