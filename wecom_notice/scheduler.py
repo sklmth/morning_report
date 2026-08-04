@@ -102,6 +102,10 @@ def send_customer_manager_reminders():
             sent_count += 1
             logger.info(f"成功发送提醒给 {manager['name']}")
 
+            # 每条消息间隔1分钟，避免刷屏
+            import time
+            time.sleep(60)
+
         except Exception as e:
             logger.error(f"发送提醒给 {manager['name']} 失败：{e}")
             add_send_log(

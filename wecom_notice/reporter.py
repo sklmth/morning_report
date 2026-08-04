@@ -111,37 +111,59 @@ def fine_rules_lines(overtime_count: int = 0, missing_count: int = 0) -> list[st
     """
     lines = [
         "",
-        "☕ 下午茶基金规则：",
-        f"   · 漏填（{MISSING_CUTOFF} 仍不足 2 户）：每次上交 {FINE_PER_MISSING} 元",
-        f"   · 超时填报（{ON_TIME_CUTOFF} 后才填满 2 户）：每累计 "
-        f"{OVERTIME_LOT_SIZE} 次上交 {FINE_PER_OVERTIME_LOT} 元",
-        f"   · 按自然月统计，次月归零。{ON_TIME_CUTOFF} 前填满即完全不计。",
+        "--- 📋 下午茶基金规则 ---",
     ]
 
     # 提示离下一次扣款还有多远，比干讲规则更有警醒作用。
     # 超时和漏填各自独立成行，两项都有就都显示。
     warnings = []
 
-    # 超时：临近下一档（还差 1~2 次）时才提示，否则每天刷同一句会让人免疫。
-    # 但已经满档产生费用的（5、10 次…）必须提示，不能因为「刚好整档」而显得没事。
+    # 超时警示：根据当前次数和距离下次满档的远近，提供不同程度的提示
     lots_owed = overtime_count // OVERTIME_LOT_SIZE
     to_next_lot = OVERTIME_LOT_SIZE - (overtime_count % OVERTIME_LOT_SIZE)
-    if overtime_count and to_next_lot <= 2:
-        warnings.append(
-            f"   ⚠️ 本月已超时 {overtime_count} 次，再超时 {to_next_lot} 次就要上交 {FINE_PER_OVERTIME_LOT} 元"
-        )
-    elif lots_owed:
-        warnings.append(
-            f"   ⚠️ 本月已超时 {overtime_count} 次（满 {lots_owed * OVERTIME_LOT_SIZE} 次），"
-            f"已产生 {lots_owed * FINE_PER_OVERTIME_LOT} 元"
-        )
 
-    if missing_count:
-        warnings.append(f"   ⚠️ 本月已漏填 {missing_count} 次，今天再漏一次将再加 {FINE_PER_MISSING} 元")
+    if overtime_count == 0:
+        pass  # 无超时不单独提示，统一用无欠缴鼓励语
+    elif to_next_lot == 1:
+        # 仅剩1次缓冲，紧急提示
+        warnings.append(f"⚠️ 本月已超时 {overtime_count} 次，仅剩 1 次缓冲，再超时立即扣 {FINE_PER_OVERTIME_LOT} 元。")
+    elif to_next_lot == 2:
+        # 还差2次，警告提示
+        warnings.append(f"⚠️ 本月已超时 {overtime_count} 次，再超时 2 次就要上交 {FINE_PER_OVERTIME_LOT} 元。")
+    elif to_next_lot == OVERTIME_LOT_SIZE:
+        # 刚好满档（5、10、15...）
+        warnings.append(f"💰 本月已超时 {overtime_count} 次（满 {lots_owed * OVERTIME_LOT_SIZE} 次），已产生 {lots_owed * FINE_PER_OVERTIME_LOT} 元。")
+    elif lots_owed >= 1:
+        # 满档后有缓冲（比如6、7、8、9 或 11、12...）
+        warnings.append(f"💰 本月已产生 {lots_owed * FINE_PER_OVERTIME_LOT} 元，距离下次扣款还有 {to_next_lot} 次。")
+    # else: 超时3~4次但不紧急时不显示，避免每天重复
 
+    # 漏填警示：1次和多次用不同措辞
+    if missing_count == 1:
+        warnings.append(f"⚠️ 本月已漏填 1 次，再漏填1次需再加 {FINE_PER_MISSING} 元。")
+    elif missing_count >= 2:
+        warnings.append(f"⚠️ 本月已累计漏填 {missing_count} 次，每多漏1次多加 {FINE_PER_MISSING} 元。")
+
+    # 无欠缴时随机选一句鼓励语，避免疲劳
     if not warnings:
-        warnings.append("   ✅ 本月暂无欠缴记录，今天按时填报即可继续保持")
+        import random
+        encouragements = [
+            "✅ 本月暂无欠缴记录，今天按时填报即可继续保持！",
+            "✅ 目前表现良好，请继续保持按时填报。",
+            "✅ 保持当前节奏，争取本月零扣款。",
+        ]
+        warnings.append(random.choice(encouragements))
+
     lines.extend(warnings)
+
+    # 规则说明放最后
+    lines.extend([
+        "",
+        "💡 规则说明：",
+        f"· 漏填：当天 {MISSING_CUTOFF} 前未填报 → {FINE_PER_MISSING} 元/次",
+        f"· 超时：{ON_TIME_CUTOFF} 后才填报 → 每累计 {OVERTIME_LOT_SIZE} 次上交 {FINE_PER_OVERTIME_LOT} 元",
+        "· 按自然月统计，次月清零重新计算",
+    ])
 
     return lines
 
@@ -188,7 +210,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     lines = [
         f"{emoji} @{manager_name}",
         "",
-        f"{target_date_label(target_date)}预约填报提醒（第{reminder_seq}次）",
+        f"{target_date_label(target_date)}预约填报（第{reminder_seq}次提醒）",
         date_line,
         f"✅ 已填：{current_count} 户",
         f"⚠️ 还需：{gap} 户",
