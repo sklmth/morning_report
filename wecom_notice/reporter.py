@@ -681,10 +681,8 @@ def build_weekly_report() -> dict[str, Any]:
     else:
         lines.append("   ✅ 本月暂无应缴记录，继续保持！")
 
-    # 只 @ 本月有应缴记录的客户经理 + 管理者。
-    # 全员 @ 会让 14 个人一起收到提醒，谁都不当真；其余人照样能在群里看到全文。
-    fined_names = {f["name"] for f in fines}
-    recipients = [m for m in CUSTOMER_MANAGERS if m["name"] in fined_names] + MANAGER_RECIPIENTS
+    # 周报 @ 全员：11 名客户经理（实习期除外）+ 3 位管理者，共 14 人。
+    recipients = [m for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)] + MANAGER_RECIPIENTS
 
     return {
         "message": "\n".join(lines),
