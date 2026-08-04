@@ -14,7 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
-from wecom_notice.db import add_send_log, latest_upload
+from wecom_notice.db import add_send_log, latest_airscript_upload
 from wecom_notice.kingsoft_trigger import trigger_kingsoft_data_sync
 from wecom_notice.reporter import (
     build_customer_manager_reminder,
@@ -276,14 +276,14 @@ def sync_kingsoft_data():
     """触发金山文档数据同步，阻塞等待数据写入服务器后再返回。
 
     流程：
-    1. 记录当前 latest_upload 时间戳
+    1. 记录当前金山脚本上传接收时间戳
     2. 向金山文档发送 webhook，触发 AirScript 上传
-    3. 轮询 latest_upload，直到时间戳更新（数据已写入）或超时
+    3. 轮询上传接收时间，直到时间戳更新（服务器已接收）或超时
     4. 数据到位后立即更新填报统计表
     """
     logger.info("触发金山文档数据同步（同步模式）")
 
-    before = latest_upload()
+    before = latest_airscript_upload()
 
     try:
         result = trigger_kingsoft_data_sync()
@@ -307,9 +307,9 @@ def sync_kingsoft_data():
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
         elapsed += _POLL_INTERVAL
-        after = latest_upload()
+        after = latest_airscript_upload()
         if after != before:
-            logger.info(f"金山数据已到达，上传时间：{after}，等待耗时 {elapsed}s")
+            logger.info(f"金山数据已到达，接收时间：{after}，等待耗时 {elapsed}s")
             break
     else:
         logger.warning(f"等待金山数据超时（{_TIMEOUT}s），继续执行后续任务")
@@ -361,7 +361,7 @@ def sync_kingsoft_data_only():
     """
     logger.info("周末数据同步：触发金山文档数据入库（不更新统计指标）")
 
-    before = latest_upload()
+    before = latest_airscript_upload()
     try:
         result = trigger_kingsoft_data_sync()
         logger.info(f"周日金山数据同步触发成功：{result}")
@@ -384,9 +384,9 @@ def sync_kingsoft_data_only():
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
         elapsed += _POLL_INTERVAL
-        after = latest_upload()
+        after = latest_airscript_upload()
         if after != before:
-            logger.info(f"周日同步：金山数据已到达，上传时间：{after}，耗时 {elapsed}s")
+            logger.info(f"周日同步：金山数据已到达，接收时间：{after}，耗时 {elapsed}s")
             break
     else:
         logger.warning(f"周日同步：等待金山数据超时（{_TIMEOUT}s）")

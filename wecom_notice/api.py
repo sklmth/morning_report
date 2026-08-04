@@ -30,6 +30,7 @@ from wecom_notice.db import (
     get_setting,
     init_db,
     latest_upload,
+    mark_airscript_upload_received,
     save_rule,
     save_setting,
     upsert_records,
@@ -132,7 +133,8 @@ def airscript_upload(payload: UploadRequest):
     if not payload.rows:
         raise HTTPException(status_code=400, detail="rows 不能为空")
     result = upsert_records([normalize_record(row) for row in payload.rows])
-    return {"ok": True, "received": len(payload.rows), **result}
+    upload_received_at = mark_airscript_upload_received()
+    return {"ok": True, "received": len(payload.rows), "upload_received_at": upload_received_at, **result}
 
 
 @app.get("/api/records")

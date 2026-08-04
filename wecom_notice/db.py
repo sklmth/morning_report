@@ -200,6 +200,17 @@ def upsert_records(records: list[dict[str, Any]]) -> dict[str, int]:
     return {"inserted": inserted, "updated": updated, "skipped": skipped}
 
 
+def mark_airscript_upload_received() -> str:
+    """记录金山脚本最近一次成功上传时间，即使数据内容完全重复也更新。"""
+    timestamp = now()
+    set_setting("last_airscript_upload_at", timestamp)
+    return timestamp
+
+
+def latest_airscript_upload() -> str:
+    return get_setting("last_airscript_upload_at", "")
+
+
 def get_records(appointment_date: str = "", manager: str = "", status: str = "", limit: int = 300) -> list[dict[str, Any]]:
     clauses = []
     params: list[Any] = []
