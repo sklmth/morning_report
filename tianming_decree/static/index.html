@@ -169,10 +169,30 @@
     outline: none;
     cursor: pointer;
     transition: all 0.3s;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2300CFFF' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 12px;
+    padding-right: 45px;
   }
   .manager-select:focus {
     border-color: var(--gold);
     box-shadow: 0 0 20px rgba(255,215,0,0.25);
+  }
+  .manager-select option {
+    background: #0A1428;
+    color: var(--text);
+    padding: 10px;
+    font-size: 16px;
+  }
+  .manager-select option:first-child {
+    color: var(--neon-blue);
+  }
+  .manager-select option:hover, .manager-select option:checked {
+    background: rgba(0,207,255,0.2);
   }
 
   /* Stats Display */
@@ -264,6 +284,14 @@
   .form-input:focus {
     border-color: var(--gold);
     box-shadow: 0 0 20px rgba(255,215,0,0.15);
+  }
+  .form-input[type="date"] {
+    color-scheme: dark;
+    cursor: pointer;
+  }
+  .form-input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
   }
 
   /* Tabs */
