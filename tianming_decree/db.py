@@ -3,17 +3,20 @@
 管理休假记录、抽签历史、月度统计
 """
 
+import os
 import sqlite3
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 from pathlib import Path
 
-# 使用与主系统相同的数据库
-DB_PATH = Path(__file__).parent.parent / "data" / "fill_records.db"
+# 使用企业微信通报模块同一个运行数据库，以复用 fill_statistics 数据。
+ROOT_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = Path(os.environ.get("TIANMING_DB_PATH", ROOT_DIR / "runtime" / "wecom_notice.db"))
 
 
 def get_connection() -> sqlite3.Connection:
     """获取数据库连接。"""
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn

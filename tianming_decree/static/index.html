@@ -638,7 +638,7 @@
 </div>
 
 <script>
-const API_BASE = '';
+const API_BASE = window.location.pathname.startsWith('/tianming') ? '/tianming' : '';
 let currentManager = '';
 let selectedConsumeCount = 3;
 let myStats = null;

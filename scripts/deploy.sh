@@ -7,11 +7,12 @@
 #   8992  经营分析后端    (morning-report-analytics.service)    代码: analytics/ (入口: analytics/main.py)
 #   8994  知识库后端      (company-kb.service)                  代码: company_kb/
 #   8996  企业微信通报后端 (wecom-notice.service)              代码: wecom_notice/，前端 nginx:6081
+#   8888  天命赦令后端    (tianming-decree.service)            代码: tianming_decree/，公网: /tianming/
 #   8991/3030 静态前端    (nginx 托管，改前端无需重启)
 #
 # 用法：
 #   bash scripts/deploy.sh              # 全量部署全部模块（装依赖 + 重启）
-#   bash scripts/deploy.sh kb           # 全量部署知识库（可选: main / analytics / kb / wecom）
+#   bash scripts/deploy.sh kb           # 全量部署知识库（可选: main / analytics / kb / wecom / tianming）
 #   FULL=0 bash scripts/deploy.sh       # 增量部署：按 git 变动决定动作
 #   FULL=0 bash scripts/deploy.sh main  # 增量部署单个模块
 #   FORCE=1 bash scripts/deploy.sh      # 强制重启（不装依赖，仅重启已选模块）
@@ -29,12 +30,13 @@ PIP_BIN="${PIP_BIN:-$REPO_DIR/.venv/bin/pip}"
 FORCE="${FORCE:-0}"
 FULL="${FULL:-1}"         # 1 = 全量部署（忽略 git 变动，无条件装依赖+重启）
 KB_REBUILD="${KB_REBUILD:-0}"
-ONLY="${1:-all}"          # all / main / analytics / kb / wecom
+ONLY="${1:-all}"          # all / main / analytics / kb / wecom / tianming
 
 SVC_MAIN="${SVC_MAIN:-morning-report.service}"
 SVC_ANALYTICS="${SVC_ANALYTICS:-morning-report-analytics.service}"
 SVC_KB="${SVC_KB:-company-kb.service}"
 SVC_WECOM="${SVC_WECOM:-wecom-notice.service}"
+SVC_TIANMING="${SVC_TIANMING:-tianming-decree.service}"
 WECOM_FRONTEND_SRC="${WECOM_FRONTEND_SRC:-$REPO_DIR/wecom_notice/frontend}"
 WECOM_FRONTEND_DST="${WECOM_FRONTEND_DST:-/var/www/morning-report-wecom-notice}"
 
@@ -176,6 +178,25 @@ if want wecom; then
     sync_static_dir "$WECOM_FRONTEND_SRC" "$WECOM_FRONTEND_DST" "wecom"
   else
     log "[wecom] 前端无变动，跳过静态同步。"
+  fi
+fi
+
+# ── 7. 天命赦令 (8888 后端 / /tianming/ 入口) ─────
+if want tianming; then
+  need=0
+  if [[ "$FULL" == "1" ]]; then
+    log "[tianming] 全量 → 安装依赖…"; "$(pip_bin)" install -q -r tianming_decree/requirements.txt; need=1
+  else
+    changed '^tianming_decree/requirements\.txt' && { log "[tianming] 依赖变动 → 安装…"; "$(pip_bin)" install -q -r tianming_decree/requirements.txt; need=1; }
+    changed '^tianming_decree/' && need=1
+  fi
+  [[ "$FORCE" == "1" ]] && need=1
+  if [[ "$need" == "1" ]]; then
+    log "[tianming] 重启 $SVC_TIANMING"
+    "$(py)" -m py_compile tianming_decree/*.py
+    restart_svc "$SVC_TIANMING" || rc=1
+  else
+    log "[tianming] 无变动，跳过。"
   fi
 fi
 

@@ -1,0 +1,19 @@
+[Unit]
+Description=Tianming Decree Service (internal port 8888, public /tianming/)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/.openclaw/workspace/morning_report
+ExecStart=/root/.openclaw/workspace/morning_report/.venv/bin/python tianming_decree/app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/root/.openclaw/workspace/morning_report/runtime/tianming_decree.log
+StandardError=append:/root/.openclaw/workspace/morning_report/runtime/tianming_decree.log
+Environment=TIANMING_HOST=127.0.0.1
+Environment=TIANMING_PORT=8888
+Environment=TIANMING_DB_PATH=/root/.openclaw/workspace/morning_report/runtime/wecom_notice.db
+
+[Install]
+WantedBy=multi-user.target

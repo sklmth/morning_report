@@ -5,6 +5,7 @@
 
 from flask import Flask, request, jsonify, send_from_directory
 from datetime import date, datetime
+import os
 import sys
 from pathlib import Path
 
@@ -219,6 +220,9 @@ def sync_ontime_counts(month: str):
 
 
 if __name__ == "__main__":
-    print("🎴 天命赦令系统启动中...")
-    print("📍 服务地址: http://localhost:8888")
-    app.run(host="0.0.0.0", port=8888, debug=True)
+    host = os.environ.get("TIANMING_HOST", "127.0.0.1")
+    port = int(os.environ.get("TIANMING_PORT", "8888"))
+    debug = os.environ.get("TIANMING_DEBUG", "0") in {"1", "true", "True", "yes"}
+    print("天命赦令系统启动中...")
+    print(f"服务地址: http://{host}:{port}")
+    app.run(host=host, port=port, debug=debug)
