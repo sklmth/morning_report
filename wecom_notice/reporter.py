@@ -227,7 +227,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     lines = [
         f"{emoji} @{manager_name}",
         "",
-        f"{title_label}（第{reminder_seq}次提醒）",
+        f"{title_label}（今天第{reminder_seq}次提醒）",
         f"⏰ 通报时间：{current_time}",
         date_line,
         f"✅ 已填：{current_count} 户",
