@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天命赦令 - 免死金牌系统</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+SC:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --gold: #FFD700;
+    --gold-dark: #B8860B;
+    --neon-blue: #00CFFF;
+    --neon-pink: #FF2D78;
+    --neon-purple: #C084FC;
+    --bg: #050A18;
+    --bg2: #0A1428;
+    --card: rgba(255,255,255,0.04);
+    --border: rgba(0,207,255,0.2);
+    --text: #E8F0FF;
+    --text-dim: rgba(232,240,255,0.5);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Starfield bg */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(0,80,160,0.15) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(255,45,120,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 80%, rgba(192,132,252,0.06) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Animated grid */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,207,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,207,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 30px 0 20px;
+  }
+  .header-sub {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 8px;
+    color: var(--neon-purple);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    opacity: 0.8;
+  }
+  .header h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--gold) 0%, #FFF5A0 40%, var(--gold) 60%, var(--gold-dark) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: 4px;
+    filter: drop-shadow(0 0 30px rgba(255,215,0,0.4));
+    animation: titlePulse 3s ease-in-out infinite;
+  }
+  @keyframes titlePulse {
+    0%, 100% { filter: drop-shadow(0 0 20px rgba(255,215,0,0.3)); }
+    50% { filter: drop-shadow(0 0 50px rgba(255,215,0,0.7)); }
+  }
+  .header-line {
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 15px auto;
+  }
+
+  /* Tab Navigation */
+  .tab-nav {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 30px;
+  }
+  .tab-btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 50px;
+    padding: 12px 30px;
+    cursor: pointer;
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .tab-btn:hover {
+    border-color: var(--neon-blue);
+    color: var(--neon-blue);
+  }
+  .tab-btn.active {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(255,215,0,0.1);
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 30px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 40px rgba(0,207,255,0.05);
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: var(--neon-blue);
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  /* Manager Selector */
+  .manager-select-wrap {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .manager-select {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(0,207,255,0.3);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    padding: 12px 24px;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .manager-select:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 20px rgba(255,215,0,0.25);
+  }
+
+  /* Stats Display */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+  }
+  .stat-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .stat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--gold);
+  }
+  .stat-value.blue { color: var(--neon-blue); }
+  .stat-value.pink { color: var(--neon-pink); }
+  .stat-value.purple { color: var(--neon-purple); }
+
+  /* Button Styles */
+  .btn {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: var(--bg);
+    background: linear-gradient(135deg, var(--gold), #FFB800);
+    border: none;
+    border-radius: 50px;
+    padding: 14px 40px;
+    cursor: pointer;
+    font-weight: 700;
+    box-shadow: 0 0 30px rgba(255,215,0,0.4);
+    transition: all 0.3s;
+    text-transform: uppercase;
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 50px rgba(255,215,0,0.6);
+  }
+  .btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .btn-secondary {
+    background: linear-gradient(135deg, var(--neon-blue), #0090CC);
+    box-shadow: 0 0 30px rgba(0,207,255,0.4);
+  }
+  .btn-secondary:hover {
+    box-shadow: 0 0 50px rgba(0,207,255,0.6);
+  }
+
+  /* Form Elements */
+  .form-group {
+    margin-bottom: 20px;
+  }
+  .form-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+  }
+  .form-input {
+    width: 100%;
+    background: rgba(0,0,0,0.5);
+    border: 1px solid rgba(0,207,255,0.3);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    font-size: 14px;
+    padding: 10px 16px;
+    outline: none;
+    transition: all 0.3s;
+  }
+  .form-input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 20px rgba(255,215,0,0.15);
+  }
+
+  /* Tabs */
+  .tab-content {
+    display: none;
+  }
+  .tab-content.active {
+    display: block;
+  }
+
+  /* Wheel Area */
+  .wheel-area {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 30px 0;
+  }
+  .wheel-glow {
+    position: absolute;
+    width: 350px;
+    height: 350px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(192,132,252,0.08) 0%, transparent 70%);
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+  @keyframes glowPulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50% { transform: scale(1.05); opacity: 1; }
+  }
+  canvas#wheel {
+    position: relative;
+    z-index: 2;
+    filter: drop-shadow(0 0 20px rgba(192,132,252,0.3));
+    transition: filter 0.3s;
+  }
+  canvas#wheel.spinning {
+    filter: drop-shadow(0 0 40px rgba(255,215,0,0.5));
+  }
+
+  /* Pointer */
+  .pointer-wrap {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    filter: drop-shadow(0 0 10px var(--gold));
+  }
+
+  /* Prize List */
+  .prize-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-top: 20px;
+  }
+  .prize-item {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+  .prize-name {
+    font-size: 14px;
+    color: var(--gold);
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+  .prize-amount {
+    font-size: 20px;
+    color: var(--text);
+    font-weight: 700;
+  }
+  .prize-prob {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+
+  /* Consume Options */
+  .consume-options {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0;
+  }
+  .consume-btn {
+    background: rgba(192,132,252,0.1);
+    border: 1px solid rgba(192,132,252,0.3);
+    border-radius: 12px;
+    padding: 12px 20px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.3s;
+    font-size: 14px;
+  }
+  .consume-btn:hover {
+    border-color: var(--gold);
+    background: rgba(255,215,0,0.1);
+  }
+  .consume-btn.selected {
+    border-color: var(--gold);
+    background: rgba(255,215,0,0.2);
+    color: var(--gold);
+  }
+
+  /* History List */
+  .history-list {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .history-item {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .history-prize {
+    font-size: 14px;
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .history-amount {
+    font-size: 18px;
+    color: var(--neon-blue);
+    font-weight: 700;
+  }
+  .history-consumed {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* Result Flash */
+  .result-flash {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .result-flash.show { display: flex; }
+  .result-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(4px);
+  }
+  .result-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    animation: resultPop 0.5s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes resultPop {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+  .result-tag {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+  .result-prize-name {
+    font-size: clamp(40px, 8vw, 80px);
+    font-weight: 900;
+    color: var(--gold);
+    margin-bottom: 20px;
+    filter: drop-shadow(0 0 30px rgba(255,215,0,0.8));
+  }
+  .result-amount {
+    font-family: 'Orbitron', monospace;
+    font-size: 60px;
+    color: var(--neon-blue);
+    margin-bottom: 30px;
+  }
+
+  /* Vacation Table */
+  .vacation-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .vacation-table th,
+  .vacation-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .vacation-table th {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    font-weight: 400;
+  }
+  .vacation-table td {
+    font-size: 13px;
+    color: var(--text);
+  }
+  .del-btn {
+    background: rgba(255,45,120,0.1);
+    border: 1px solid rgba(255,45,120,0.3);
+    border-radius: 6px;
+    padding: 4px 12px;
+    color: var(--neon-pink);
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.2s;
+  }
+  .del-btn:hover {
+    background: rgba(255,45,120,0.2);
+    border-color: var(--neon-pink);
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-sub">Tianming Decree System</div>
+    <h1>天命赦令</h1>
+    <div class="header-line"></div>
+  </div>
+
+  <!-- Tab Navigation -->
+  <div class="tab-nav">
+    <button class="tab-btn active" onclick="switchTab('lottery')">🎴 天命抽签</button>
+    <button class="tab-btn" onclick="switchTab('vacation')">🌴 休假管理</button>
+    <button class="tab-btn" onclick="switchTab('ranking')">📊 排行榜</button>
+  </div>
+
+  <!-- 抽签页面 -->
+  <div id="tab-lottery" class="tab-content active">
+    <div class="manager-select-wrap">
+      <select id="managerSelect" class="manager-select" onchange="loadMyStats()">
+        <option value="">请选择你的姓名</option>
+      </select>
+    </div>
+
+    <div id="statsArea" class="hidden">
+      <div class="card">
+        <div class="card-title">◈ 本月统计 ◈</div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">准时填报次数</div>
+            <div class="stat-value blue" id="ontimeCount">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">已消耗次数</div>
+            <div class="stat-value pink" id="usedCount">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">可用抽签次数</div>
+            <div class="stat-value" id="lotteryCount">0</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">累计减免金额</div>
+            <div class="stat-value purple" id="totalAmount">0</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">◈ 选择消耗次数 ◈</div>
+        <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:15px;">
+          消耗越多，爆率越高（不影响通报统计）
+        </p>
+        <div class="consume-options" id="consumeOptions"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">◈ 中奖概率 ◈</div>
+        <div class="prize-list" id="prizeList"></div>
+      </div>
+
+      <div style="text-align:center;margin:30px 0;">
+        <button class="btn" id="drawBtn" onclick="performDraw()" disabled>
+          🎴 开始抽签
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">◈ 本月抽签历史 ◈</div>
+        <div class="history-list" id="historyList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 休假管理页面 -->
+  <div id="tab-vacation" class="tab-content">
+    <div class="card">
+      <div class="card-title">◈ 添加休假记录 ◈</div>
+      <div class="form-group">
+        <label class="form-label">姓名</label>
+        <select id="vacationManager" class="form-input">
+          <option value="">请选择</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">开始日期（休假前一天也不需要填报）</label>
+        <input type="date" id="vacationStart" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">结束日期</label>
+        <input type="date" id="vacationEnd" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注（可选）</label>
+        <input type="text" id="vacationNote" class="form-input" placeholder="例如：年假">
+      </div>
+      <div style="text-align:center;">
+        <button class="btn-secondary btn" onclick="addVacation()">➕ 添加休假</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">◈ 休假记录列表 ◈</div>
+      <table class="vacation-table" id="vacationTable">
+        <thead>
+          <tr>
+            <th>姓名</th>
+            <th>开始日期</th>
+            <th>结束日期</th>
+            <th>备注</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="vacationList"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 排行榜页面 -->
+  <div id="tab-ranking" class="tab-content">
+    <div class="card">
+      <div class="card-title">◈ 本月排行榜 ◈</div>
+      <table class="vacation-table" id="rankingTable">
+        <thead>
+          <tr>
+            <th>排名</th>
+            <th>姓名</th>
+            <th>准时次数</th>
+            <th>可用抽签</th>
+            <th>累计减免</th>
+          </tr>
+        </thead>
+        <tbody id="rankingList"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Result Flash Overlay -->
+<div class="result-flash" id="resultFlash">
+  <div class="result-overlay"></div>
+  <div class="result-content">
+    <div class="result-tag">✦ 天命赦令 ✦</div>
+    <div class="result-prize-name" id="resultPrizeName">筑基丹</div>
+    <div class="result-amount" id="resultAmount">-15元</div>
+    <button class="btn" onclick="closeResult()">确定</button>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+let currentManager = '';
+let selectedConsumeCount = 3;
+let myStats = null;
+
+// 初始化
+async function init() {
+  await loadManagers();
+  await loadVacations();
+}
+
+// 加载客户经理列表
+async function loadManagers() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/managers`);
+    const data = await resp.json();
+
+    const select1 = document.getElementById('managerSelect');
+    const select2 = document.getElementById('vacationManager');
+
+    data.managers.forEach(name => {
+      const opt1 = document.createElement('option');
+      opt1.value = name;
+      opt1.textContent = name;
+      select1.appendChild(opt1);
+
+      const opt2 = document.createElement('option');
+      opt2.value = name;
+      opt2.textContent = name;
+      select2.appendChild(opt2);
+    });
+  } catch (err) {
+    console.error('加载客户经理列表失败:', err);
+  }
+}
+
+// 切换标签页
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+  event.target.classList.add('active');
+  document.getElementById(`tab-${tabName}`).classList.add('active');
+
+  if (tabName === 'vacation') {
+    loadVacations();
+  } else if (tabName === 'ranking') {
+    loadRanking();
+  }
+}
+
+// 加载我的统计
+async function loadMyStats() {
+  const select = document.getElementById('managerSelect');
+  currentManager = select.value;
+
+  if (!currentManager) {
+    document.getElementById('statsArea').classList.add('hidden');
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/lottery/my-stats?manager_name=${encodeURIComponent(currentManager)}`);
+    myStats = await resp.json();
+
+    document.getElementById('ontimeCount').textContent = myStats.ontime_count;
+    document.getElementById('usedCount').textContent = myStats.used_ontime_count;
+    document.getElementById('lotteryCount').textContent = myStats.available_lottery;
+    document.getElementById('totalAmount').textContent = myStats.total_prize_amount + '元';
+
+    renderConsumeOptions(myStats.consume_options);
+    renderHistory(myStats.history);
+
+    document.getElementById('statsArea').classList.remove('hidden');
+
+    if (myStats.consume_options.length > 0) {
+      selectedConsumeCount = myStats.consume_options[0];
+      loadProbabilities(selectedConsumeCount);
+    }
+  } catch (err) {
+    console.error('加载统计失败:', err);
+    alert('加载统计失败');
+  }
+}
+
+// 渲染消耗选项
+function renderConsumeOptions(options) {
+  const container = document.getElementById('consumeOptions');
+  container.innerHTML = '';
+
+  if (options.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">准时次数不足，至少需要3次</p>';
+    document.getElementById('drawBtn').disabled = true;
+    return;
+  }
+
+  options.forEach((count, idx) => {
+    const btn = document.createElement('div');
+    btn.className = 'consume-btn' + (idx === 0 ? ' selected' : '');
+    btn.textContent = `消耗 ${count} 次`;
+    btn.onclick = () => selectConsumeCount(count);
+    container.appendChild(btn);
+  });
+
+  document.getElementById('drawBtn').disabled = false;
+}
+
+// 选择消耗次数
+function selectConsumeCount(count) {
+  selectedConsumeCount = count;
+  document.querySelectorAll('.consume-btn').forEach(btn => btn.classList.remove('selected'));
+  event.target.classList.add('selected');
+  loadProbabilities(count);
+}
+
+// 加载中奖概率
+async function loadProbabilities(count) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/lottery/probabilities?consumed_count=${count}`);
+    const data = await resp.json();
+
+    const container = document.getElementById('prizeList');
+    container.innerHTML = '';
+
+    data.probabilities.forEach(prize => {
+      const item = document.createElement('div');
+      item.className = 'prize-item';
+      item.innerHTML = `
+        <div class="prize-name">${prize.name}</div>
+        <div class="prize-amount">${prize.amount > 0 ? '-' + prize.amount + '元' : '谢谢参与'}</div>
+        <div class="prize-prob">${(prize.probability * 100).toFixed(2)}%</div>
+      `;
+      container.appendChild(item);
+    });
+  } catch (err) {
+    console.error('加载概率失败:', err);
+  }
+}
+
+// 执行抽签
+async function performDraw() {
+  if (!currentManager) return;
+
+  const btn = document.getElementById('drawBtn');
+  btn.disabled = true;
+  btn.textContent = '抽签中...';
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/lottery/draw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        manager_name: currentManager,
+        consumed_count: selectedConsumeCount
+      })
+    });
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      alert(data.error || '抽签失败');
+      btn.disabled = false;
+      btn.textContent = '🎴 开始抽签';
+      return;
+    }
+
+    showResult(data.prize);
+
+    // 刷新统计
+    setTimeout(() => {
+      loadMyStats();
+    }, 1000);
+
+  } catch (err) {
+    console.error('抽签失败:', err);
+    alert('抽签失败');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🎴 开始抽签';
+  }
+}
+
+// 显示抽奖结果
+function showResult(prize) {
+  document.getElementById('resultPrizeName').textContent = prize.name;
+  document.getElementById('resultAmount').textContent = prize.amount > 0 ? `-${prize.amount}元` : '继续努力';
+  document.getElementById('resultFlash').classList.add('show');
+  launchConfetti();
+}
+
+// 关闭结果弹窗
+function closeResult() {
+  document.getElementById('resultFlash').classList.remove('show');
+}
+
+// 渲染历史记录
+function renderHistory(history) {
+  const container = document.getElementById('historyList');
+  container.innerHTML = '';
+
+  if (history.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:var(--text-dim);font-size:13px;padding:20px;">暂无抽签记录</p>';
+    return;
+  }
+
+  history.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.innerHTML = `
+      <div>
+        <div class="history-prize">${item.prize_name}</div>
+        <div class="history-consumed">消耗 ${item.consumed_ontime_count} 次 | ${item.created_at}</div>
+      </div>
+      <div class="history-amount">${item.prize_amount > 0 ? '-' + item.prize_amount + '元' : '0元'}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+
+// 添加休假
+async function addVacation() {
+  const manager = document.getElementById('vacationManager').value;
+  const start = document.getElementById('vacationStart').value;
+  const end = document.getElementById('vacationEnd').value;
+  const note = document.getElementById('vacationNote').value;
+
+  if (!manager || !start || !end) {
+    alert('请填写完整信息');
+    return;
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/vacation`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        manager_name: manager,
+        start_date: start,
+        end_date: end,
+        note: note
+      })
+    });
+
+    const data = await resp.json();
+
+    if (resp.ok) {
+      alert('添加成功');
+      document.getElementById('vacationStart').value = '';
+      document.getElementById('vacationEnd').value = '';
+      document.getElementById('vacationNote').value = '';
+      loadVacations();
+    } else {
+      alert(data.error || '添加失败');
+    }
+  } catch (err) {
+    console.error('添加休假失败:', err);
+    alert('添加失败');
+  }
+}
+
+// 加载休假列表
+async function loadVacations() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/vacation`);
+    const data = await resp.json();
+
+    const tbody = document.getElementById('vacationList');
+    tbody.innerHTML = '';
+
+    if (data.vacations.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:20px;">暂无休假记录</td></tr>';
+      return;
+    }
+
+    data.vacations.forEach(item => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${item.manager_name}</td>
+        <td>${item.start_date}</td>
+        <td>${item.end_date}</td>
+        <td>${item.note || '-'}</td>
+        <td><button class="del-btn" onclick="deleteVacation(${item.id})">删除</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('加载休假列表失败:', err);
+  }
+}
+
+// 删除休假
+async function deleteVacation(id) {
+  if (!confirm('确认删除此休假记录？')) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/vacation/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (resp.ok) {
+      alert('删除成功');
+      loadVacations();
+    } else {
+      alert('删除失败');
+    }
+  } catch (err) {
+    console.error('删除失败:', err);
+    alert('删除失败');
+  }
+}
+
+// 加载排行榜
+async function loadRanking() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/lottery/stats`);
+    const data = await resp.json();
+
+    const tbody = document.getElementById('rankingList');
+    tbody.innerHTML = '';
+
+    if (data.stats.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:20px;">暂无数据</td></tr>';
+      return;
+    }
+
+    data.stats.forEach((item, idx) => {
+      const tr = document.createElement('tr');
+      const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+      tr.innerHTML = `
+        <td>${medal}</td>
+        <td>${item.manager_name}</td>
+        <td>${item.ontime_count}</td>
+        <td>${item.available_lottery_count}</td>
+        <td>${item.total_prize_amount}元</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    console.error('加载排行榜失败:', err);
+  }
+}
+
+// 彩带效果
+function launchConfetti() {
+  const colors = ['#FFD700','#00CFFF','#FF2D78','#A0FF60','#C084FC','#FF9000'];
+  for (let i = 0; i < 50; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        position: fixed;
+        left: ${Math.random() * 100}vw;
+        top: -10px;
+        width: ${4 + Math.random() * 6}px;
+        height: ${4 + Math.random() * 6}px;
+        background: ${colors[Math.floor(Math.random() * colors.length)]};
+        border-radius: 2px;
+        pointer-events: none;
+        z-index: 200;
+        animation: fall ${1.5 + Math.random() * 2}s linear forwards;
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }, i * 30);
+  }
+}
+
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes fall {
+    0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+  }
+`;
+document.head.appendChild(style);
+
+// 页面加载完成后初始化
+init();
+</script>
+</body>
+</html>

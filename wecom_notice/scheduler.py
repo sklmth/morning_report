@@ -267,7 +267,11 @@ def send_biweekly_report():
     try:
         result = build_biweekly_report()
         if result["should_send"]:
-            response = send_text(result["message"], result["recipients"])
+            response = send_text(
+                result["message"],
+                result["recipients"],
+                mention_all=result.get("mention_all", False),
+            )
             add_send_log(
                 rule_key="biweekly_report",
                 status="success" if response.get("errcode") == 0 else "failed",

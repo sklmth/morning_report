@@ -946,11 +946,10 @@ def build_biweekly_report() -> dict[str, Any]:
     else:
         lines.append("   ✅ 本月暂无应缴记录，继续保持！")
 
-    recipients = [m for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)] + MANAGER_RECIPIENTS
-
     return {
         "message": "\n".join(lines),
-        "recipients": recipients,
+        "recipients": [],
+        "mention_all": True,
         "should_send": True,
     }
 
