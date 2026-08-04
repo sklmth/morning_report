@@ -97,7 +97,8 @@ def _send_customer_manager_reminders():
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
     sent_count = 0
-    for manager in CUSTOMER_MANAGERS:
+    total_managers = len(CUSTOMER_MANAGERS)
+    for manager_index, manager in enumerate(CUSTOMER_MANAGERS):
         report = {"message": "", "recipients": []}
         try:
             report = build_customer_manager_reminder(target_date, manager["name"], notice_time=round_notice_time)
@@ -115,6 +116,9 @@ def _send_customer_manager_reminders():
             )
             sent_count += 1
             logger.info(f"成功发送提醒给 {manager['name']}")
+            if manager_index < total_managers - 1:
+                logger.info("客户经理提醒已发送，等待 60 秒后继续下一人")
+                time.sleep(60)
         except Exception as e:
             logger.error(f"发送提醒给 {manager['name']} 失败：{e}")
             add_send_log(
