@@ -770,7 +770,7 @@
 <script>
 function app(){
   return {
-    tab:'today', loading:false,
+    tab:localStorage.getItem('wecom_notice_tab')||'today', loading:false,
     tst:{on:false,msg:'',err:false},
     dlg:{show:false,msg:'',cb:null},
     d:{date:'',sum:null,recs:[]},
@@ -797,11 +797,14 @@ function app(){
       await this.loadRules();
       await this.loadStats();
       await this.pollSched();
+      if(this.tab==='sys') await this.loadSys();
+      if(this.tab==='logs') await this.loadLogs();
       setInterval(()=>this.pollSched(),30000);
     },
 
     async setTab(name){
       this.tab=name;
+      localStorage.setItem('wecom_notice_tab',name);
       if(name==='today') await this.loadToday();
       if(name==='send')  await this.loadRules();
       if(name==='sys')   await this.loadSys();
