@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # 定时规则配置
 CUSTOMER_MANAGER_REMINDER_TIMES = [
-    "18:00", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
+    "18:15", "18:45", "19:15", "19:45", "20:15", "21:00", "22:00", "23:00"
 ]
 
 # 第一个通报（简洁版）- 张端副经理
@@ -342,17 +342,18 @@ def sync_kingsoft_data():
         )
 
 
-# 周日数据同步时间点（仅入库，不影响填报统计指标）
-SUNDAY_SYNC_TIMES = ["12:00", "18:00", "22:00"]
+# 周末数据同步时间点（周六、周日均执行；仅入库，不影响填报统计指标）
+WEEKEND_SYNC_TIMES = ["12:00", "18:00", "22:00", "23:30"]
 
 
 def sync_kingsoft_data_only():
-    """周日专用：仅触发金山文档数据同步入库，不更新 fill_statistics。
+    """周末专用（周六/周日）：仅触发金山文档数据同步入库，不更新 fill_statistics。
 
     周六/周日填写的预约记录会被拉取并存入 visit_records，
     但不判断准时/超时/漏填，不影响任何统计指标。
+    所有统计（准时/超时/漏填）只在周一~周五的 23:30 由 collect_final_data 执行。
     """
-    logger.info("周日数据同步：触发金山文档数据入库（不更新统计指标）")
+    logger.info("周末数据同步：触发金山文档数据入库（不更新统计指标）")
 
     before = latest_upload()
     try:
@@ -491,14 +492,14 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         replace_existing=True,
     )
 
-    # 8. 周日数据同步（仅入库，不影响统计指标）
-    for time_str in SUNDAY_SYNC_TIMES:
+    # 8. 周末数据同步（周六/周日均执行；仅入库，不影响统计指标）
+    for time_str in WEEKEND_SYNC_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
             sync_kingsoft_data_only,
-            CronTrigger(day_of_week="sun", hour=int(hour), minute=int(minute)),
-            id=f"sunday_sync_{time_str.replace(':', '')}",
-            name=f"周日数据同步 {time_str}",
+            CronTrigger(day_of_week="sat,sun", hour=int(hour), minute=int(minute)),
+            id=f"weekend_sync_{time_str.replace(':', '')}",
+            name=f"周末数据同步 {time_str}",
             replace_existing=True,
         )
 

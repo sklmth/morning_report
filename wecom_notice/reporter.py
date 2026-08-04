@@ -72,6 +72,16 @@ def target_date_label(target_date: str = "") -> str:
     return f"{target.month}月{target.day}日"
 
 
+def _is_friday_to_monday(target_date: str) -> bool:
+    """今天是周五且目标日期是下周一（跨周末填报场景）。"""
+    try:
+        target = date.fromisoformat(target_date)
+        today = date.today()
+        return today.weekday() == 4 and target.weekday() == 0 and (target - today).days > 1
+    except (ValueError, AttributeError):
+        return False
+
+
 def delivery_label(delivery_staff: str = "") -> str:
     """交付人员的展示文本，如「高装：程庆德」「未指定：无」。"""
     if not delivery_staff:
@@ -204,13 +214,18 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     emojis = ["📋", "⏰", "📝", "✍️", "📊", "🔔", "💼", "📌"]
     emoji = emojis[(reminder_seq - 1) % len(emojis)]
 
-    # 日期行：不论是否跨周末窗口，只显示目标日期（下周一），不提周六日
-    date_line = f"📅 日期：{target_date}"
+    # 日期行 / 标题：周五跨周末场景单独标注「下周一」
+    if _is_friday_to_monday(target_date):
+        date_line = f"📅 目标日期：{target_date}（下周一）"
+        title_label = "周五预约填报"
+    else:
+        date_line = f"📅 日期：{target_date}"
+        title_label = f"{target_date_label(target_date)}预约填报"
 
     lines = [
         f"{emoji} @{manager_name}",
         "",
-        f"{target_date_label(target_date)}预约填报（第{reminder_seq}次提醒）",
+        f"{title_label}（第{reminder_seq}次提醒）",
         date_line,
         f"✅ 已填：{current_count} 户",
         f"⚠️ 还需：{gap} 户",
@@ -400,8 +415,9 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
 
     # 构建消息
     current_time = datetime.now().strftime("%H:%M")
+    detail_title = f"【周五预约填报通报】{target_date}（下周一）" if _is_friday_to_monday(target_date) else f"【{target_date_label(target_date)}预约详细通报】{target_date}"
     lines = [
-        f"【{target_date_label(target_date)}预约详细通报】{target_date}",
+        detail_title,
         f"⏰ 通报时间：{current_time}",
         "",
         "━━━━━━ 📊 今日填报情况 ━━━━━━",
@@ -884,7 +900,7 @@ def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> d
             filled.append(f"    ... 还有 {len(mgr_recs) - 3} 户")
 
     lines = [
-        f"【{target_date_label(target_date)}预约情况】{target_date}",
+        f"【周五预约填报情况】{target_date}（下周一）" if _is_friday_to_monday(target_date) else f"【{target_date_label(target_date)}预约情况】{target_date}",
         f"⏰ 通报时间：{current_time}",
         "",
         f"共预约 {len(records)} 户。",
