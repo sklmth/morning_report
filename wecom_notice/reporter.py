@@ -68,7 +68,7 @@ def target_date_label(target_date: str = "") -> str:
     if delta == 1:
         return "明日"
     if target.weekday() == 0 and delta > 1:
-        return "周末至下周一"
+        return "下周一"
     return f"{target.month}月{target.day}日"
 
 
@@ -204,8 +204,8 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     emojis = ["📋", "⏰", "📝", "✍️", "📊", "🔔", "💼", "📌"]
     emoji = emojis[(reminder_seq - 1) % len(emojis)]
 
-    win_start, win_end = target_window(target_date)
-    date_line = f"📅 日期：{target_date}" if win_start == win_end else f"📅 日期：{win_start} ~ {win_end}（三天合计）"
+    # 日期行：不论是否跨周末窗口，只显示目标日期（下周一），不提周六日
+    date_line = f"📅 日期：{target_date}"
 
     lines = [
         f"{emoji} @{manager_name}",

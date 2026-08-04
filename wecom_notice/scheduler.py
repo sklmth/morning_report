@@ -342,6 +342,60 @@ def sync_kingsoft_data():
         )
 
 
+# 周日数据同步时间点（仅入库，不影响填报统计指标）
+SUNDAY_SYNC_TIMES = ["12:00", "18:00", "22:00"]
+
+
+def sync_kingsoft_data_only():
+    """周日专用：仅触发金山文档数据同步入库，不更新 fill_statistics。
+
+    周六/周日填写的预约记录会被拉取并存入 visit_records，
+    但不判断准时/超时/漏填，不影响任何统计指标。
+    """
+    logger.info("周日数据同步：触发金山文档数据入库（不更新统计指标）")
+
+    before = latest_upload()
+    try:
+        result = trigger_kingsoft_data_sync()
+        logger.info(f"周日金山数据同步触发成功：{result}")
+    except Exception as e:
+        logger.error(f"周日金山数据同步失败：{e}")
+        add_send_log(
+            rule_key="sunday_kingsoft_sync",
+            status="failed",
+            message_text="周日金山数据同步失败",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
+        )
+        return
+
+    # 轮询等待数据写入（最多8分钟）
+    _POLL_INTERVAL = 10
+    _TIMEOUT = 480
+    elapsed = 0
+    while elapsed < _TIMEOUT:
+        time.sleep(_POLL_INTERVAL)
+        elapsed += _POLL_INTERVAL
+        after = latest_upload()
+        if after != before:
+            logger.info(f"周日同步：金山数据已到达，上传时间：{after}，耗时 {elapsed}s")
+            break
+    else:
+        logger.warning(f"周日同步：等待金山数据超时（{_TIMEOUT}s）")
+
+    add_send_log(
+        rule_key="sunday_kingsoft_sync",
+        status="success",
+        message_text="周日金山数据同步完成（仅入库，不更新统计指标）",
+        mentioned=[],
+        record_ids=[],
+        webhook_response=str(result),
+    )
+    # 注意：此处故意不调用 build_final_data_collection，
+    # 周六/周日填写的预约不计入准时/超时统计，必须周五填才算。
+
+
 def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     """
     启动定时调度器。
@@ -436,6 +490,17 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         name="周通报-周日 12:00",
         replace_existing=True,
     )
+
+    # 8. 周日数据同步（仅入库，不影响统计指标）
+    for time_str in SUNDAY_SYNC_TIMES:
+        hour, minute = time_str.split(":")
+        scheduler.add_job(
+            sync_kingsoft_data_only,
+            CronTrigger(day_of_week="sun", hour=int(hour), minute=int(minute)),
+            id=f"sunday_sync_{time_str.replace(':', '')}",
+            name=f"周日数据同步 {time_str}",
+            replace_existing=True,
+        )
 
     scheduler.start()
     logger.info(f"调度器已启动，共 {len(scheduler.get_jobs())} 个定时任务")
