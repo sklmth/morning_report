@@ -216,6 +216,38 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
         f"⚠️ 还需：{gap} 户",
     ]
 
+    # 判断当前时间是否超过准时截止线（19:30）
+    now = datetime.now()
+    cutoff_time = datetime.combine(now.date(), datetime.strptime(ON_TIME_CUTOFF, "%H:%M").time())
+    is_overtime_period = now > cutoff_time
+
+    if is_overtime_period:
+        # 19:30后：已超时，提示仍需完成避免漏填
+        lines.extend([
+            "",
+            f"⏱️ 当前已超过准时时间（{ON_TIME_CUTOFF}）",
+            f"本次填报将记为超时，但仍需完成以避免漏填",
+            f"⚠️ 请在 {MISSING_CUTOFF} 前完成，否则记为漏填（{FINE_PER_MISSING}元/次）",
+        ])
+    else:
+        # 19:30前：还能准时，显示剩余时间
+        remaining_minutes = int((cutoff_time - now).total_seconds() / 60)
+        if remaining_minutes > 0:
+            lines.extend([
+                "",
+                f"💡 距离准时截止（{ON_TIME_CUTOFF}）还有 {remaining_minutes} 分钟",
+                "现在填报可避免超时记录",
+            ])
+        else:
+            # 边界情况：时间刚好或负数（理论上不会走到这里）
+            lines.extend([
+                "",
+                f"💡 准时截止时间为 {ON_TIME_CUTOFF}",
+                "请尽快完成填报",
+            ])
+
+    lines.append("")
+
     if overtime_count > 0 or missing_count > 0:
         lines.append("")
         lines.append("📊 本月记录：")
