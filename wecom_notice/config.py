@@ -55,6 +55,22 @@ MANAGER_RECIPIENTS = [
     {"name": "梁天霖", "mobile": "18933131302", "wecom_userid": "", "role": "deputy_manager", "title": "副经理"},
 ]
 
+# 测试接收人：已在端州政企群内，用于验证群机器人 @ 是否真的能触发提醒。
+# 不参与任何自动通报，只能在前端「发送通报」里手动勾选。
+TEST_RECIPIENTS = [
+    {"name": "李璇", "mobile": "18933136676", "wecom_userid": "", "role": "tester", "title": "测试"},
+]
+
+
+def find_recipients(names: list[str]) -> list[dict[str, str]]:
+    """按姓名解析接收人对象，保持传入顺序去重，未知姓名忽略。
+
+    用于手动发送时前端只回传姓名，手机号/userid 仍以 config 为准。
+    """
+    pool = {person["name"]: person for person in CUSTOMER_MANAGERS + MANAGER_RECIPIENTS + TEST_RECIPIENTS}
+    return [pool[name] for name in dict.fromkeys(names) if name in pool]
+
+
 DEFAULT_RULES = [
     {
         "key": "missing_tomorrow_booking",

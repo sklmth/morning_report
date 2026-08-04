@@ -348,7 +348,13 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     Returns:
         BackgroundScheduler实例
     """
-    scheduler = BackgroundScheduler()
+    # misfire_grace_time：服务在触发点前后重启时，默认只有 1 秒宽限，任务会被直接丢弃。
+    # 给 10 分钟宽限，重启刚好压到时间点也能补发；coalesce 保证只补最后一次，不会连发。
+    scheduler = BackgroundScheduler(job_defaults={
+        "misfire_grace_time": 600,
+        "coalesce": True,
+        "max_instances": 1,
+    })
 
     if not enabled:
         logger.info("调度器已创建但未启用定时任务，请在配置后手动启用")

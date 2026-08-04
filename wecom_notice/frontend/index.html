@@ -217,7 +217,7 @@
       <p class="text-sm font-medium text-stone-700">手动发送通报</p>
       <div>
         <label class="block text-xs text-stone-500 mb-1">通报规则</label>
-        <select class="inp w-full" x-model="snd.rule" @change="doPreview()">
+        <select class="inp w-full" x-model="snd.rule" @change="onRuleChange()">
           <option value="">请选择规则</option>
           <template x-for="r in snd.rules" :key="r.rule_key">
             <option :value="r.rule_key" x-text="ruleDisplayName(r)"></option>
@@ -226,20 +226,77 @@
       </div>
       <div>
         <label class="block text-xs text-stone-500 mb-1">通报日期</label>
-        <input type="date" class="inp w-full" x-model="snd.date" @change="doPreview()">
+        <input type="date" class="inp w-full" x-model="snd.date" @change="onRuleChange()">
       </div>
-      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:10rem">
-        <div class="flex items-center justify-between mb-2">
-          <p class="text-xs text-stone-500 font-medium">消息预览</p>
-          <span x-show="snd.preview" class="text-xs text-stone-400" x-text="snd.previewRecipients"></span>
+      <!-- 接收人选择 -->
+      <div>
+        <div class="flex items-center justify-between mb-1.5">
+          <label class="block text-xs text-stone-500">
+            接收人（群内 @）
+            <span class="text-stone-400" x-text="'· 已选 '+snd.picked.length+' 人'"></span>
+          </label>
+          <div class="flex items-center gap-1.5">
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickDefault()">默认</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickAll()">全选</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="snd.picked=[]">清空</button>
+          </div>
         </div>
-        <p class="text-sm text-stone-400" x-show="!snd.preview">选择规则和日期后自动预览</p>
-        <div x-show="snd.preview" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
+        <div class="rounded-lg border border-stone-200 p-3 space-y-3">
+          <template x-for="g in snd.groups" :key="g.key">
+            <div>
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="text-xs font-medium text-stone-500" x-text="g.label"></span>
+                <button type="button" class="text-xs text-amber-600 hover:text-amber-700"
+                  @click="toggleGroup(g)" x-text="groupAllPicked(g)?'取消本组':'选择本组'"></button>
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                <template x-for="m in g.members" :key="m.name">
+                  <button type="button" @click="togglePick(m.name)"
+                    class="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors"
+                    :class="snd.picked.includes(m.name)
+                      ? 'bg-amber-50 border-amber-300 text-amber-800'
+                      : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'">
+                    <span x-text="m.name"></span>
+                    <span x-show="!m.mentionable" class="text-red-400" title="未配置手机号或 userid，无法 @">!</span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </template>
+          <p class="text-sm text-stone-400" x-show="!snd.groups.length">加载中...</p>
+          <p class="text-xs text-stone-400 leading-relaxed">
+            不选任何人则消息正常发送到群里、但不 @ 任何人。修改后即以此处勾选为准，不再跟随规则默认。
+          </p>
+        </div>
+      </div>
+      <!-- 消息预览 / 编辑 -->
+      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:10rem">
+        <div class="flex items-center justify-between mb-2 gap-2">
+          <p class="text-xs text-stone-500 font-medium">
+            消息内容
+            <span x-show="snd.edited" class="text-amber-600">· 已编辑</span>
+          </p>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" class="btn-s text-xs py-0.5 px-2"
+              x-show="snd.edited" @click="resetMessage()">恢复原文</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2"
+              :disabled="!snd.rule" @click="snd.editing=!snd.editing"
+              x-text="snd.editing?'完成编辑':'编辑'"></button>
+          </div>
+        </div>
+        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&!snd.rule">选择规则和日期后自动预览</p>
+        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&snd.rule">
+          该规则在此日期下条件未触发（无需发送）。如需强制发送，点「编辑」自行填写正文。
+        </p>
+        <textarea x-show="snd.editing" x-model="snd.preview" @input="snd.edited=true" rows="16"
+          class="inp w-full leading-relaxed" style="font-family:inherit"
+          placeholder="消息正文"></textarea>
+        <div x-show="snd.preview&&!snd.editing" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
           <pre class="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit" x-text="snd.preview"></pre>
         </div>
       </div>
       <button class="btn-p w-full py-2.5"
-        :disabled="!snd.rule||!snd.date||loading" @click="doSend()">
+        :disabled="!snd.rule||!snd.date||!snd.preview.trim()||loading" @click="doSend()">
         <span x-text="loading?'发送中...':'立即发送到企业微信'"></span>
       </button>
     </div>
@@ -262,6 +319,8 @@
         <button class="btn-d" :disabled="!sched.running||loading" @click="stopSched()">停止</button>
         <button class="btn-s" @click="loadSys()">刷新</button>
       </div>
+      <p class="text-xs mt-3" :class="sched.desired?'text-emerald-600':'text-stone-400'"
+        x-text="sched.desired?'开关状态已保存，服务重启后自动恢复运行':'开关为停止状态，服务重启后保持停止'"></p>
       <p class="text-sm text-stone-400 mt-3" x-show="!sched.running">启动调度器后显示任务列表</p>
       <p class="text-sm text-stone-400 mt-3" x-show="sched.running&&!sched.jobs?.length">暂无已注册任务</p>
     </div>
@@ -279,20 +338,46 @@
         <p class="text-sm text-stone-400" x-show="!sys.roster">加载中...</p>
       </div>
     </div>
-    <!-- 罚款基金设置 -->
+    <!-- 下午茶基金设置：两个开关相互独立，可单开可同开 -->
     <div class="card p-5">
-      <div class="flex items-center justify-between mb-1">
-        <p class="text-sm font-medium text-stone-700">☕ 下午茶基金提醒</p>
-        <!-- toggle switch -->
-        <button type="button" @click="sys.fineEnabled=!sys.fineEnabled"
-          class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
-          :class="sys.fineEnabled?'bg-amber-400':'bg-stone-200'">
-          <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
-            :class="sys.fineEnabled?'translate-x-6':'translate-x-1'"></span>
-        </button>
+      <p class="text-sm font-medium text-stone-700 mb-1">☕ 下午茶基金</p>
+      <p class="text-xs text-stone-400 mb-4">两项相互独立，都作用于「客户经理个人提醒」，可单独开启也可同时开启。</p>
+      <div class="space-y-3">
+        <!-- 规则警示（事前） -->
+        <div class="rounded-lg border border-stone-200 p-3">
+          <div class="flex items-start justify-between gap-3 mb-1">
+            <p class="text-sm text-stone-700">📢 规则警示</p>
+            <button type="button" @click="sys.fineRulesEnabled=!sys.fineRulesEnabled"
+              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none"
+              :class="sys.fineRulesEnabled?'bg-amber-400':'bg-stone-200'">
+              <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="sys.fineRulesEnabled?'translate-x-6':'translate-x-1'"></span>
+            </button>
+          </div>
+          <p class="text-xs text-stone-400 leading-relaxed">
+            事前警醒：在提醒末尾附上基金规则（漏填 10 元/次、超时每 5 次 10 元、按月归零），
+            并提示「再超时几次就要上交」。<span class="text-stone-500">不报具体欠款金额</span>，
+            当月没有欠缴也会显示。
+          </p>
+        </div>
+        <!-- 应缴账单（事后） -->
+        <div class="rounded-lg border border-stone-200 p-3">
+          <div class="flex items-start justify-between gap-3 mb-1">
+            <p class="text-sm text-stone-700">💸 应缴账单</p>
+            <button type="button" @click="sys.fineEnabled=!sys.fineEnabled"
+              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none"
+              :class="sys.fineEnabled?'bg-amber-400':'bg-stone-200'">
+              <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="sys.fineEnabled?'translate-x-6':'translate-x-1'"></span>
+            </button>
+          </div>
+          <p class="text-xs text-stone-400 leading-relaxed">
+            事后账单：<span class="text-stone-500">算出本月已欠多少钱</span>并要求上交。
+            仅在该客户经理当月确实产生欠缴（漏填 ≥ 1 次或超时 ≥ 5 次）时才出现。
+          </p>
+        </div>
       </div>
-      <p class="text-xs text-stone-400 mb-4">开启后，客户经理提醒中将显示是否需要上交下午茶基金（月内超时填报>5次或漏填≥1次，上交10元）</p>
-      <button class="btn-p text-sm" :disabled="sys.fineSaving" @click="saveFineSettings()">
+      <button class="btn-p text-sm mt-4" :disabled="sys.fineSaving" @click="saveFineSettings()">
         <span x-text="sys.fineSaving?'保存中...':'保存设置'"></span>
       </button>
     </div>
@@ -358,30 +443,30 @@
   <div class="card">
     <div class="px-4 py-3 border-b border-stone-100 flex flex-wrap items-center gap-2">
       <span class="text-sm font-medium text-stone-700">运行日志</span>
-      <span class="text-xs text-stone-400 ml-1" x-text="'共 '+lg.list.length+' 条'"></span>
+      <span class="text-xs text-stone-400 ml-1" x-text="'共 '+lg.total+' 条'"></span>
       <div class="ml-auto flex items-center gap-2">
-        <label class="text-xs text-stone-500">显示</label>
-        <select class="inp text-xs py-1" x-model.number="lg.lim" @change="loadLogs()">
+        <label class="text-xs text-stone-500">每页</label>
+        <select class="inp text-xs py-1" x-model.number="lg.lim" @change="lg.page=1;loadLogs()">
+          <option value="20">20 条</option>
           <option value="50">50 条</option>
           <option value="100">100 条</option>
           <option value="200">200 条</option>
-          <option value="500">500 条</option>
         </select>
         <button class="btn-s text-xs py-1 px-3" @click="loadLogs()">刷新</button>
       </div>
     </div>
-    <!-- 汇总 -->
-    <div class="grid grid-cols-3 divide-x divide-stone-100 border-b border-stone-100" x-show="lg.list.length">
+    <!-- 汇总（全量，不随分页变化） -->
+    <div class="grid grid-cols-3 divide-x divide-stone-100 border-b border-stone-100" x-show="lg.total">
       <div class="p-3 text-center">
-        <div class="snum text-base" x-text="lg.list.length"></div>
+        <div class="snum text-base" x-text="lg.total"></div>
         <div class="slbl">总计</div>
       </div>
       <div class="p-3 text-center">
-        <div class="snum text-base text-emerald-600" x-text="lg.list.filter(l=>l.status==='success').length"></div>
+        <div class="snum text-base text-emerald-600" x-text="lg.succ"></div>
         <div class="slbl">成功</div>
       </div>
       <div class="p-3 text-center">
-        <div class="snum text-base text-red-500" x-text="lg.list.filter(l=>l.status==='failed').length"></div>
+        <div class="snum text-base text-red-500" x-text="lg.fail"></div>
         <div class="slbl">失败</div>
       </div>
     </div>
@@ -415,6 +500,23 @@
           </template>
         </tbody>
       </table>
+    </div>
+    <!-- 分页 -->
+    <div class="px-4 py-3 border-t border-stone-100 flex flex-wrap items-center gap-2" x-show="lg.total">
+      <span class="text-xs text-stone-400" x-text="logRangeText()"></span>
+      <div class="ml-auto flex items-center gap-1">
+        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page<=1||loading" @click="gotoPage(1)">首页</button>
+        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page<=1||loading" @click="gotoPage(lg.page-1)">上一页</button>
+        <template x-for="p in pageWindow()" :key="p">
+          <button class="text-xs py-1 px-2.5 rounded-md border transition-colors"
+            :class="p===lg.page
+              ? 'bg-amber-500 text-white border-amber-500'
+              : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'"
+            :disabled="loading" @click="gotoPage(p)" x-text="p"></button>
+        </template>
+        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page>=lg.pages||loading" @click="gotoPage(lg.page+1)">下一页</button>
+        <button class="btn-s text-xs py-1 px-2.5" :disabled="lg.page>=lg.pages||loading" @click="gotoPage(lg.pages)">末页</button>
+      </div>
     </div>
   </div>
 </div>
@@ -493,10 +595,14 @@ function app(){
     dlg:{show:false,msg:'',cb:null},
     d:{date:'',sum:null,recs:[]},
     s:{start:'',end:'',data:null},
-    snd:{rules:[],rule:'',date:'',preview:'',previewRecipients:''},
-    sched:{running:false,jobs:[]},
-    sys:{roster:null,fineEnabled:false,fineSaving:false},
-    lg:{list:[],lim:100},
+    // snd.picked 为已勾选姓名；snd.pickedTouched 表示用户改过勾选，之后不再跟随规则默认
+    // snd.edited 表示正文被手工改过，重新预览时不覆盖
+    snd:{rules:[],rule:'',date:'',preview:'',original:'',editing:false,edited:false,
+         groups:[],defaultNames:[],picked:[],pickedTouched:false},
+    sched:{running:false,desired:false,jobs:[]},
+    sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
+    // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
+    lg:{list:[],lim:100,page:1,total:0,pages:1,succ:0,fail:0},
     logModal:{show:false,item:null},
 
     async init(){
@@ -557,33 +663,77 @@ function app(){
     },
 
     async loadRules(){
-      try{const r=await Api.rules();this.snd.rules=r.rules??[];}
-      catch(e){this.toast(e.message,true);}
+      try{
+        const[r,rc]=await Promise.all([Api.rules(),Api.recipientOptions()]);
+        this.snd.rules=r.rules??[];
+        this.snd.groups=rc.groups??[];
+      }catch(e){this.toast(e.message,true);}
+    },
+
+    // 换规则/换日期时正文与勾选都回到模板默认
+    onRuleChange(){
+      this.snd.edited=false; this.snd.pickedTouched=false; this.snd.editing=false;
+      this.doPreview();
     },
 
     async doPreview(){
-      if(!this.snd.rule||!this.snd.date){this.snd.preview='';this.snd.previewRecipients='';return;}
+      if(!this.snd.rule||!this.snd.date){
+        this.snd.preview='';this.snd.original='';this.snd.defaultNames=[];
+        if(!this.snd.pickedTouched) this.snd.picked=[];
+        return;
+      }
       try{
         const r=await Api.preview({rule_key:this.snd.rule,target_date:this.snd.date});
-        this.snd.preview=r.message||'（条件未触发，无需发送）';
-        // 显示接收人信息
-        const recipients = r.recipients || [];
-        if (recipients.length > 0) {
-          const names = recipients.map(p => p.name).join('、');
-          this.snd.previewRecipients = `接收人：${names}`;
-        } else {
-          this.snd.previewRecipients = '';
-        }
-      }catch(e){this.snd.preview='预览失败：'+e.message;this.snd.previewRecipients='';}
+        this.snd.original=r.message||'';
+        if(!this.snd.edited) this.snd.preview=this.snd.original;
+        this.snd.defaultNames=(r.recipients||[]).map(p=>p.name).filter(Boolean);
+        if(!this.snd.pickedTouched) this.snd.picked=this.snd.defaultNames.slice();
+      }catch(e){
+        this.snd.original='';
+        if(!this.snd.edited) this.snd.preview='预览失败：'+e.message;
+      }
+    },
+
+    resetMessage(){this.snd.preview=this.snd.original;this.snd.edited=false;},
+
+    togglePick(name){
+      const i=this.snd.picked.indexOf(name);
+      if(i<0) this.snd.picked.push(name); else this.snd.picked.splice(i,1);
+      this.snd.pickedTouched=true;
+    },
+    groupAllPicked(g){
+      return g.members.length>0&&g.members.every(m=>this.snd.picked.includes(m.name));
+    },
+    toggleGroup(g){
+      const names=g.members.map(m=>m.name);
+      this.snd.picked=this.groupAllPicked(g)
+        ? this.snd.picked.filter(n=>!names.includes(n))
+        : [...new Set([...this.snd.picked,...names])];
+      this.snd.pickedTouched=true;
+    },
+    pickAll(){
+      this.snd.picked=[...new Set(this.snd.groups.flatMap(g=>g.members.map(m=>m.name)))];
+      this.snd.pickedTouched=true;
+    },
+    pickDefault(){
+      this.snd.picked=this.snd.defaultNames.slice();
+      this.snd.pickedTouched=false;
     },
 
     async doSend(){
       if(!this.snd.rule||!this.snd.date) return;
-      if(!await this.confirm('确认发送此通报到企业微信？')) return;
+      const who=this.snd.picked.length?`将 @ ${this.snd.picked.length} 人：${this.snd.picked.join('、')}`:'不 @ 任何人';
+      if(!await this.confirm(`确认发送此通报到企业微信？${who}`)) return;
       this.loading=true;
       try{
-        await Api.send({rule_key:this.snd.rule,target_date:this.snd.date});
-        this.toast('通报已发送'); this.snd.preview='';
+        await Api.send({
+          rule_key:this.snd.rule,
+          target_date:this.snd.date,
+          message:this.snd.preview,
+          recipient_names:this.snd.picked,
+        });
+        this.toast('通报已发送');
+        this.snd.editing=false;
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
     },
@@ -592,23 +742,31 @@ function app(){
       this.loading=true;
       try{
         const[sc,ro,cfg]=await Promise.all([Api.schedulerStatus(),Api.roster(),Api.settings()]);
-        this.sched.running=sc.running; this.sched.jobs=sc.jobs??[];
+        this.sched.running=sc.running; this.sched.desired=sc.desired??false; this.sched.jobs=sc.jobs??[];
         this.sys.roster=ro;
         this.sys.fineEnabled=cfg.fine_enabled??false;
+        this.sys.fineRulesEnabled=cfg.fine_rules_enabled??false;
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
     },
 
-    async saveFineSettings(){      this.sys.fineSaving=true;
+    async saveFineSettings(){
+      this.sys.fineSaving=true;
       try{
-        await Api.saveSettings({fine_enabled:this.sys.fineEnabled});
-        this.toast(this.sys.fineEnabled?'罚款基金提醒已开启 ☕':'罚款基金提醒已关闭');
+        await Api.saveSettings({
+          fine_enabled:this.sys.fineEnabled,
+          fine_rules_enabled:this.sys.fineRulesEnabled,
+        });
+        const on=[];
+        if(this.sys.fineRulesEnabled) on.push('规则警示');
+        if(this.sys.fineEnabled) on.push('应缴账单');
+        this.toast(on.length?`下午茶基金已开启：${on.join(' + ')} ☕`:'下午茶基金提醒已全部关闭');
       }catch(e){this.toast(e.message,true);}
       finally{this.sys.fineSaving=false;}
     },
 
     async pollSched(){
-      try{const s=await Api.schedulerStatus();this.sched.running=s.running;this.sched.jobs=s.jobs??[];}
+      try{const s=await Api.schedulerStatus();this.sched.running=s.running;this.sched.desired=s.desired??false;this.sched.jobs=s.jobs??[];}
       catch(_){}
     },
 
@@ -695,9 +853,37 @@ function app(){
     },
     async loadLogs(){
       this.loading=true;
-      try{const r=await Api.sendLogs(this.lg.lim);this.lg.list=r.logs??[];}
-      catch(e){this.toast(e.message,true);}
+      try{
+        const r=await Api.sendLogs(this.lg.lim,(this.lg.page-1)*this.lg.lim);
+        this.lg.list=r.logs??[];
+        this.lg.total=r.total??this.lg.list.length;
+        this.lg.pages=r.page_count??1;
+        this.lg.succ=r.success_count??0;
+        this.lg.fail=r.failed_count??0;
+        // 期间有日志被清理导致当前页越界时回落到末页
+        if(this.lg.page>this.lg.pages){this.lg.page=this.lg.pages;return this.loadLogs();}
+      }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
+    },
+    gotoPage(p){
+      const target=Math.min(Math.max(p,1),this.lg.pages);
+      if(target===this.lg.page) return;
+      this.lg.page=target;
+      this.loadLogs();
+    },
+    // 当前页附近最多 5 个页码，靠边时自动补齐
+    pageWindow(){
+      const span=5, total=this.lg.pages;
+      if(total<=span) return Array.from({length:total},(_,i)=>i+1);
+      let start=Math.max(1,this.lg.page-Math.floor(span/2));
+      start=Math.min(start,total-span+1);
+      return Array.from({length:span},(_,i)=>start+i);
+    },
+    logRangeText(){
+      if(!this.lg.total) return '';
+      const from=(this.lg.page-1)*this.lg.lim+1;
+      const to=Math.min(this.lg.page*this.lg.lim,this.lg.total);
+      return `第 ${from} - ${to} 条 · 第 ${this.lg.page}/${this.lg.pages} 页`;
     },
     logRecipients(l){
       if(!l.mentioned||!l.mentioned.length) return '—';

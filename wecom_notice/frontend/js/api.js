@@ -38,6 +38,7 @@ const Api = (() => {
     rules:   () => req('/config/rules'),
     preview: (body) => post('/report/preview', body),
     send:    (body) => post('/report/send', body),
+    recipientOptions: () => req('/config/recipients'),
 
     // 调度器
     schedulerStatus: () => req('/scheduler/status'),
@@ -49,7 +50,7 @@ const Api = (() => {
     roster: () => req('/config/roster'),
 
     // 运行日志
-    sendLogs: (limit=100) => req(`/send-logs?limit=${limit}`),
+    sendLogs: (limit=100, offset=0) => req(`/send-logs?limit=${limit}&offset=${offset}`),
 
     // 应用设置
     settings:     () => req('/config/settings'),

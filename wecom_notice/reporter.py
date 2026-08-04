@@ -94,6 +94,58 @@ def recipients_for(policy: dict[str, Any], manager_names: list[str]) -> list[dic
     return recipients
 
 
+# 下午茶基金规则参数。改这里即可，消息文案会跟着变。
+FINE_PER_MISSING = 10      # 每次漏填的金额
+FINE_PER_OVERTIME_LOT = 10 # 每满 OVERTIME_LOT_SIZE 次超时的金额
+OVERTIME_LOT_SIZE = 5
+ON_TIME_CUTOFF = "19:30"
+MISSING_CUTOFF = "23:30"
+
+
+def fine_rules_lines(overtime_count: int = 0, missing_count: int = 0) -> list[str]:
+    """下午茶基金「规则警示」文案：讲清什么情况要上交，不报具体欠款金额。
+
+    与 fine_enabled 的账单提醒分工：这里是事前警醒（规则 + 距离下次扣款还差几次），
+    那边是事后账单（本月已经欠了多少钱）。所以本函数不受当月是否已欠缴影响，
+    只要开关打开就会出现。
+    """
+    lines = [
+        "",
+        "☕ 下午茶基金规则：",
+        f"   · 漏填（{MISSING_CUTOFF} 仍不足 2 户）：每次上交 {FINE_PER_MISSING} 元",
+        f"   · 超时填报（{ON_TIME_CUTOFF} 后才填满 2 户）：每累计 "
+        f"{OVERTIME_LOT_SIZE} 次上交 {FINE_PER_OVERTIME_LOT} 元",
+        f"   · 按自然月统计，次月归零。{ON_TIME_CUTOFF} 前填满即完全不计。",
+    ]
+
+    # 提示离下一次扣款还有多远，比干讲规则更有警醒作用。
+    # 超时和漏填各自独立成行，两项都有就都显示。
+    warnings = []
+
+    # 超时：临近下一档（还差 1~2 次）时才提示，否则每天刷同一句会让人免疫。
+    # 但已经满档产生费用的（5、10 次…）必须提示，不能因为「刚好整档」而显得没事。
+    lots_owed = overtime_count // OVERTIME_LOT_SIZE
+    to_next_lot = OVERTIME_LOT_SIZE - (overtime_count % OVERTIME_LOT_SIZE)
+    if overtime_count and to_next_lot <= 2:
+        warnings.append(
+            f"   ⚠️ 本月已超时 {overtime_count} 次，再超时 {to_next_lot} 次就要上交 {FINE_PER_OVERTIME_LOT} 元"
+        )
+    elif lots_owed:
+        warnings.append(
+            f"   ⚠️ 本月已超时 {overtime_count} 次（满 {lots_owed * OVERTIME_LOT_SIZE} 次），"
+            f"已产生 {lots_owed * FINE_PER_OVERTIME_LOT} 元"
+        )
+
+    if missing_count:
+        warnings.append(f"   ⚠️ 本月已漏填 {missing_count} 次，今天再漏一次将再加 {FINE_PER_MISSING} 元")
+
+    if not warnings:
+        warnings.append("   ✅ 本月暂无欠缴记录，今天按时填报即可继续保持")
+    lines.extend(warnings)
+
+    return lines
+
+
 # ====== 新增通报构建器 ======
 
 
@@ -150,7 +202,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
         if missing_count > 0:
             lines.append(f"   ❌ 漏填：{missing_count} 次")
 
-    # 罚款提示（需 fine_enabled=true 时才显示）
+    # 已产生欠缴的账单（fine_enabled）：算钱，只在真的欠了才显示
     from wecom_notice.db import get_setting
     if get_setting("fine_enabled", "false") == "true":
         fine_from_missing = missing_count * 10          # 每次漏填 10元
@@ -169,6 +221,11 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
         "",
         f"💡 温馨提示：请尽快完成填报，确保{target_date_label(target_date)}工作顺利开展~"
     ])
+
+    # 规则警示（fine_rules_enabled）：不算钱，只讲清什么情况要上交，起警醒作用。
+    # 与上面的账单提醒相互独立，可单开、可同开。
+    if get_setting("fine_rules_enabled", "false") == "true":
+        lines.extend(fine_rules_lines(overtime_count, missing_count))
 
     manager_obj = next((m for m in CUSTOMER_MANAGERS if m["name"] == manager_name), None)
     recipients = [manager_obj] if manager_obj else []

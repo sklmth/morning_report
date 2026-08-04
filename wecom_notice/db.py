@@ -288,9 +288,13 @@ def add_send_log(rule_key: str, status: str, message_text: str, mentioned: list[
         )
 
 
-def get_send_logs(limit: int = 100) -> list[dict[str, Any]]:
+def get_send_logs(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+    """按时间倒序取一页发送日志。offset 为跳过条数，用于前端翻页。"""
     with connection() as conn:
-        rows = conn.execute("SELECT * FROM send_logs ORDER BY id DESC LIMIT ?", (min(max(limit, 1), 500),)).fetchall()
+        rows = conn.execute(
+            "SELECT * FROM send_logs ORDER BY id DESC LIMIT ? OFFSET ?",
+            (min(max(limit, 1), 500), max(offset, 0)),
+        ).fetchall()
     result = []
     for row in rows:
         data = dict(row)
@@ -298,6 +302,22 @@ def get_send_logs(limit: int = 100) -> list[dict[str, Any]]:
         data["record_ids"] = json.loads(data.pop("record_ids_json", "[]") or "[]")
         result.append(data)
     return result
+
+
+def count_send_logs() -> dict[str, int]:
+    """全量日志的条数与成败分布。翻页后汇总数字仍按全量统计，不受当前页影响。"""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS total,
+                      SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) AS success,
+                      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+               FROM send_logs"""
+        ).fetchone()
+    return {
+        "total": row["total"] or 0,
+        "success_count": row["success"] or 0,
+        "failed_count": row["failed"] or 0,
+    }
 
 
 def latest_upload() -> str:

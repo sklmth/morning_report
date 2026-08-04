@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -9,9 +10,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from wecom_notice.config import CUSTOMER_MANAGERS, GAOZHUANG_STAFF, MANAGER_RECIPIENTS, ZHIYUN_ENGINEERS
+from wecom_notice.config import (
+    CUSTOMER_MANAGERS,
+    GAOZHUANG_STAFF,
+    MANAGER_RECIPIENTS,
+    TEST_RECIPIENTS,
+    ZHIYUN_ENGINEERS,
+    find_recipients,
+)
 from wecom_notice.db import (
     add_send_log,
+    count_send_logs,
     get_fill_statistics,
     get_records,
     get_reminder_logs,
@@ -31,14 +40,31 @@ from wecom_notice.reporter import build_cumulative_statistics, build_report, def
 from wecom_notice.sender import send_text
 
 
+logger = logging.getLogger(__name__)
+
+# 调度器开关的持久化键。存在 app_settings 表里，这样服务重启（部署、崩溃、
+# 机器重启）后能自动恢复到停机前的状态，不需要有人再去点一次「启动」。
+SCHEDULER_ENABLED_KEY = "scheduler_enabled"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # 注意：调度器默认不启动，需要通过API手动启用
     app.state.scheduler = None
+
+    # 重启自愈：上次是运行状态就自动拉起，否则保持停止
+    if get_setting(SCHEDULER_ENABLED_KEY, "false") == "true":
+        try:
+            from wecom_notice.scheduler import start_scheduler
+            app.state.scheduler = start_scheduler(enabled=True)
+            logger.info("检测到调度器开关为开启状态，已随服务自动恢复")
+        except Exception as exc:
+            logger.error(f"调度器自动恢复失败：{exc}")
+
     yield
-    # 关闭调度器
-    if hasattr(app.state, "scheduler") and app.state.scheduler:
+
+    # 关闭调度器。注意不清除开关，重启后仍按开启状态恢复。
+    if getattr(app.state, "scheduler", None):
         from wecom_notice.scheduler import stop_scheduler
         stop_scheduler(app.state.scheduler)
 
@@ -64,6 +90,10 @@ class UploadRequest(BaseModel):
 class ReportRequest(BaseModel):
     rule_key: str
     target_date: str = ""
+    # 手动发送时的覆盖项：正文可在前端编辑，收件人可自由勾选。
+    # 为 None 表示沿用模板生成的默认值。
+    message: str | None = None
+    recipient_names: list[str] | None = None
 
 
 class RuleUpdate(BaseModel):
@@ -153,6 +183,40 @@ def roster():
     return {"customer_managers": CUSTOMER_MANAGERS, "manager_recipients": MANAGER_RECIPIENTS}
 
 
+@app.get("/api/config/recipients")
+def recipient_options():
+    """手动发送通报时可勾选的接收人分组（客户经理 / 管理者 / 测试）。"""
+
+    def brief(person: dict[str, Any], group: str, group_label: str) -> dict[str, Any]:
+        return {
+            "name": person["name"],
+            "group": group,
+            "group_label": group_label,
+            "label": person.get("title") or person.get("team", ""),
+            "mentionable": bool(person.get("wecom_userid") or person.get("mobile")),
+        }
+
+    return {
+        "groups": [
+            {
+                "key": "customer_managers",
+                "label": "客户经理",
+                "members": [brief(p, "customer_managers", "客户经理") for p in CUSTOMER_MANAGERS],
+            },
+            {
+                "key": "management",
+                "label": "管理者",
+                "members": [brief(p, "management", "管理者") for p in MANAGER_RECIPIENTS],
+            },
+            {
+                "key": "testers",
+                "label": "测试",
+                "members": [brief(p, "testers", "测试") for p in TEST_RECIPIENTS],
+            },
+        ]
+    }
+
+
 @app.get("/api/config/delivery-staff")
 def delivery_staff():
     """获取预约交付人员名单（高端装维+智云工程师）"""
@@ -186,13 +250,24 @@ def preview_report(payload: ReportRequest):
 def send_report(payload: ReportRequest):
     rule, report = get_report(payload)
     record_ids = [record["id"] for record in report["records"]]
+
+    # 前端编辑过的正文优先；勾选过收件人时以勾选结果为准（可为空，表示不 @ 任何人）
+    message = payload.message if payload.message is not None else report["message"]
+    recipients = (
+        find_recipients(payload.recipient_names)
+        if payload.recipient_names is not None
+        else report["recipients"]
+    )
+    if not message.strip():
+        raise HTTPException(status_code=400, detail="消息内容为空，无法发送")
+
     try:
-        response = send_text(report["message"], report["recipients"])
+        response = send_text(message, recipients)
     except RuntimeError as exc:
-        add_send_log(rule["rule_key"], "failed", report["message"], report["recipients"], record_ids, error=str(exc))
+        add_send_log(rule["rule_key"], "failed", message, recipients, record_ids, error=str(exc))
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    add_send_log(rule["rule_key"], "success", report["message"], report["recipients"], record_ids, webhook_response=str(response))
-    return {"ok": True, "response": response, "mentioned": report["recipients"]}
+    add_send_log(rule["rule_key"], "success", message, recipients, record_ids, webhook_response=str(response))
+    return {"ok": True, "response": response, "mentioned": recipients}
 
 
 @app.post("/api/scheduler/run-once")
@@ -201,8 +276,20 @@ def run_once(payload: ReportRequest):
 
 
 @app.get("/api/send-logs")
-def send_logs(limit: int = 100):
-    return {"logs": get_send_logs(limit)}
+def send_logs(limit: int = 100, offset: int = 0):
+    """分页取运行日志。counts 为全量统计，不随分页变化。"""
+    counts = count_send_logs()
+    logs = get_send_logs(limit, offset)
+    page_size = min(max(limit, 1), 500)
+    return {
+        "logs": logs,
+        "total": counts["total"],
+        "success_count": counts["success_count"],
+        "failed_count": counts["failed_count"],
+        "limit": page_size,
+        "offset": max(offset, 0),
+        "page_count": max(1, -(-counts["total"] // page_size)),
+    }
 
 
 @app.get("/api/statistics/cumulative")
@@ -262,29 +349,33 @@ def reminder_logs(date: str = "", manager_name: str = "", limit: int = 100):
 
 @app.get("/api/scheduler/status")
 def scheduler_status():
-    """查询调度器状态"""
-    if not hasattr(app.state, "scheduler") or app.state.scheduler is None:
-        return {"running": False, "jobs": []}
+    """查询调度器状态。desired 为持久化的开关意图，running 为进程内实际状态。"""
+    desired = get_setting(SCHEDULER_ENABLED_KEY, "false") == "true"
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler is None:
+        return {"running": False, "desired": desired, "jobs": [], "count": 0}
 
     jobs = []
-    for job in app.state.scheduler.get_jobs():
+    for job in scheduler.get_jobs():
         jobs.append({
             "id": job.id,
             "name": job.name,
             "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
         })
 
-    return {"running": True, "jobs": jobs, "count": len(jobs)}
+    return {"running": True, "desired": desired, "jobs": jobs, "count": len(jobs)}
 
 
 @app.post("/api/scheduler/start")
 def start_scheduler_api():
-    """启动调度器"""
-    if hasattr(app.state, "scheduler") and app.state.scheduler:
+    """启动调度器，并把开关落库，使服务重启后自动恢复。"""
+    if getattr(app.state, "scheduler", None):
+        save_setting(SCHEDULER_ENABLED_KEY, "true")
         return {"ok": False, "message": "调度器已在运行"}
 
     from wecom_notice.scheduler import start_scheduler
     app.state.scheduler = start_scheduler(enabled=True)
+    save_setting(SCHEDULER_ENABLED_KEY, "true")
 
     return {
         "ok": True,
@@ -295,8 +386,9 @@ def start_scheduler_api():
 
 @app.post("/api/scheduler/stop")
 def stop_scheduler_api():
-    """停止调度器"""
-    if not hasattr(app.state, "scheduler") or app.state.scheduler is None:
+    """停止调度器，并把开关落库，使服务重启后保持停止。"""
+    save_setting(SCHEDULER_ENABLED_KEY, "false")
+    if getattr(app.state, "scheduler", None) is None:
         return {"ok": False, "message": "调度器未运行"}
 
     from wecom_notice.scheduler import stop_scheduler
@@ -362,18 +454,24 @@ def get_settings():
     """读取应用设置"""
     return {
         "fine_enabled": get_setting("fine_enabled", "false") == "true",
+        "fine_rules_enabled": get_setting("fine_rules_enabled", "false") == "true",
     }
 
 
 class SettingsBody(BaseModel):
-    fine_enabled: bool = Field(..., description="是否开启罚款基金提醒")
+    # 两个开关相互独立，均可单独提交（不传则保持原值）
+    fine_enabled: bool | None = Field(None, description="是否在提醒中显示本月应上交金额（事后账单）")
+    fine_rules_enabled: bool | None = Field(None, description="是否在提醒中附上基金规则警示（事前警醒）")
 
 
 @app.post("/api/config/settings")
 def post_settings(body: SettingsBody):
-    """保存应用设置"""
-    save_setting("fine_enabled", "true" if body.fine_enabled else "false")
-    return {"ok": True, "fine_enabled": body.fine_enabled}
+    """保存应用设置。只写传了的字段，未传的保持原值。"""
+    if body.fine_enabled is not None:
+        save_setting("fine_enabled", "true" if body.fine_enabled else "false")
+    if body.fine_rules_enabled is not None:
+        save_setting("fine_rules_enabled", "true" if body.fine_rules_enabled else "false")
+    return {"ok": True, **get_settings()}
 
 
 # 前端静态文件（放在所有 API 路由之后，不会覆盖 /api/* 路由）
