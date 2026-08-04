@@ -1,9 +1,9 @@
 """定时任务调度器 - 管理企业微信通知的定时发送。
 
-使用APScheduler管理所有定时任务。每个发送任务在触发时自动完成完整链路：
-  拉取金山文档数据 → 等待数据入库 → 发送企业微信消息 → 更新填报统计表
+使用APScheduler管理所有定时任务。每个配置的通知时间点作为一个同步批次：
+  拉取金山文档数据 → 等待数据入库 → 执行该时间点的企业微信通报
 
-同一分钟内多个任务触发时，通过5分钟冷却期避免重复同步。
+不同时间点独立同步；同一时间点的多个通报共享本批次数据。
 """
 
 import logging
@@ -60,40 +60,45 @@ def get_target_date() -> str:
     return default_target_date()
 
 
-# 上次同步完成的时间戳，用于冷却期判断
-_last_sync_time: float = 0.0
-# 同一分钟内多个任务同时触发时，5分钟内不重复拉取
-_SYNC_COOLDOWN = 300
+# 每个工作日通知时间点独立同步；同一时间点的多个通报共享本批次结果。
+_SYNC_BATCH_RESULTS: dict[str, bool] = {}
 _SYNC_LOCK = threading.Lock()
 
 
-def _sync_with_cooldown():
-    """先同步金山数据再继续，5分钟冷却期内跳过重复同步。"""
-    global _last_sync_time
-    # 不同 APScheduler 任务可能并发执行，避免同时触发两个 AirScript。
+def _sync_for_timepoint(timepoint: str) -> bool:
+    """为指定通知时间点同步一次，不复用其他时间点的数据。"""
+    cache_key = f"{datetime.now().date().isoformat()} {timepoint}"
     with _SYNC_LOCK:
-        current = time.time()
-        if current - _last_sync_time < _SYNC_COOLDOWN:
-            logger.info(f"距上次同步不足 {_SYNC_COOLDOWN}s，跳过重复同步")
-            return True
-        if not sync_kingsoft_data():
-            return False
-        _last_sync_time = time.time()
-        return True
+        if cache_key in _SYNC_BATCH_RESULTS:
+            logger.info(f"时间点 {timepoint} 已完成同步，复用本批次结果")
+            return _SYNC_BATCH_RESULTS[cache_key]
+        result = sync_kingsoft_data()
+        if result:
+            _SYNC_BATCH_RESULTS[cache_key] = result
+        today_prefix = f"{datetime.now().date().isoformat()} "
+        for key in list(_SYNC_BATCH_RESULTS):
+            if not key.startswith(today_prefix):
+                del _SYNC_BATCH_RESULTS[key]
+        return result
 
 
-def send_customer_manager_reminders():
-    """发送客户经理提醒消息（对所有未达标的客户经理）"""
-    # 在 sync 之前抓触发时刻，确保所有经理消息显示同一个时间点（如18:15）
-    round_notice_time = datetime.now().strftime("%H:%M")
-    if not _sync_with_cooldown():
-        logger.error("金山数据同步失败，本轮客户经理提醒不使用旧数据发送")
+def _run_notification_batch(timepoint: str, callback, *args) -> None:
+    if not _sync_for_timepoint(timepoint):
+        logger.error(f"时间点 {timepoint} 金山同步失败，本批次不使用旧数据发送")
         return
+    callback(*args)
+
+
+def _send_customer_manager_reminders():
+    """发送客户经理提醒消息（对所有未达标的客户经理）。"""
+    # 在批次同步之后抓触发时刻，确保所有经理消息显示同一个时间点。
+    round_notice_time = datetime.now().strftime("%H:%M")
     target_date = get_target_date()
     logger.info(f"开始发送客户经理提醒，目标日期：{target_date}，本轮时间：{round_notice_time}")
 
     sent_count = 0
     for manager in CUSTOMER_MANAGERS:
+        report = {"message": "", "recipients": []}
         try:
             report = build_customer_manager_reminder(target_date, manager["name"], notice_time=round_notice_time)
             if not report.get("should_send", False):
@@ -110,7 +115,6 @@ def send_customer_manager_reminders():
             )
             sent_count += 1
             logger.info(f"成功发送提醒给 {manager['name']}")
-            time.sleep(60)
         except Exception as e:
             logger.error(f"发送提醒给 {manager['name']} 失败：{e}")
             add_send_log(
@@ -134,15 +138,13 @@ def send_customer_manager_reminders():
     logger.info(f"客户经理提醒完成，共发送 {sent_count} 条")
 
 
-def send_brief_notice_to_managers(manager_names: list[str]):
+def _send_brief_notice_to_managers(manager_names: list[str]):
     """发送简洁通报给指定管理者（支持同时@多人）"""
-    if not _sync_with_cooldown():
-        logger.error("金山数据同步失败，本轮简洁通报不使用旧数据发送")
-        return
     target_date = get_target_date()
     names_str = "、".join(manager_names)
     logger.info(f"开始发送简洁通报给 {names_str}，目标日期：{target_date}")
 
+    report = {"message": "", "recipients": []}
     try:
         report = build_manager_brief_notice(target_date)
 
@@ -181,14 +183,12 @@ def send_brief_notice_to_managers(manager_names: list[str]):
         )
 
 
-def send_detailed_notice_to_all():
+def _send_detailed_notice_to_all():
     """发送详细通报给所有管理者"""
-    if not _sync_with_cooldown():
-        logger.error("金山数据同步失败，本轮详细通报不使用旧数据发送")
-        return
     target_date = get_target_date()
     logger.info(f"开始发送详细通报，目标日期：{target_date}")
 
+    report = {"message": "", "recipients": []}
     try:
         report = build_manager_detailed_notice(target_date)
 
@@ -254,34 +254,9 @@ def send_weekly_report():
 
 
 def collect_final_data():
-    """最终数据收集（23:30），更新统计表"""
-    target_date = get_target_date()
-    logger.info(f"开始最终数据收集，目标日期：{target_date}")
-
-    try:
-        result = build_final_data_collection(target_date)
-        logger.info(f"数据收集完成：{result['results']}")
-
-        # 记录收集结果
-        add_send_log(
-            rule_key="final_data_collection",
-            status="success",
-            message_text=f"数据收集完成，处理 {len(result['results'])} 位客户经理",
-            mentioned=[],
-            record_ids=[],
-            webhook_response=str(result)
-        )
-
-    except Exception as e:
-        logger.error(f"最终数据收集失败：{e}")
-        add_send_log(
-            rule_key="final_data_collection",
-            status="failed",
-            message_text="数据收集失败",
-            mentioned=[],
-            record_ids=[],
-            error=str(e)
-        )
+    """最终数据收集（23:30）：独立同步，成功后由同步函数完成统计更新。"""
+    if not _sync_for_timepoint(FINAL_COLLECTION_TIME):
+        logger.error("23:30 金山同步失败，最终统计不使用旧数据")
 
 
 def sync_kingsoft_data():
@@ -312,9 +287,9 @@ def sync_kingsoft_data():
         )
         return False
 
-    # 轮询等待数据写入（最多 2 分钟，每 5 秒检查一次）
-    _POLL_INTERVAL = 5
-    _TIMEOUT = 120
+    # 金山脚本通常数秒内回调；短窗口避免阻塞后续时间点。
+    _POLL_INTERVAL = 2
+    _TIMEOUT = 30
     elapsed = 0
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
@@ -324,7 +299,17 @@ def sync_kingsoft_data():
             logger.info(f"金山数据已到达，接收时间：{after}，等待耗时 {elapsed}s")
             break
     else:
-        logger.warning(f"等待金山数据超时（{_TIMEOUT}s），继续执行后续任务")
+        logger.error(f"等待金山数据超时（{_TIMEOUT}s），本批次同步失败")
+        add_send_log(
+            rule_key="kingsoft_data_sync",
+            status="failed",
+            message_text="等待金山文档上传回调超时",
+            mentioned=[],
+            record_ids=[],
+            webhook_response=str(result),
+            error=f"timeout after {_TIMEOUT}s",
+        )
+        return False
 
     add_send_log(
         rule_key="kingsoft_data_sync",
@@ -391,9 +376,9 @@ def sync_kingsoft_data_only():
         )
         return
 
-    # 轮询等待数据写入（最多 2 分钟，每 5 秒检查一次）
-    _POLL_INTERVAL = 5
-    _TIMEOUT = 120
+    # 周末同步同样使用短窗口，避免占住后续任务。
+    _POLL_INTERVAL = 2
+    _TIMEOUT = 30
     elapsed = 0
     while elapsed < _TIMEOUT:
         time.sleep(_POLL_INTERVAL)
@@ -427,10 +412,9 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
     Returns:
         BackgroundScheduler实例
     """
-    # misfire_grace_time：服务在触发点前后重启时，默认只有 1 秒宽限，任务会被直接丢弃。
-    # 给 10 分钟宽限，重启刚好压到时间点也能补发；coalesce 保证只补最后一次，不会连发。
+    # 只补偿短暂抖动；长时间停机后不应把过期通报集中补发。
     scheduler = BackgroundScheduler(job_defaults={
-        "misfire_grace_time": 600,
+        "misfire_grace_time": 60,
         "coalesce": True,
         "max_instances": 1,
     })
@@ -439,38 +423,40 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         logger.info("调度器已创建但未启用定时任务，请在配置后手动启用")
         return scheduler
 
-    # 1. 客户经理提醒（周一~周五）
+    # 1. 客户经理提醒（周一~周五）。每个时间点独立同步一次。
     for time_str in CUSTOMER_MANAGER_REMINDER_TIMES:
         hour, minute = time_str.split(":")
         scheduler.add_job(
-            send_customer_manager_reminders,
+            _run_notification_batch,
             CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
+            args=[time_str, _send_customer_manager_reminders],
             id=f"cm_reminder_{time_str.replace(':', '')}",
             name=f"客户经理提醒 {time_str}",
-            replace_existing=True
+            replace_existing=True,
         )
 
-    # 2. 简洁通报 - 按时间表@对应管理者（周一~周五）
+    # 2. 简洁通报。与同一时间点的其他通报共享该时间点同步结果。
     for time_str, manager_names in BRIEF_NOTICE_SCHEDULE.items():
         hour, minute = time_str.split(":")
         names_label = "&".join(manager_names)
         scheduler.add_job(
-            send_brief_notice_to_managers,
+            _run_notification_batch,
             CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
-            args=[manager_names],
+            args=[time_str, _send_brief_notice_to_managers, manager_names],
             id=f"brief_{'_'.join(manager_names)}_{time_str.replace(':', '')}",
             name=f"简洁通报-{names_label} {time_str}",
-            replace_existing=True
+            replace_existing=True,
         )
 
-    # 4. 详细通报 - 所有管理者（周一~周五）
+    # 4. 详细通报 - 所有管理者（周一~周五）。22:00 使用 22:00 版本。
     hour, minute = DETAILED_NOTICE_TIME.split(":")
     scheduler.add_job(
-        send_detailed_notice_to_all,
+        _run_notification_batch,
         CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
+        args=[DETAILED_NOTICE_TIME, _send_detailed_notice_to_all],
         id="detailed_notice_all",
         name=f"详细通报-所有管理者 {DETAILED_NOTICE_TIME}",
-        replace_existing=True
+        replace_existing=True,
     )
 
     # 5. 最终数据收集（周一~周五）
@@ -479,8 +465,8 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         collect_final_data,
         CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
         id="final_data_collection",
-        name=f"最终数据收集 {FINAL_COLLECTION_TIME}",
-        replace_existing=True
+        name=f"最终数据收集 {FINAL_COLLECTION_TIME}（先同步）",
+        replace_existing=True,
     )
 
     # 6. 周通报 - 周三 12:15
