@@ -359,7 +359,18 @@
     <div class="card p-5 space-y-4">
       <p class="text-sm font-medium text-stone-700">手动发送通报</p>
       <div>
-        <label class="block text-xs text-stone-500 mb-1">通报规则</label>
+        <label class="block text-xs text-stone-500 mb-1">发送类型</label>
+        <select class="inp w-full" x-model="snd.mode" @change="onModeChange()">
+          <option value="">请选择</option>
+          <option value="rule">📋 通报规则</option>
+          <option value="rules-intro">📖 规则介绍</option>
+          <option value="custom">✏️ 自定义消息</option>
+        </select>
+      </div>
+
+      <!-- 通报规则选项 -->
+      <div x-show="snd.mode==='rule'">
+        <label class="block text-xs text-stone-500 mb-1">选择规则</label>
         <select class="inp w-full" x-model="snd.rule" @change="onRuleChange()">
           <option value="">请选择规则</option>
           <template x-for="r in snd.rules" :key="r.rule_key">
@@ -367,97 +378,93 @@
           </template>
         </select>
       </div>
-      <div>
+      <div x-show="snd.mode==='rule'">
         <label class="block text-xs text-stone-500 mb-1">通报日期</label>
         <input type="date" class="inp w-full" x-model="snd.date" @change="onRuleChange()">
       </div>
-      <!-- 接收人选择 -->
-      <div>
-        <div class="flex items-center justify-between mb-1.5">
-          <label class="block text-xs text-stone-500">
-            接收人（群内 @）
-            <span class="text-stone-400" x-text="'· 已选 '+snd.picked.length+' 人'"></span>
-          </label>
-          <div class="flex items-center gap-1.5">
-            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickDefault()">默认</button>
-            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickAll()">全选</button>
-            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="snd.picked=[]">清空</button>
-          </div>
+
+      <!-- 自定义消息选项 -->
+      <div x-show="snd.mode==='custom'" class="space-y-4">
+        <div>
+          <label class="block text-xs text-stone-500 mb-1">消息类型</label>
+          <select class="inp w-full" x-model="snd.customType" @change="onCustomTypeChange()">
+            <option value="text">📝 Text 文本（支持@）</option>
+            <option value="markdown">📄 Markdown（不支持@）</option>
+            <option value="image">🖼️ Image 图片（不支持@）</option>
+            <option value="news">📰 News 图文（不支持@）</option>
+          </select>
         </div>
-        <div class="rounded-lg border border-stone-200 p-3 space-y-3">
-          <template x-for="g in snd.groups" :key="g.key">
-            <div>
-              <div class="flex items-center gap-2 mb-1.5">
-                <span class="text-xs font-medium text-stone-500" x-text="g.label"></span>
-                <button type="button" class="text-xs text-amber-600 hover:text-amber-700"
-                  @click="toggleGroup(g)" x-text="groupAllPicked(g)?'取消本组':'选择本组'"></button>
-              </div>
-              <div class="flex flex-wrap gap-1.5">
-                <template x-for="m in g.members" :key="m.name">
-                  <button type="button" @click="togglePick(m.name)"
-                    class="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors"
-                    :class="snd.picked.includes(m.name)
-                      ? 'bg-amber-50 border-amber-300 text-amber-800'
-                      : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'">
-                    <span x-text="m.name"></span>
-                    <span x-show="!m.mentionable" class="text-red-400" title="未配置手机号或 userid，无法 @">!</span>
-                  </button>
-                </template>
-              </div>
-            </div>
-          </template>
-          <p class="text-sm text-stone-400" x-show="!snd.groups.length">加载中...</p>
-          <p class="text-xs text-stone-400 leading-relaxed">
-            不选任何人则消息正常发送到群里、但不 @ 任何人。修改后即以此处勾选为准，不再跟随规则默认。
+
+        <div x-show="snd.customType!=='text'" class="rounded-lg bg-amber-50 border border-amber-200 p-3">
+          <p class="text-xs text-amber-700 leading-relaxed">
+            ⚠️ 此消息类型不支持 @ 提醒。系统将先发送主消息，然后自动发送一条 Text 消息来 @ 选中的接收人。
           </p>
         </div>
-      </div>
-      <!-- 消息预览 / 编辑 -->
-      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:10rem">
-        <div class="flex items-center justify-between mb-2 gap-2">
-          <p class="text-xs text-stone-500 font-medium">
-            消息内容
-            <span x-show="snd.edited" class="text-amber-600">· 已编辑</span>
-          </p>
-          <div class="flex items-center gap-1.5 shrink-0">
-            <button type="button" class="btn-s text-xs py-0.5 px-2"
-              x-show="snd.edited" @click="resetMessage()">恢复原文</button>
-            <button type="button" class="btn-s text-xs py-0.5 px-2"
-              :disabled="!snd.rule" @click="snd.editing=!snd.editing"
-              x-text="snd.editing?'完成编辑':'编辑'"></button>
+
+        <!-- Text 编辑 -->
+        <div x-show="snd.customType==='text'">
+          <label class="block text-xs text-stone-500 mb-1">消息内容</label>
+          <textarea x-model="snd.customContent.text" rows="12" class="inp w-full leading-relaxed"
+            style="font-family:inherit" placeholder="请输入文本消息内容..."></textarea>
+        </div>
+
+        <!-- Markdown 编辑 -->
+        <div x-show="snd.customType==='markdown'">
+          <label class="block text-xs text-stone-500 mb-1">Markdown 内容</label>
+          <textarea x-model="snd.customContent.markdown" rows="12" class="inp w-full leading-relaxed font-mono text-sm"
+            placeholder="支持 Markdown 语法：\n# 标题\n**加粗** *斜体*\n- 列表项\n[链接](url)"></textarea>
+        </div>
+
+        <!-- Image 编辑 -->
+        <div x-show="snd.customType==='image'" class="space-y-3">
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">图片 Base64</label>
+            <textarea x-model="snd.customContent.image.base64" rows="6" class="inp w-full font-mono text-xs"
+              placeholder="粘贴图片的 base64 编码..."></textarea>
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">图片 MD5</label>
+            <input type="text" x-model="snd.customContent.image.md5" class="inp w-full font-mono text-sm"
+              placeholder="图片内容的 MD5 值">
           </div>
         </div>
-        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&!snd.rule">选择规则和日期后自动预览</p>
-        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&snd.rule">
-          该规则在此日期下条件未触发（无需发送）。如需强制发送，点「编辑」自行填写正文。
-        </p>
-        <textarea x-show="snd.editing" x-model="snd.preview" @input="snd.edited=true" rows="16"
-          class="inp w-full leading-relaxed" style="font-family:inherit"
-          placeholder="消息正文"></textarea>
-        <div x-show="snd.preview&&!snd.editing" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
-          <pre class="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit" x-text="snd.preview"></pre>
+
+        <!-- News 编辑 -->
+        <div x-show="snd.customType==='news'" class="space-y-3">
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">标题</label>
+            <input type="text" x-model="snd.customContent.news.title" class="inp w-full" placeholder="图文标题">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">描述</label>
+            <textarea x-model="snd.customContent.news.description" rows="3" class="inp w-full" placeholder="图文描述（可选）"></textarea>
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">图片URL</label>
+            <input type="text" x-model="snd.customContent.news.picurl" class="inp w-full" placeholder="https://example.com/image.jpg（可选）">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">跳转URL</label>
+            <input type="text" x-model="snd.customContent.news.url" class="inp w-full" placeholder="https://example.com/page">
+          </div>
+        </div>
+
+        <!-- @提醒文本（非text类型时） -->
+        <div x-show="snd.customType!=='text'&&snd.picked.length>0">
+          <label class="block text-xs text-stone-500 mb-1">@ 提醒文本</label>
+          <input type="text" x-model="snd.mentionText" class="inp w-full"
+            placeholder="这条文本消息将用于 @ 选中的接收人">
         </div>
       </div>
-      <button class="btn-p w-full py-2.5"
-        :disabled="!snd.rule||!snd.date||!snd.preview.trim()||loading" @click="doSend()">
-        <span x-text="loading?'发送中...':'立即发送到企业微信'"></span>
-      </button>
-    </div>
 
-    <!-- 规则介绍发送卡片 -->
-    <div class="card p-5 space-y-4 mt-4">
-      <div class="flex items-center justify-between">
-        <p class="text-sm font-medium text-stone-700">📋 发送规则介绍</p>
-        <span class="text-xs text-stone-400">快速发送预约填报管理规则</span>
-      </div>
-
-      <!-- 消息预览 -->
-      <div class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:8rem">
+      <!-- 规则介绍预览 -->
+      <div x-show="snd.mode==='rules-intro'" class="rounded-lg border border-stone-200 bg-stone-50 p-4">
         <div class="flex items-center justify-between mb-2">
           <p class="text-xs text-stone-500 font-medium">消息预览</p>
-          <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rules.showPreview=!rules.showPreview" x-text="rules.showPreview?'收起':'展开'"></button>
+          <button type="button" class="btn-s text-xs py-0.5 px-2" @click="snd.rulesPreviewExpanded=!snd.rulesPreviewExpanded"
+            x-text="snd.rulesPreviewExpanded?'收起':'展开'"></button>
         </div>
-        <div x-show="rules.showPreview" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
+        <div x-show="snd.rulesPreviewExpanded" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
           <pre class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit">📋【预约填报管理规则】
 
 ━━━━━━ ⏰ 填报时间规则 ━━━━━━
@@ -500,7 +507,7 @@
    · 金丹圣果：25 元
    · 天命赦令：30 元
 
-💡 访问地址：https://shanguantang.site/tianming/
+💡 访问地址：https://shanguantang.site/tianming
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
@@ -513,11 +520,12 @@
         <div class="flex items-center justify-between mb-1.5">
           <label class="block text-xs text-stone-500">
             接收人（群内 @）
-            <span class="text-stone-400" x-text="'· 已选 '+rules.picked.length+' 人'"></span>
+            <span class="text-stone-400" x-text="'· 已选 '+snd.picked.length+' 人'"></span>
           </label>
           <div class="flex items-center gap-1.5">
-            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rulesPickAll()">全选</button>
-            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="rules.picked=[]">清空</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickDefault()">默认</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="pickAll()">全选</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2" @click="snd.picked=[]">清空</button>
           </div>
         </div>
         <div class="rounded-lg border border-stone-200 p-3 space-y-3">
@@ -526,13 +534,13 @@
               <div class="flex items-center gap-2 mb-1.5">
                 <span class="text-xs font-medium text-stone-500" x-text="g.label"></span>
                 <button type="button" class="text-xs text-amber-600 hover:text-amber-700"
-                  @click="rulesToggleGroup(g)" x-text="rulesGroupAllPicked(g)?'取消本组':'选择本组'"></button>
+                  @click="toggleGroup(g)" x-text="groupAllPicked(g)?'取消本组':'选择本组'"></button>
               </div>
               <div class="flex flex-wrap gap-1.5">
                 <template x-for="m in g.members" :key="m.name">
-                  <button type="button" @click="rulesTogglePick(m.name)"
+                  <button type="button" @click="togglePick(m.name)"
                     class="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs border transition-colors"
-                    :class="rules.picked.includes(m.name)
+                    :class="snd.picked.includes(m.name)
                       ? 'bg-amber-50 border-amber-300 text-amber-800'
                       : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'">
                     <span x-text="m.name"></span>
@@ -544,14 +552,39 @@
           </template>
           <p class="text-sm text-stone-400" x-show="!snd.groups.length">加载中...</p>
           <p class="text-xs text-stone-400 leading-relaxed">
-            不选任何人则消息正常发送到群里、但不 @ 任何人。
+            不选任何人则消息正常发送到群里、但不 @ 任何人。修改后即以此处勾选为准，不再跟随规则默认。
           </p>
         </div>
       </div>
-
+      <!-- 消息预览 / 编辑（仅规则模式） -->
+      <div x-show="snd.mode==='rule'" class="rounded-lg border border-stone-200 bg-stone-50 p-4" style="min-height:10rem">
+        <div class="flex items-center justify-between mb-2 gap-2">
+          <p class="text-xs text-stone-500 font-medium">
+            消息内容
+            <span x-show="snd.edited" class="text-amber-600">· 已编辑</span>
+          </p>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button type="button" class="btn-s text-xs py-0.5 px-2"
+              x-show="snd.edited" @click="resetMessage()">恢复原文</button>
+            <button type="button" class="btn-s text-xs py-0.5 px-2"
+              :disabled="!snd.rule" @click="snd.editing=!snd.editing"
+              x-text="snd.editing?'完成编辑':'编辑'"></button>
+          </div>
+        </div>
+        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&!snd.rule">选择规则和日期后自动预览</p>
+        <p class="text-sm text-stone-400" x-show="!snd.preview&&!snd.editing&&snd.rule">
+          该规则在此日期下条件未触发（无需发送）。如需强制发送，点「编辑」自行填写正文。
+        </p>
+        <textarea x-show="snd.editing" x-model="snd.preview" @input="snd.edited=true" rows="16"
+          class="inp w-full leading-relaxed" style="font-family:inherit"
+          placeholder="消息正文"></textarea>
+        <div x-show="snd.preview&&!snd.editing" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
+          <pre class="text-sm text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit" x-text="snd.preview"></pre>
+        </div>
+      </div>
       <button class="btn-p w-full py-2.5"
-        :disabled="loading" @click="sendRulesIntroduction()">
-        <span x-text="loading?'发送中...':'📤 立即发送规则介绍'"></span>
+        :disabled="!canSend()||loading" @click="doSend()">
+        <span x-text="loading?'发送中...':'📤 立即发送到企业微信'"></span>
       </button>
     </div>
   </div>
@@ -889,8 +922,10 @@ function app(){
     // snd.picked 为已勾选姓名；snd.pickedTouched 表示用户改过勾选，之后不再跟随规则默认
     // snd.edited 表示正文被手工改过，重新预览时不覆盖
     snd:{rules:[],rule:'',date:'',preview:'',original:'',editing:false,edited:false,
-         groups:[],defaultNames:[],picked:[],pickedTouched:false},
-    rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态
+         groups:[],defaultNames:[],picked:[],pickedTouched:false,
+         mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
+         customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}}},
+    rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态（已废弃，保留兼容）
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
@@ -1017,22 +1052,105 @@ function app(){
       this.snd.pickedTouched=false;
     },
 
+    // 模式切换
+    onModeChange(){
+      this.snd.rule='';
+      this.snd.date='';
+      this.snd.preview='';
+      this.snd.original='';
+      this.snd.edited=false;
+      this.snd.editing=false;
+      this.snd.picked=[];
+      this.snd.pickedTouched=false;
+    },
+
+    // 自定义消息类型切换
+    onCustomTypeChange(){
+      // 重置内容
+      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}};
+    },
+
+    // 检查是否可以发送
+    canSend(){
+      if(this.snd.mode==='rule'){
+        return this.snd.rule && this.snd.date && this.snd.preview.trim();
+      }else if(this.snd.mode==='rules-intro'){
+        return true;
+      }else if(this.snd.mode==='custom'){
+        if(this.snd.customType==='text'){
+          return this.snd.customContent.text.trim();
+        }else if(this.snd.customType==='markdown'){
+          return this.snd.customContent.markdown.trim();
+        }else if(this.snd.customType==='image'){
+          return this.snd.customContent.image.base64.trim() && this.snd.customContent.image.md5.trim();
+        }else if(this.snd.customType==='news'){
+          return this.snd.customContent.news.title.trim() && this.snd.customContent.news.url.trim();
+        }
+      }
+      return false;
+    },
+
     async doSend(){
-      if(!this.snd.rule||!this.snd.date) return;
-      const who=this.snd.picked.length?`将 @ ${this.snd.picked.length} 人：${this.snd.picked.join('、')}`:'不 @ 任何人';
-      if(!await this.confirm(`确认发送此通报到企业微信？${who}`)) return;
-      this.loading=true;
-      try{
-        await Api.send({
-          rule_key:this.snd.rule,
-          target_date:this.snd.date,
-          message:this.snd.preview,
-          recipient_names:this.snd.picked,
-        });
-        this.toast('通报已发送');
-        this.snd.editing=false;
-      }catch(e){this.toast(e.message,true);}
-      finally{this.loading=false;}
+      // 规则模式
+      if(this.snd.mode==='rule'){
+        if(!this.snd.rule||!this.snd.date) return;
+        const who=this.snd.picked.length?`将 @ ${this.snd.picked.length} 人：${this.snd.picked.join('、')}`:'不 @ 任何人';
+        if(!await this.confirm(`确认发送此通报到企业微信？${who}`)) return;
+        this.loading=true;
+        try{
+          await Api.send({
+            rule_key:this.snd.rule,
+            target_date:this.snd.date,
+            message:this.snd.preview,
+            recipient_names:this.snd.picked,
+          });
+          this.toast('通报已发送 ✅');
+          this.snd.editing=false;
+        }catch(e){this.toast(e.message,true);}
+        finally{this.loading=false;}
+      }
+      // 规则介绍模式
+      else if(this.snd.mode==='rules-intro'){
+        const who=this.snd.picked.length?`将 @ ${this.snd.picked.length} 人：${this.snd.picked.join('、')}`:'不 @ 任何人';
+        if(!await this.confirm(`确认发送规则介绍到企业微信？${who}`)) return;
+        this.loading=true;
+        try{
+          await Api.sendRules({recipient_names:this.snd.picked});
+          this.toast('规则介绍已发送 📋');
+        }catch(e){this.toast(e.message,true);}
+        finally{this.loading=false;}
+      }
+      // 自定义消息模式
+      else if(this.snd.mode==='custom'){
+        const who=this.snd.picked.length?`将 @ ${this.snd.picked.length} 人：${this.snd.picked.join('、')}`:'不 @ 任何人';
+        if(!await this.confirm(`确认发送${this.getCustomTypeName()}消息到企业微信？${who}`)) return;
+        this.loading=true;
+        try{
+          let content={};
+          if(this.snd.customType==='text'){
+            content={text:this.snd.customContent.text};
+          }else if(this.snd.customType==='markdown'){
+            content={content:this.snd.customContent.markdown};
+          }else if(this.snd.customType==='image'){
+            content={base64:this.snd.customContent.image.base64,md5:this.snd.customContent.image.md5};
+          }else if(this.snd.customType==='news'){
+            content={articles:[this.snd.customContent.news]};
+          }
+          await Api.sendCustom({
+            message_type:this.snd.customType,
+            content:content,
+            recipient_names:this.snd.picked,
+            mention_text:this.snd.mentionText||'请及时查看'
+          });
+          this.toast('自定义消息已发送 ✅');
+        }catch(e){this.toast(e.message,true);}
+        finally{this.loading=false;}
+      }
+    },
+
+    getCustomTypeName(){
+      const names={text:'文本',markdown:'Markdown',image:'图片',news:'图文'};
+      return names[this.snd.customType]||'';
     },
 
     // 规则介绍相关方法

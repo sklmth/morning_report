@@ -38,7 +38,7 @@ from wecom_notice.db import (
 from wecom_notice.excel_export import export_cumulative_stats
 from wecom_notice.parser import normalize_record
 from wecom_notice.reporter import build_cumulative_statistics, build_report, default_target_date
-from wecom_notice.sender import send_text
+from wecom_notice.sender import send_text, send_markdown, send_image, send_news
 
 
 logger = logging.getLogger(__name__)
@@ -481,6 +481,85 @@ class SendRulesRequest(BaseModel):
     recipient_names: list[str] = Field(default_factory=list, description="接收人姓名列表")
 
 
+class SendCustomMessageRequest(BaseModel):
+    message_type: str = Field(..., description="消息类型: text, markdown, image, news")
+    content: dict = Field(..., description="消息内容")
+    recipient_names: list[str] = Field(default_factory=list, description="接收人姓名列表（用于@提醒）")
+    mention_text: str = Field(default="", description="当消息类型不支持@时，额外发送的文本消息")
+
+
+@app.post("/api/report/send-custom")
+def send_custom_message(payload: SendCustomMessageRequest):
+    """发送自定义消息到企业微信"""
+
+    # 查找接收人
+    recipients = find_recipients(payload.recipient_names) if payload.recipient_names else []
+
+    try:
+        # 根据消息类型发送
+        if payload.message_type == "text":
+            # text 类型直接支持 @
+            text_content = payload.content.get("text", "")
+            if not text_content.strip():
+                raise HTTPException(status_code=400, detail="文本内容为空")
+            response = send_text(text_content, recipients)
+            add_send_log("custom_text", "success", text_content, recipients, [], webhook_response=str(response))
+
+        elif payload.message_type == "markdown":
+            # markdown 不支持 @，需要先发 markdown，再发 text @人
+            markdown_content = payload.content.get("content", "")
+            if not markdown_content.strip():
+                raise HTTPException(status_code=400, detail="Markdown 内容为空")
+
+            # 发送 markdown 消息
+            response = send_markdown(markdown_content)
+            add_send_log("custom_markdown", "success", markdown_content, [], [], webhook_response=str(response))
+
+            # 如果有接收人，额外发送 text @人
+            if recipients and payload.mention_text.strip():
+                mention_response = send_text(payload.mention_text, recipients)
+                add_send_log("custom_markdown_mention", "success", payload.mention_text, recipients, [], webhook_response=str(mention_response))
+
+        elif payload.message_type == "image":
+            # image 不支持 @
+            base64_content = payload.content.get("base64", "")
+            md5_value = payload.content.get("md5", "")
+            if not base64_content or not md5_value:
+                raise HTTPException(status_code=400, detail="图片内容或 MD5 为空")
+
+            # 发送图片消息
+            response = send_image(base64_content, md5_value)
+            add_send_log("custom_image", "success", f"[图片消息 md5={md5_value}]", [], [], webhook_response=str(response))
+
+            # 如果有接收人，额外发送 text @人
+            if recipients and payload.mention_text.strip():
+                mention_response = send_text(payload.mention_text, recipients)
+                add_send_log("custom_image_mention", "success", payload.mention_text, recipients, [], webhook_response=str(mention_response))
+
+        elif payload.message_type == "news":
+            # news 不支持 @
+            articles = payload.content.get("articles", [])
+            if not articles:
+                raise HTTPException(status_code=400, detail="图文列表为空")
+
+            # 发送图文消息
+            response = send_news(articles)
+            add_send_log("custom_news", "success", f"[图文消息 {len(articles)} 条]", [], [], webhook_response=str(response))
+
+            # 如果有接收人，额外发送 text @人
+            if recipients and payload.mention_text.strip():
+                mention_response = send_text(payload.mention_text, recipients)
+                add_send_log("custom_news_mention", "success", payload.mention_text, recipients, [], webhook_response=str(mention_response))
+        else:
+            raise HTTPException(status_code=400, detail=f"不支持的消息类型: {payload.message_type}")
+
+    except RuntimeError as exc:
+        add_send_log(f"custom_{payload.message_type}", "failed", str(payload.content), recipients, [], error=str(exc))
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {"ok": True, "message_type": payload.message_type, "mentioned": recipients}
+
+
 @app.post("/api/report/send-rules")
 def send_rules_introduction(payload: SendRulesRequest):
     """发送规则介绍消息到企业微信"""
@@ -528,7 +607,7 @@ def send_rules_introduction(payload: SendRulesRequest):
    · 金丹圣果：25 元
    · 天命赦令：30 元
 
-💡 访问地址：http://shanguantang.site:tianming/
+💡 访问地址：https://shanguantang.site/tianming
 
 ━━━━━━━━━━━━━━━━━━━━━━
 

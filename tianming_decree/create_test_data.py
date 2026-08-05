@@ -72,7 +72,7 @@ def create_test_data():
     print("现在可以使用以下用户测试抽签功能了:")
     for user in test_users:
         print(f"  - {user['name']} ({user['phone']})")
-    print("访问地址: https://shanguantang.site/tianming/")
+    print("访问地址: https://shanguantang.site/tianming")
 
 
 if __name__ == "__main__":

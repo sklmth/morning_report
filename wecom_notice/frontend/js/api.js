@@ -39,6 +39,7 @@ const Api = (() => {
     preview: (body) => post('/report/preview', body),
     send:    (body) => post('/report/send', body),
     sendRules: (body) => post('/report/send-rules', body),
+    sendCustom: (body) => post('/report/send-custom', body),
     recipientOptions: () => req('/config/recipients'),
 
     // 调度器
