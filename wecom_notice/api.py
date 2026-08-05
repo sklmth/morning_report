@@ -506,7 +506,7 @@ def send_rules_introduction(payload: SendRulesRequest):
    · 不改变超时/漏填次数记录
    · 减免额度：5-30 元不等
 
-━━━━━━ 🎰 天命赦令系统 ━━━━━━
+━━━━━━ 🎰 天命赦令 ━━━━━━
 
 📅 休假制度：
    · 可在系统登记休假日期
@@ -532,7 +532,7 @@ def send_rules_introduction(payload: SendRulesRequest):
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-祝各位道友修行顺利，早日飞升！✨"""
+准时填报，好运相伴！🍀"""
 
     # 查找接收人
     recipients = find_recipients(payload.recipient_names) if payload.recipient_names else []
