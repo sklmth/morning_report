@@ -1268,7 +1268,7 @@ function app(){
       const len32=len8>>2;
       const extra=len8&3;
       // 填充
-      const padded=new Uint8Array(((len8+72)&~63)+64);
+      const padded=new Uint8Array(((len8+72)&~63));
       padded.set(bytes);
       padded[len8]=0x80;
       const view=new DataView(padded.buffer);
