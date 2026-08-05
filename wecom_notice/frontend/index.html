@@ -441,12 +441,16 @@
           <div>
             <label class="block text-xs text-stone-500 mb-1">封面图片</label>
             <input type="file" accept="image/*" @change="handleNewsPicUpload($event)" class="inp w-full text-sm">
-            <p class="text-xs text-stone-400 mt-1">或输入图片URL</p>
+            <p class="text-xs text-stone-400 mt-1">或直接输入图片 URL</p>
             <input type="text" x-model="snd.customContent.news.picurl" class="inp w-full mt-1" placeholder="https://example.com/image.jpg">
           </div>
-          <div x-show="snd.customContent.news.picurl">
+          <!-- 图片预览：上传优先，其次 URL -->
+          <div x-show="snd.customContent.news.picPreview || snd.customContent.news.picurl">
             <label class="block text-xs text-stone-500 mb-1">封面预览</label>
-            <img :src="snd.customContent.news.picurl" class="max-w-full h-auto rounded-lg border border-stone-200" @error="$event.target.style.display='none'">
+            <img :src="snd.customContent.news.picPreview || snd.customContent.news.picurl"
+              class="max-w-full h-auto rounded-lg border border-stone-200"
+              @error="$event.target.style.display='none'"
+              @load="$event.target.style.display=''">
           </div>
           <div>
             <label class="block text-xs text-stone-500 mb-1">跳转URL</label>
@@ -940,7 +944,7 @@ function app(){
     snd:{rules:[],rule:'',date:localDate(),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
-         customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}}},
+         customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}}},
     rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态（已废弃，保留兼容）
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
@@ -1083,7 +1087,7 @@ function app(){
     // 自定义消息类型切换
     onCustomTypeChange(){
       // 重置内容
-      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}};
+      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}};
     },
 
     // 检查是否可以发送
@@ -1230,7 +1234,7 @@ function app(){
 
       try{
         const base64 = await this.readFileAsBase64(file);
-        this.snd.customContent.news.picurl = base64; // 企业微信图文支持 data URL
+        this.snd.customContent.news.picPreview = 'data:image/jpeg;base64,' + base64; // 仅用于本地预览
       }catch(e){
         this.toast('图片处理失败: '+e.message,true);
       }
