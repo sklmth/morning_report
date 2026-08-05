@@ -1,4 +1,6 @@
 import logging
+import base64
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
@@ -558,6 +560,49 @@ def send_custom_message(payload: SendCustomMessageRequest):
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return {"ok": True, "message_type": payload.message_type, "mentioned": recipients}
+
+
+class UploadPicRequest(BaseModel):
+    data_url: str = Field(..., description="图片 data URL (data:image/xxx;base64,...)")
+
+
+_UPLOADS_DIR = _FRONTEND_DIR / "uploads"
+_ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+
+@app.post("/api/upload-pic")
+def upload_pic(payload: UploadPicRequest):
+    """接收前端 data URL，保存为文件，返回可公开访问的 URL"""
+    data_url = payload.data_url
+    # 解析 data URL: data:<mime>;base64,<data>
+    if not data_url.startswith("data:"):
+        raise HTTPException(status_code=400, detail="不是合法的 data URL")
+    try:
+        header, b64_data = data_url.split(",", 1)
+        mime = header.split(":")[1].split(";")[0]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="data URL 格式错误")
+
+    if mime not in _ALLOWED_MIME:
+        raise HTTPException(status_code=400, detail=f"不支持的图片类型: {mime}")
+
+    ext = mime.split("/")[1]
+    if ext == "jpeg":
+        ext = "jpg"
+
+    try:
+        img_bytes = base64.b64decode(b64_data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="base64 解码失败")
+
+    if len(img_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="图片大小超过 10MB")
+
+    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    (  _UPLOADS_DIR / filename).write_bytes(img_bytes)
+
+    return {"ok": True, "url": f"/uploads/{filename}"}
 
 
 @app.post("/api/report/send-rules")

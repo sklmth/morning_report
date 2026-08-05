@@ -1154,7 +1154,9 @@ function app(){
           }else if(this.snd.customType==='image'){
             content={base64:this.snd.customContent.image.base64,md5:this.snd.customContent.image.md5};
           }else if(this.snd.customType==='news'){
-            content={articles:[this.snd.customContent.news]};
+            // 发送前去掉 picPreview（仅用于本地预览，不发给企业微信）
+            const {picPreview, ...newsPayload} = this.snd.customContent.news;
+            content={articles:[newsPayload]};
           }
           await Api.sendCustom({
             message_type:this.snd.customType,
@@ -1233,10 +1235,16 @@ function app(){
       }
 
       try{
-        const base64 = await this.readFileAsBase64(file);
-        this.snd.customContent.news.picPreview = base64; // readFileAsBase64 已返回完整 data URL，仅用于本地预览
+        const dataUrl = await this.readFileAsBase64(file);
+        // 立即显示本地预览
+        this.snd.customContent.news.picPreview = dataUrl;
+        // 上传到服务器，拿到可公开访问的 URL（企业微信 picurl 必须是 HTTP URL）
+        this.toast('封面上传中…');
+        const res = await Api.uploadPic({data_url: dataUrl});
+        this.snd.customContent.news.picurl = window.location.origin + res.url;
+        this.toast('封面图片已上传 ✅');
       }catch(e){
-        this.toast('图片处理失败: '+e.message,true);
+        this.toast('图片上传失败: '+e.message, true);
       }
     },
 
