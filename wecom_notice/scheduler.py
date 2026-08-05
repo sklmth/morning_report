@@ -74,7 +74,9 @@ def _sync_for_timepoint(timepoint: str) -> bool:
         if cache_key in _SYNC_BATCH_RESULTS:
             logger.info(f"时间点 {timepoint} 已完成同步，复用本批次结果")
             return _SYNC_BATCH_RESULTS[cache_key]
-        result = sync_kingsoft_data()
+        # 只有 23:30 的最终同步才生成准时/超时/漏填统计。
+        # 其他时间点只刷新预约数据，不能把当前未满 2 户提前记为漏填。
+        result = sync_kingsoft_data(update_statistics=(timepoint == FINAL_COLLECTION_TIME))
         if result:
             _SYNC_BATCH_RESULTS[cache_key] = result
         today_prefix = f"{datetime.now().date().isoformat()} "
@@ -335,14 +337,14 @@ def collect_final_data():
         logger.error("23:30 金山同步失败，最终统计不使用旧数据")
 
 
-def sync_kingsoft_data():
+def sync_kingsoft_data(update_statistics: bool = False):
     """触发金山文档数据同步，阻塞等待数据写入服务器后再返回。
 
     流程：
     1. 记录当前金山脚本上传接收时间戳
     2. 向金山文档发送 webhook，触发 AirScript 上传
     3. 轮询上传接收时间，直到时间戳更新（服务器已接收）或超时
-    4. 数据到位后立即更新填报统计表
+    4. 仅在 23:30 最终同步批次更新填报统计表
     """
     logger.info("触发金山文档数据同步（同步模式）")
 
@@ -396,29 +398,30 @@ def sync_kingsoft_data():
         webhook_response=str(result),
     )
 
-    # 数据已更新，立即刷新填报统计表
+    # 只有 23:30 最终同步才刷新填报统计表。提醒批次不能提前生成漏填/超时记录。
     target_date = get_target_date()
-    try:
-        stats_result = build_final_data_collection(target_date)
-        logger.info(f"统计表已更新：处理 {len(stats_result['results'])} 位客户经理")
-        add_send_log(
-            rule_key="final_data_collection",
-            status="success",
-            message_text=f"统计表更新完成，处理 {len(stats_result['results'])} 位客户经理",
-            mentioned=[],
-            record_ids=[],
-            webhook_response=str(stats_result),
-        )
-    except Exception as e:
-        logger.error(f"统计表更新失败：{e}")
-        add_send_log(
-            rule_key="final_data_collection",
-            status="failed",
-            message_text="统计表更新失败",
-            mentioned=[],
-            record_ids=[],
-            error=str(e),
-        )
+    if update_statistics:
+        try:
+            stats_result = build_final_data_collection(target_date)
+            logger.info(f"统计表已更新：处理 {len(stats_result['results'])} 位客户经理")
+            add_send_log(
+                rule_key="final_data_collection",
+                status="success",
+                message_text=f"统计表更新完成，处理 {len(stats_result['results'])} 位客户经理",
+                mentioned=[],
+                record_ids=[],
+                webhook_response=str(stats_result),
+            )
+        except Exception as e:
+            logger.error(f"统计表更新失败：{e}")
+            add_send_log(
+                rule_key="final_data_collection",
+                status="failed",
+                message_text="统计表更新失败",
+                mentioned=[],
+                record_ids=[],
+                error=str(e),
+            )
 
     return True
 
