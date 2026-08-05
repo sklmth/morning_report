@@ -59,6 +59,8 @@ MANAGER_RECIPIENTS = [
 # 不参与任何自动通报，只能在前端「发送通报」里手动勾选。
 TEST_RECIPIENTS = [
     {"name": "李璇", "mobile": "18933136676", "wecom_userid": "", "role": "tester", "title": "测试"},
+    {"name": "黄家诚", "mobile": "19902381680", "wecom_userid": "", "role": "tester", "title": "测试"},
+    {"name": "曾俊宁", "mobile": "18128089992", "wecom_userid": "", "role": "tester", "title": "测试"},
 ]
 
 
