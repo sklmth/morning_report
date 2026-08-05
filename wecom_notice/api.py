@@ -41,7 +41,7 @@ from wecom_notice.db import (
 from wecom_notice.excel_export import export_cumulative_stats
 from wecom_notice.parser import normalize_record
 from wecom_notice.reporter import build_cumulative_statistics, build_report, default_target_date
-from wecom_notice.sender import send_text, send_markdown, send_image, send_news
+from wecom_notice.sender import send_text, send_markdown, send_image, send_news, send_template_card
 
 
 logger = logging.getLogger(__name__)
@@ -485,7 +485,7 @@ class SendRulesRequest(BaseModel):
 
 
 class SendCustomMessageRequest(BaseModel):
-    message_type: str = Field(..., description="消息类型: text, markdown, image, news")
+    message_type: str = Field(..., description="消息类型: text, markdown, image, news, template_card")
     content: dict = Field(..., description="消息内容")
     recipient_names: list[str] = Field(default_factory=list, description="接收人姓名列表（用于@提醒）")
     mention_text: str = Field(default="", description="当消息类型不支持@时，额外发送的文本消息")
@@ -553,6 +553,22 @@ def send_custom_message(payload: SendCustomMessageRequest):
             if recipients and payload.mention_text.strip():
                 mention_response = send_text(payload.mention_text, recipients)
                 add_send_log("custom_news_mention", "success", payload.mention_text, recipients, [], webhook_response=str(mention_response))
+
+        elif payload.message_type == "template_card":
+            # template_card 不支持 @
+            card_type = payload.content.get("card_type", "")
+            if card_type not in ["text_notice", "news_notice"]:
+                raise HTTPException(status_code=400, detail=f"不支持的卡片类型: {card_type}")
+
+            # 发送模板卡片消息
+            response = send_template_card(card_type, payload.content)
+            add_send_log(f"custom_template_card_{card_type}", "success", f"[模板卡片消息 {card_type}]", [], [], webhook_response=str(response))
+
+            # 如果有接收人，额外发送 text @人
+            if recipients and payload.mention_text.strip():
+                mention_response = send_text(payload.mention_text, recipients)
+                add_send_log("custom_template_card_mention", "success", payload.mention_text, recipients, [], webhook_response=str(mention_response))
+
         else:
             raise HTTPException(status_code=400, detail=f"不支持的消息类型: {payload.message_type}")
 

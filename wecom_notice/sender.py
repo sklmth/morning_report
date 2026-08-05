@@ -118,3 +118,21 @@ def send_news(articles: list[dict]) -> dict:
         }
     }
     return _send_webhook(payload)
+
+
+def send_template_card(card_type: str, template_card: dict) -> dict:
+    """
+    发送企业微信模板卡片消息（不支持 @）
+
+    Args:
+        card_type: 卡片类型，如 'text_notice' 或 'news_notice'
+        template_card: 卡片内容字典
+    """
+    payload = {
+        "msgtype": "template_card",
+        "template_card": {
+            "card_type": card_type,
+            **template_card
+        }
+    }
+    return _send_webhook(payload)

@@ -392,6 +392,8 @@
             <option value="markdown">📄 Markdown（不支持@）</option>
             <option value="image">🖼️ Image 图片（不支持@）</option>
             <option value="news">📰 News 图文（不支持@）</option>
+            <option value="template_card_text">🎴 模板卡片-文本通知（不支持@）</option>
+            <option value="template_card_news">🎴 模板卡片-图文展示（不支持@）</option>
           </select>
         </div>
 
@@ -455,6 +457,76 @@
           <div>
             <label class="block text-xs text-stone-500 mb-1">跳转URL</label>
             <input type="text" x-model="snd.customContent.news.url" class="inp w-full" placeholder="https://example.com/page">
+          </div>
+        </div>
+
+        <!-- 模板卡片 - 文本通知型 -->
+        <div x-show="snd.customType==='template_card_text'" class="space-y-3">
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">卡片来源</label>
+            <input type="text" x-model="snd.customContent.template_card_text.source" class="inp w-full" placeholder="系统通知">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">主标题</label>
+            <input type="text" x-model="snd.customContent.template_card_text.main_title" class="inp w-full" placeholder="卡片主标题">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">强调内容（可选）</label>
+            <input type="text" x-model="snd.customContent.template_card_text.emphasis_content" class="inp w-full" placeholder="高亮显示的内容">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">子标题（可选）</label>
+            <textarea x-model="snd.customContent.template_card_text.sub_title_text" rows="2" class="inp w-full" placeholder="副标题或补充说明"></textarea>
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">跳转链接（可选）</label>
+            <input type="text" x-model="snd.customContent.template_card_text.url" class="inp w-full" placeholder="https://example.com">
+          </div>
+          <div x-show="snd.customContent.template_card_text.url">
+            <label class="block text-xs text-stone-500 mb-1">按钮文字</label>
+            <input type="text" x-model="snd.customContent.template_card_text.btn_text" class="inp w-full" placeholder="查看详情">
+          </div>
+        </div>
+
+        <!-- 模板卡片 - 图文展示型 -->
+        <div x-show="snd.customType==='template_card_news'" class="space-y-3">
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">卡片来源</label>
+            <input type="text" x-model="snd.customContent.template_card_news.source" class="inp w-full" placeholder="系统通知">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">主标题</label>
+            <input type="text" x-model="snd.customContent.template_card_news.main_title" class="inp w-full" placeholder="卡片主标题">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">封面图片</label>
+            <input type="file" accept="image/*" @change="handleTemplateCardPicUpload($event)" class="inp w-full text-sm">
+            <p class="text-xs text-stone-400 mt-1">或直接输入图片 URL</p>
+            <input type="text" x-model="snd.customContent.template_card_news.image_url" class="inp w-full mt-1" placeholder="https://example.com/image.jpg">
+          </div>
+          <!-- 图片预览 -->
+          <div x-show="snd.customContent.template_card_news.image_preview || snd.customContent.template_card_news.image_url">
+            <label class="block text-xs text-stone-500 mb-1">封面预览</label>
+            <img :src="snd.customContent.template_card_news.image_preview || snd.customContent.template_card_news.image_url"
+              class="max-w-full h-auto rounded-lg border border-stone-200"
+              @error="$event.target.style.display='none'"
+              @load="$event.target.style.display=''">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">描述文字（可选）</label>
+            <textarea x-model="snd.customContent.template_card_news.desc" rows="2" class="inp w-full" placeholder="图文描述"></textarea>
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">图片跳转链接（可选）</label>
+            <input type="text" x-model="snd.customContent.template_card_news.image_url_link" class="inp w-full" placeholder="点击图片跳转的URL">
+          </div>
+          <div>
+            <label class="block text-xs text-stone-500 mb-1">按钮跳转链接（可选）</label>
+            <input type="text" x-model="snd.customContent.template_card_news.url" class="inp w-full" placeholder="https://example.com">
+          </div>
+          <div x-show="snd.customContent.template_card_news.url">
+            <label class="block text-xs text-stone-500 mb-1">按钮文字</label>
+            <input type="text" x-model="snd.customContent.template_card_news.btn_text" class="inp w-full" placeholder="查看详情">
           </div>
         </div>
 
@@ -944,7 +1016,14 @@ function app(){
     snd:{rules:[],rule:'',date:localDate(),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
-         customContent:{text:'',markdown:'',image:{base64:'',md5:'',dataUrl:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}}},
+         customContent:{
+           text:'',
+           markdown:'',
+           image:{base64:'',md5:'',dataUrl:''},
+           news:{title:'',description:'',picurl:'',picPreview:'',url:''},
+           template_card_text:{source:'',main_title:'',emphasis_content:'',sub_title_text:'',url:'',btn_text:'查看详情'},
+           template_card_news:{source:'',main_title:'',image_url:'',image_preview:'',desc:'',image_url_link:'',url:'',btn_text:'查看详情'}
+         }},
     rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态（已废弃，保留兼容）
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
@@ -1087,7 +1166,14 @@ function app(){
     // 自定义消息类型切换
     onCustomTypeChange(){
       // 重置内容
-      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:'',dataUrl:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}};
+      this.snd.customContent={
+        text:'',
+        markdown:'',
+        image:{base64:'',md5:'',dataUrl:''},
+        news:{title:'',description:'',picurl:'',picPreview:'',url:''},
+        template_card_text:{source:'',main_title:'',emphasis_content:'',sub_title_text:'',url:'',btn_text:'查看详情'},
+        template_card_news:{source:'',main_title:'',image_url:'',image_preview:'',desc:'',image_url_link:'',url:'',btn_text:'查看详情'}
+      };
     },
 
     // 检查是否可以发送
@@ -1105,6 +1191,10 @@ function app(){
           return this.snd.customContent.image.base64.trim() && this.snd.customContent.image.md5.trim();
         }else if(this.snd.customType==='news'){
           return this.snd.customContent.news.title.trim() && this.snd.customContent.news.url.trim();
+        }else if(this.snd.customType==='template_card_text'){
+          return this.snd.customContent.template_card_text.source.trim() && this.snd.customContent.template_card_text.main_title.trim();
+        }else if(this.snd.customType==='template_card_news'){
+          return this.snd.customContent.template_card_news.source.trim() && this.snd.customContent.template_card_news.main_title.trim() && this.snd.customContent.template_card_news.image_url.trim();
         }
       }
       return false;
@@ -1157,9 +1247,51 @@ function app(){
             // 发送前去掉 picPreview（仅用于本地预览，不发给企业微信）
             const {picPreview, ...newsPayload} = this.snd.customContent.news;
             content={articles:[newsPayload]};
+          }else if(this.snd.customType==='template_card_text'){
+            // 文本通知型模板卡片
+            content={
+              card_type:'text_notice',
+              source:{desc:this.snd.customContent.template_card_text.source},
+              main_title:{title:this.snd.customContent.template_card_text.main_title}
+            };
+            if(this.snd.customContent.template_card_text.emphasis_content){
+              content.emphasis_content={title:this.snd.customContent.template_card_text.emphasis_content};
+            }
+            if(this.snd.customContent.template_card_text.sub_title_text){
+              content.sub_title_text=this.snd.customContent.template_card_text.sub_title_text;
+            }
+            if(this.snd.customContent.template_card_text.url){
+              content.jump_list=[{
+                type:1,
+                url:this.snd.customContent.template_card_text.url,
+                title:this.snd.customContent.template_card_text.btn_text||'查看详情'
+              }];
+            }
+          }else if(this.snd.customType==='template_card_news'){
+            // 图文展示型模板卡片
+            const {image_preview, ...cardData} = this.snd.customContent.template_card_news;
+            content={
+              card_type:'news_notice',
+              source:{desc:cardData.source},
+              main_title:{title:cardData.main_title},
+              image_url:cardData.image_url
+            };
+            if(cardData.desc){
+              content.desc=cardData.desc;
+            }
+            if(cardData.image_url_link){
+              content.image_url_link=cardData.image_url_link;
+            }
+            if(cardData.url){
+              content.jump_list=[{
+                type:1,
+                url:cardData.url,
+                title:cardData.btn_text||'查看详情'
+              }];
+            }
           }
           await Api.sendCustom({
-            message_type:this.snd.customType,
+            message_type:this.snd.customType.startsWith('template_card')?'template_card':this.snd.customType,
             content:content,
             recipient_names:this.snd.picked,
             mention_text:this.snd.mentionText||'请及时查看'
@@ -1171,7 +1303,14 @@ function app(){
     },
 
     getCustomTypeName(){
-      const names={text:'文本',markdown:'Markdown',image:'图片',news:'图文'};
+      const names={
+        text:'文本',
+        markdown:'Markdown',
+        image:'图片',
+        news:'图文',
+        template_card_text:'模板卡片-文本通知',
+        template_card_news:'模板卡片-图文展示'
+      };
       return names[this.snd.customType]||'';
     },
 
@@ -1243,6 +1382,30 @@ function app(){
         this.toast('封面上传中…');
         const res = await Api.uploadPic({data_url: dataUrl});
         this.snd.customContent.news.picurl = res.url;
+        this.toast('封面图片已上传 ✅');
+      }catch(e){
+        this.toast('图片上传失败: '+e.message, true);
+      }
+    },
+
+    // 模板卡片图片上传处理
+    async handleTemplateCardPicUpload(event){
+      const file = event.target.files[0];
+      if(!file) return;
+
+      if(file.size > 10*1024*1024){
+        this.toast('图片大小不能超过 10MB',true);
+        return;
+      }
+
+      try{
+        const dataUrl = await this.readFileAsBase64(file);
+        // 立即显示本地预览
+        this.snd.customContent.template_card_news.image_preview = dataUrl;
+        // 上传到服务器，拿到可公开访问的 URL
+        this.toast('封面上传中…');
+        const res = await Api.uploadPic({data_url: dataUrl});
+        this.snd.customContent.template_card_news.image_url = window.location.origin + res.url;
         this.toast('封面图片已上传 ✅');
       }catch(e){
         this.toast('图片上传失败: '+e.message, true);
