@@ -1275,7 +1275,7 @@ function app(){
               card_type:'news_notice',
               source:{desc:cardData.source},
               main_title:{title:cardData.main_title},
-              image_url:cardData.image_url,
+              card_image:{url:cardData.image_url,aspect_ratio:1.3},
               card_action:{type:1,url:cardData.url||'https://shanguantang.site/tianming'}
             };
             if(cardData.desc){
