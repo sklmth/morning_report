@@ -193,8 +193,9 @@ def fine_rules_lines(overtime_count: int = 0, missing_count: int = 0) -> list[st
     lines.extend([
         "",
         "💡 规则说明：",
-        f"· 漏填：当天 {MISSING_CUTOFF} 前未填报 → {FINE_PER_MISSING} 元/次",
-        f"· 超时：{ON_TIME_CUTOFF} 后才填报 → 每累计 {OVERTIME_LOT_SIZE} 次上交 {FINE_PER_OVERTIME_LOT} 元",
+        f"· ✅ 准时：{ON_TIME_CUTOFF} 前完成填报 → 可换取天命赦令抽奖机会 🎴",
+        f"· ⏱️ 超时：{ON_TIME_CUTOFF} 后才填报 → 每累计 {OVERTIME_LOT_SIZE} 次上交 {FINE_PER_OVERTIME_LOT} 元",
+        f"· ❌ 漏填：当天 {MISSING_CUTOFF} 前未填报 → {FINE_PER_MISSING} 元/次",
         "· 按自然月统计，次月清零重新计算",
     ])
 
