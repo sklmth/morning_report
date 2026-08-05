@@ -921,6 +921,13 @@
 
 <script src="js/api.js"></script>
 <script>
+function localDate(date=new Date()){
+  const y=date.getFullYear();
+  const m=String(date.getMonth()+1).padStart(2,'0');
+  const d=String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+
 function app(){
   return {
     tab:localStorage.getItem('wecom_notice_tab')||'today', loading:false,
@@ -930,7 +937,7 @@ function app(){
     s:{start:'',end:'',data:null},
     // snd.picked 为已勾选姓名；snd.pickedTouched 表示用户改过勾选，之后不再跟随规则默认
     // snd.edited 表示正文被手工改过，重新预览时不覆盖
-    snd:{rules:[],rule:'',date:new Date().toISOString().slice(0,10),preview:'',original:'',editing:false,edited:false,
+    snd:{rules:[],rule:'',date:localDate(),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
          customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}}},
@@ -942,9 +949,9 @@ function app(){
     logModal:{show:false,item:null},
 
     async init(){
-      const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)};
-      const tod=new Date().toISOString().slice(0,10);
-      const monthAgo=()=>{const d=new Date();d.setDate(d.getDate()-30);return d.toISOString().slice(0,10)};
+      const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return localDate(d)};
+      const tod=localDate();
+      const monthAgo=()=>{const d=new Date();d.setDate(d.getDate()-30);return localDate(d)};
       const savedLogPage=Number(localStorage.getItem('wecom_notice_logs_page'));
       if(Number.isInteger(savedLogPage)&&savedLogPage>0) this.lg.page=savedLogPage;
       this.d.date=tom(); this.snd.date=tod; // 通报日期默认今天
@@ -977,7 +984,7 @@ function app(){
 
     shiftDate(n){
       const d=new Date();d.setDate(d.getDate()+n);
-      this.d.date=d.toISOString().slice(0,10);
+      this.d.date=localDate(d);
       this.loadToday();
     },
 
@@ -1064,7 +1071,7 @@ function app(){
     // 模式切换
     onModeChange(){
       this.snd.rule='';
-      this.snd.date='';
+      this.snd.date=this.snd.mode==='rule'?localDate():'';
       this.snd.preview='';
       this.snd.original='';
       this.snd.edited=false;
