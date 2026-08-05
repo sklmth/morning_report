@@ -406,7 +406,7 @@ def get_reminder_logs(date: str = "", manager: str = "", limit: int = 100) -> li
 
 
 def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict[str, int]:
-    """获取客户经理本月累计的历史超时和漏填次数。"""
+    """获取客户经理本月累计的准时、超时和漏填次数。"""
     from datetime import date as dt_date
 
     # 计算本月第一天
@@ -423,13 +423,16 @@ def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict
         params.append(before_date)
     where = " AND ".join(clauses)
     with connection() as conn:
+        on_time = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM fill_statistics WHERE {where} AND fill_status = 'on_time'", params
+        ).fetchone()["cnt"]
         overtime = conn.execute(
             f"SELECT COUNT(*) as cnt FROM fill_statistics WHERE {where} AND fill_status = 'overtime'", params
         ).fetchone()["cnt"]
         missing = conn.execute(
             f"SELECT COUNT(*) as cnt FROM fill_statistics WHERE {where} AND fill_status = 'missing'", params
         ).fetchone()["cnt"]
-    return {"overtime_count": overtime, "missing_count": missing}
+    return {"on_time_count": on_time, "overtime_count": overtime, "missing_count": missing}
 
 
 def increment_reminder_count(date: str, manager_name: str) -> int:

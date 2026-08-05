@@ -221,8 +221,9 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     if current_count >= required:
         return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name}
 
-    # 获取历史超时和漏填次数
+    # 获取历史准时、超时和漏填次数
     history = get_manager_history_counts(manager_name, target_date)
+    on_time_count = history["on_time_count"]
     overtime_count = history["overtime_count"]
     missing_count = history["missing_count"]
 
@@ -289,9 +290,11 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
 
     lines.append("")
 
-    if overtime_count > 0 or missing_count > 0:
+    if on_time_count > 0 or overtime_count > 0 or missing_count > 0:
         lines.append("")
         lines.append("📊 本月记录：")
+        if on_time_count > 0:
+            lines.append(f"   ✅ 准时填报：{on_time_count} 次")
         if overtime_count > 0:
             lines.append(f"   ⏱️ 超时填报：{overtime_count} 次")
         if missing_count > 0:
