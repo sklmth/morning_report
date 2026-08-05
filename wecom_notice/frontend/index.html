@@ -1234,7 +1234,7 @@ function app(){
 
       try{
         const base64 = await this.readFileAsBase64(file);
-        this.snd.customContent.news.picPreview = 'data:image/jpeg;base64,' + base64; // 仅用于本地预览
+        this.snd.customContent.news.picPreview = base64; // readFileAsBase64 已返回完整 data URL，仅用于本地预览
       }catch(e){
         this.toast('图片处理失败: '+e.message,true);
       }
