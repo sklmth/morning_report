@@ -930,7 +930,7 @@ function app(){
     s:{start:'',end:'',data:null},
     // snd.picked 为已勾选姓名；snd.pickedTouched 表示用户改过勾选，之后不再跟随规则默认
     // snd.edited 表示正文被手工改过，重新预览时不覆盖
-    snd:{rules:[],rule:'',date:'',preview:'',original:'',editing:false,edited:false,
+    snd:{rules:[],rule:'',date:new Date().toISOString().slice(0,10),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
          customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',url:''}}},
