@@ -1252,7 +1252,8 @@ function app(){
             content={
               card_type:'text_notice',
               source:{desc:this.snd.customContent.template_card_text.source},
-              main_title:{title:this.snd.customContent.template_card_text.main_title}
+              main_title:{title:this.snd.customContent.template_card_text.main_title},
+              card_action:{type:1,url:this.snd.customContent.template_card_text.url||'https://shanguantang.site/tianming'}
             };
             if(this.snd.customContent.template_card_text.emphasis_content){
               content.emphasis_content={title:this.snd.customContent.template_card_text.emphasis_content};
@@ -1274,7 +1275,8 @@ function app(){
               card_type:'news_notice',
               source:{desc:cardData.source},
               main_title:{title:cardData.main_title},
-              image_url:cardData.image_url
+              image_url:cardData.image_url,
+              card_action:{type:1,url:cardData.url||'https://shanguantang.site/tianming'}
             };
             if(cardData.desc){
               content.desc=cardData.desc;
@@ -1405,7 +1407,7 @@ function app(){
         // 上传到服务器，拿到可公开访问的 URL
         this.toast('封面上传中…');
         const res = await Api.uploadPic({data_url: dataUrl});
-        this.snd.customContent.template_card_news.image_url = window.location.origin + res.url;
+        this.snd.customContent.template_card_news.image_url = res.url;
         this.toast('封面图片已上传 ✅');
       }catch(e){
         this.toast('图片上传失败: '+e.message, true);
