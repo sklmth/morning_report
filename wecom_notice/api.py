@@ -1,5 +1,6 @@
 import logging
 import base64
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
@@ -568,6 +569,10 @@ class UploadPicRequest(BaseModel):
 
 _UPLOADS_DIR = _FRONTEND_DIR / "uploads"
 _ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+_PUBLIC_UPLOAD_BASE_URL = os.environ.get(
+    "WECOM_NOTICE_PUBLIC_UPLOAD_BASE_URL",
+    "https://shanguantang.site/wecom-notice/uploads",
+).rstrip("/")
 
 
 @app.post("/api/upload-pic")
@@ -602,7 +607,10 @@ def upload_pic(payload: UploadPicRequest):
     filename = f"{uuid.uuid4().hex}.{ext}"
     (  _UPLOADS_DIR / filename).write_bytes(img_bytes)
 
-    return {"ok": True, "url": f"/uploads/{filename}"}
+    return {
+        "ok": True,
+        "url": f"{_PUBLIC_UPLOAD_BASE_URL}/{filename}",
+    }
 
 
 @app.post("/api/report/send-rules")

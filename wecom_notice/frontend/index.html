@@ -422,9 +422,9 @@
             <input type="file" accept="image/*" @change="handleImageUpload($event)" class="inp w-full text-sm">
             <p class="text-xs text-stone-400 mt-1">支持 JPG、PNG、GIF 格式，最大 10MB</p>
           </div>
-          <div x-show="snd.customContent.image.base64">
+          <div x-show="snd.customContent.image.dataUrl">
             <label class="block text-xs text-stone-500 mb-1">图片预览</label>
-            <img :src="'data:image/png;base64,'+snd.customContent.image.base64" class="max-w-full h-auto rounded-lg border border-stone-200">
+            <img :src="snd.customContent.image.dataUrl" class="max-w-full h-auto rounded-lg border border-stone-200">
           </div>
         </div>
 
@@ -944,7 +944,7 @@ function app(){
     snd:{rules:[],rule:'',date:localDate(),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
-         customContent:{text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}}},
+         customContent:{text:'',markdown:'',image:{base64:'',md5:'',dataUrl:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}}},
     rules:{picked:[], showPreview:false}, // 规则介绍发送的接收人和预览状态（已废弃，保留兼容）
     sched:{running:false,desired:false,jobs:[]},
     sys:{roster:null,fineEnabled:false,fineRulesEnabled:false,fineSaving:false},
@@ -1087,7 +1087,7 @@ function app(){
     // 自定义消息类型切换
     onCustomTypeChange(){
       // 重置内容
-      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}};
+      this.snd.customContent={text:'',markdown:'',image:{base64:'',md5:'',dataUrl:''},news:{title:'',description:'',picurl:'',picPreview:'',url:''}};
     },
 
     // 检查是否可以发送
@@ -1219,6 +1219,7 @@ function app(){
         const md5 = this.calcMD5Base64(base64Data);
         this.snd.customContent.image.base64 = base64Data;
         this.snd.customContent.image.md5 = md5;
+        this.snd.customContent.image.dataUrl = base64;
       }catch(e){
         this.toast('图片处理失败: '+e.message,true);
       }
@@ -1241,7 +1242,7 @@ function app(){
         // 上传到服务器，拿到可公开访问的 URL（企业微信 picurl 必须是 HTTP URL）
         this.toast('封面上传中…');
         const res = await Api.uploadPic({data_url: dataUrl});
-        this.snd.customContent.news.picurl = window.location.origin + res.url;
+        this.snd.customContent.news.picurl = res.url;
         this.toast('封面图片已上传 ✅');
       }catch(e){
         this.toast('图片上传失败: '+e.message, true);
