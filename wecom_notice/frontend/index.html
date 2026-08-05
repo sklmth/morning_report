@@ -418,14 +418,13 @@
         <!-- Image 编辑 -->
         <div x-show="snd.customType==='image'" class="space-y-3">
           <div>
-            <label class="block text-xs text-stone-500 mb-1">图片 Base64</label>
-            <textarea x-model="snd.customContent.image.base64" rows="6" class="inp w-full font-mono text-xs"
-              placeholder="粘贴图片的 base64 编码..."></textarea>
+            <label class="block text-xs text-stone-500 mb-1">上传图片</label>
+            <input type="file" accept="image/*" @change="handleImageUpload($event)" class="inp w-full text-sm">
+            <p class="text-xs text-stone-400 mt-1">支持 JPG、PNG、GIF 格式，最大 2MB</p>
           </div>
-          <div>
-            <label class="block text-xs text-stone-500 mb-1">图片 MD5</label>
-            <input type="text" x-model="snd.customContent.image.md5" class="inp w-full font-mono text-sm"
-              placeholder="图片内容的 MD5 值">
+          <div x-show="snd.customContent.image.base64">
+            <label class="block text-xs text-stone-500 mb-1">图片预览</label>
+            <img :src="'data:image/png;base64,'+snd.customContent.image.base64" class="max-w-full h-auto rounded-lg border border-stone-200">
           </div>
         </div>
 
@@ -440,8 +439,14 @@
             <textarea x-model="snd.customContent.news.description" rows="3" class="inp w-full" placeholder="图文描述（可选）"></textarea>
           </div>
           <div>
-            <label class="block text-xs text-stone-500 mb-1">图片URL</label>
-            <input type="text" x-model="snd.customContent.news.picurl" class="inp w-full" placeholder="https://example.com/image.jpg（可选）">
+            <label class="block text-xs text-stone-500 mb-1">封面图片</label>
+            <input type="file" accept="image/*" @change="handleNewsPicUpload($event)" class="inp w-full text-sm">
+            <p class="text-xs text-stone-400 mt-1">或输入图片URL</p>
+            <input type="text" x-model="snd.customContent.news.picurl" class="inp w-full mt-1" placeholder="https://example.com/image.jpg">
+          </div>
+          <div x-show="snd.customContent.news.picurl">
+            <label class="block text-xs text-stone-500 mb-1">封面预览</label>
+            <img :src="snd.customContent.news.picurl" class="max-w-full h-auto rounded-lg border border-stone-200" @error="$event.target.style.display='none'">
           </div>
           <div>
             <label class="block text-xs text-stone-500 mb-1">跳转URL</label>
@@ -449,11 +454,15 @@
           </div>
         </div>
 
-        <!-- @提醒文本（非text类型时） -->
-        <div x-show="snd.customType!=='text'&&snd.picked.length>0">
-          <label class="block text-xs text-stone-500 mb-1">@ 提醒文本</label>
+        <!-- @提醒文本（非text类型时，始终显示） -->
+        <div x-show="snd.customType!=='text'">
+          <label class="block text-xs text-stone-500 mb-1">
+            @ 提醒文本
+            <span class="text-stone-400" x-show="snd.picked.length>0">(将发送给 <span x-text="snd.picked.length"></span> 人)</span>
+          </label>
           <input type="text" x-model="snd.mentionText" class="inp w-full"
-            placeholder="这条文本消息将用于 @ 选中的接收人">
+            placeholder="请及时查看">
+          <p class="text-xs text-stone-400 mt-1">系统将在发送主消息后，额外发送这条文本消息来 @ 选中的接收人</p>
         </div>
       </div>
 
@@ -938,7 +947,7 @@ function app(){
       const monthAgo=()=>{const d=new Date();d.setDate(d.getDate()-30);return d.toISOString().slice(0,10)};
       const savedLogPage=Number(localStorage.getItem('wecom_notice_logs_page'));
       if(Number.isInteger(savedLogPage)&&savedLogPage>0) this.lg.page=savedLogPage;
-      this.d.date=tom(); this.snd.date=tom();
+      this.d.date=tom(); this.snd.date=tod; // 通报日期默认今天
       this.s.start=monthAgo(); this.s.end=tod;
       await this.loadToday();
       await this.loadRules();
@@ -1179,6 +1188,84 @@ function app(){
         this.toast('规则介绍已发送 📋');
       }catch(e){this.toast(e.message,true);}
       finally{this.loading=false;}
+    },
+
+    // 图片上传处理
+    async handleImageUpload(event){
+      const file = event.target.files[0];
+      if(!file) return;
+
+      if(file.size > 2*1024*1024){
+        this.toast('图片大小不能超过 2MB',true);
+        return;
+      }
+
+      try{
+        const base64 = await this.readFileAsBase64(file);
+        const base64Data = base64.split(',')[1]; // 去掉 data:image/...;base64, 前缀
+        const md5 = await this.calculateMD5(base64Data);
+        this.snd.customContent.image.base64 = base64Data;
+        this.snd.customContent.image.md5 = md5;
+      }catch(e){
+        this.toast('图片处理失败: '+e.message,true);
+      }
+    },
+
+    // 图文封面上传处理
+    async handleNewsPicUpload(event){
+      const file = event.target.files[0];
+      if(!file) return;
+
+      if(file.size > 2*1024*1024){
+        this.toast('图片大小不能超过 2MB',true);
+        return;
+      }
+
+      try{
+        const base64 = await this.readFileAsBase64(file);
+        this.snd.customContent.news.picurl = base64; // 企业微信图文支持 data URL
+      }catch(e){
+        this.toast('图片处理失败: '+e.message,true);
+      }
+    },
+
+    // 读取文件为 Base64
+    readFileAsBase64(file){
+      return new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    },
+
+    // 计算 MD5
+    async calculateMD5(base64Str){
+      const binary = atob(base64Str);
+      const bytes = new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++){
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const hashBuffer = await crypto.subtle.digest('MD5',bytes).catch(()=>{
+        // Safari/老浏览器可能不支持MD5，降级使用简单hash
+        return this.simpleMD5(base64Str);
+      });
+      if(hashBuffer instanceof ArrayBuffer){
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b=>b.toString(16).padStart(2,'0')).join('');
+      }
+      return hashBuffer;
+    },
+
+    // 简单MD5实现（降级方案）
+    simpleMD5(str){
+      let hash = 0;
+      for(let i=0;i<str.length;i++){
+        const char = str.charCodeAt(i);
+        hash = ((hash<<5)-hash)+char;
+        hash = hash & hash;
+      }
+      return Math.abs(hash).toString(16).padStart(32,'0').slice(0,32);
     },
 
     async loadSys(){

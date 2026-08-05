@@ -1246,18 +1246,21 @@ def build_tomorrow_schedule_summary(target_date: str, rule: dict[str, Any]) -> d
 
 
 def build_visit_result_missing(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
-    """拜访回填提醒 - 按客户经理分组显示待回填记录"""
-    records = [record for record in get_records(status="missing_result") if record["appointment_date"] and record["appointment_date"] < target_date]
+    """拜访回填提醒 - 按客户经理分组显示待回填记录
+
+    统计的是 target_date 当天没有回填的预约记录
+    """
+    records = [record for record in get_records(status="missing_result") if record["appointment_date"] == target_date]
 
     current_time = datetime.now().strftime("%H:%M")
     lines = [
-        f"【拜访回填提醒】截至 {target_date}",
+        f"【拜访回填提醒】{target_date}",
         f"⏰ 通报时间：{current_time}",
         "",
     ]
 
     if records:
-        lines.append(f"以下 {len(records)} 条已预约记录尚未完整回填，请及时处理：")
+        lines.append(f"以下 {len(records)} 条 {target_date} 的预约记录尚未完整回填，请及时处理：")
         lines.append("")
 
         # 按客户经理分组
@@ -1282,7 +1285,7 @@ def build_visit_result_missing(target_date: str, rule: dict[str, Any]) -> dict[s
                 else:
                     lines.append(f"    · {appt_date}｜{company}")
     else:
-        lines.append("✅ 暂无待回填记录，工作进展顺利！")
+        lines.append(f"✅ {target_date} 暂无待回填记录，工作进展顺利！")
 
     recipients = recipients_for(rule.get("recipient_policy", {}), [record["manager_name"] for record in records])
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
