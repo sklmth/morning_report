@@ -158,7 +158,9 @@ CREATE TABLE IF NOT EXISTS performance_award_configs (
     award_round INTEGER NOT NULL DEFAULT 1,
     rank_from INTEGER NOT NULL,
     rank_to INTEGER NOT NULL,
-    metric TEXT NOT NULL DEFAULT 'points',   -- 'points' | 'gaotao'
+    metric TEXT NOT NULL DEFAULT 'cumulative_score',   -- cumulative_score | incremental_score | legacy points/gaotao
+    points_weight REAL NOT NULL DEFAULT 0.4,
+    gaotao_weight REAL NOT NULL DEFAULT 0.6,
     prize_name TEXT NOT NULL,
     prize_amount INTEGER NOT NULL,
     note TEXT NOT NULL DEFAULT '',
@@ -218,6 +220,11 @@ def init_db() -> None:
     Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
     with connection() as conn:
         conn.executescript(SCHEMA_SQL)
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(performance_award_configs)").fetchall()}
+        if "points_weight" not in columns:
+            conn.execute("ALTER TABLE performance_award_configs ADD COLUMN points_weight REAL NOT NULL DEFAULT 0.4")
+        if "gaotao_weight" not in columns:
+            conn.execute("ALTER TABLE performance_award_configs ADD COLUMN gaotao_weight REAL NOT NULL DEFAULT 0.6")
         timestamp = now()
         for rule in DEFAULT_RULES:
             conn.execute(
@@ -818,15 +825,20 @@ def save_award_config(
     metric: str,
     prize_name: str,
     prize_amount: int,
+    points_weight: float = 0.4,
+    gaotao_weight: float = 0.6,
     note: str = "",
 ) -> int:
     timestamp = now()
     with connection() as conn:
         cursor = conn.execute(
             """INSERT INTO performance_award_configs
-               (month, award_round, rank_from, rank_to, metric, prize_name, prize_amount, note, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (month, award_round, rank_from, rank_to, metric, prize_name, prize_amount, note, timestamp),
+               (month, award_round, rank_from, rank_to, metric, points_weight, gaotao_weight, prize_name, prize_amount, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                month, award_round, rank_from, rank_to, metric,
+                points_weight, gaotao_weight, prize_name, prize_amount, note, timestamp,
+            ),
         )
         return cursor.lastrowid
 
@@ -927,7 +939,14 @@ def get_dispatches(month: str, include_revoked: bool = False) -> list[dict[str, 
             f"SELECT * FROM performance_award_dispatches WHERE month = ?{extra} ORDER BY dispatch_date DESC, created_at DESC",
             params,
         ).fetchall()
-    return [dict(r) for r in rows]
+    return [
+        {
+            **dict(r),
+            # 前端按状态字段渲染有效/已撤回及操作按钮；保留 is_revoked 兼容旧调用方。
+            "status": "revoked" if r["is_revoked"] else "active",
+        }
+        for r in rows
+    ]
 
 
 def get_dispatch_by_id(dispatch_id: int) -> dict[str, Any] | None:

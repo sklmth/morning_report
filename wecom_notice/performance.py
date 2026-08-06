@@ -200,6 +200,32 @@ def compute_incremental_stats(month: str) -> dict:
     return {"uploads": uploads, "cumulative": cumulative, "incremental": incremental}
 
 
+def compute_current_incremental_stats(month: str, upload_id: int | None = None) -> list[dict]:
+    """计算最新上传数据相对上一次发奖快照的本期新增。"""
+    from wecom_notice.db import (
+        get_latest_dispatch_snapshot_map,
+        get_latest_performance_upload,
+        get_performance_stats,
+    )
+
+    if upload_id is None:
+        latest = get_latest_performance_upload(month)
+        if not latest:
+            return []
+        upload_id = latest["id"]
+
+    previous = get_latest_dispatch_snapshot_map(month) or {}
+    rows = get_performance_stats(month, upload_id=upload_id)
+    return [
+        {
+            "manager_name": row["manager_name"],
+            "inc_points": row["cumulative_points"] - previous.get(row["manager_name"], {}).get("cumulative_points", 0.0),
+            "inc_gaotao": row["cumulative_gaotao"] - previous.get(row["manager_name"], {}).get("cumulative_gaotao", 0.0),
+        }
+        for row in rows
+    ]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 三、Excel 导出（风格对齐企业走访通报）
 # ─────────────────────────────────────────────────────────────────────────────

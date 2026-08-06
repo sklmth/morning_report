@@ -712,7 +712,9 @@ class AwardConfigPayload(BaseModel):
     award_round: int = 1
     rank_from: int
     rank_to: int
-    metric: str = "points"    # "points" | "gaotao"
+    metric: str = "cumulative_score"    # cumulative_score | incremental_score
+    points_weight: float = 0.4
+    gaotao_weight: float = 0.6
     prize_name: str
     prize_amount: int
     note: str = ""
@@ -767,7 +769,7 @@ async def performance_upload(file: UploadFile = File(...), month: str = Query(""
 @app.get("/api/performance/stats/{month}")
 def performance_stats(month: str):
     """返回本月各轮次的累计 + 增量数据，以及本月已下发的奖励明细。"""
-    from wecom_notice.performance import compute_incremental_stats
+    from wecom_notice.performance import compute_current_incremental_stats, compute_incremental_stats
     from wecom_notice.db import get_dispatches, get_award_configs
 
     from wecom_notice.db import get_performance_snapshots
@@ -775,11 +777,13 @@ def performance_stats(month: str):
     dispatches = get_dispatches(month, include_revoked=True)
     configs = get_award_configs(month)
     snapshots = get_performance_snapshots(month)
+    latest_upload_id = result["uploads"][0]["id"] if result["uploads"] else None
     return {
         "month": month,
         "uploads": result["uploads"],
         "cumulative": result["cumulative"],
         "incremental": result["incremental"],
+        "current_incremental": compute_current_incremental_stats(month, latest_upload_id),
         "dispatches": dispatches,
         "award_configs": configs,
         "snapshots": snapshots,
@@ -789,6 +793,8 @@ def performance_stats(month: str):
 @app.get("/api/performance/stats/{month}/export")
 def performance_stats_export(month: str, upload_id: int = Query(0)):
     """下载专项业绩 Excel。新增列基准：本月最新一次下发奖励快照；首次发奖前显示 "-"。"""
+    from urllib.parse import quote
+
     from wecom_notice.performance import export_performance_excel
     from wecom_notice.db import get_latest_performance_upload, get_latest_dispatch_snapshot_map
 
@@ -801,10 +807,16 @@ def performance_stats_export(month: str, upload_id: int = Query(0)):
     prev_snapshot = get_latest_dispatch_snapshot_map(month)  # None → 尚未发过奖
     xlsx_bytes = export_performance_excel(month, upload_id, prev_snapshot=prev_snapshot)
     filename = f"专项业绩_{month}.xlsx"
+    encoded_filename = quote(filename)
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="performance_{month}.xlsx"; '
+                f"filename*=UTF-8''{encoded_filename}"
+            )
+        },
     )
 
 
@@ -815,7 +827,8 @@ def save_award_config_api(payload: AwardConfigPayload):
     cfg_id = save_award_config(
         payload.month, payload.award_round,
         payload.rank_from, payload.rank_to,
-        payload.metric, payload.prize_name, payload.prize_amount, payload.note,
+        payload.metric, payload.prize_name, payload.prize_amount,
+        payload.points_weight, payload.gaotao_weight, payload.note,
     )
     return {"ok": True, "id": cfg_id}
 
@@ -844,11 +857,13 @@ def dispatch_awards_api(payload: DispatchPayload):
     根据当月已配置的奖励规则 + 最新上传数据自动下发奖励（入库）。
     下发后奖品自动抵扣罚款。不发企业微信通知（由手动通报规则处理）。
     """
+    from datetime import date as dt_date
+
     from wecom_notice.db import (
         get_award_configs, get_latest_performance_upload,
-        get_performance_stats, dispatch_awards,
+        get_latest_dispatch_snapshot_map, get_performance_stats, dispatch_awards,
     )
-    from wecom_notice.performance import compute_incremental_stats
+    from wecom_notice.performance import compute_current_incremental_stats
 
     month = payload.month
     award_round = payload.award_round
@@ -861,18 +876,54 @@ def dispatch_awards_api(payload: DispatchPayload):
     if not latest:
         raise HTTPException(status_code=400, detail="本月暂无上传数据，请先上传完美一单")
 
-    # 根据配置规则计算各人应得奖励
-    inc_result = compute_incremental_stats(month)
-    incremental = inc_result["incremental"]
-
-    # 找到本轮次之前的最新上传（用于计算增量）
-    # 若第一轮用累计，否则用最近两次上传的增量
+    # 本期新增 = 最新上传数据 - 上一次实际发奖快照
     latest_uid = latest["id"]
     cum_rows = get_performance_stats(month, upload_id=latest_uid)
-    inc_rows_latest = incremental.get(latest_uid, [])
+    inc_rows_latest = compute_current_incremental_stats(month, latest_uid)
+    previous_snapshot = get_latest_dispatch_snapshot_map(month) or {}
 
-    def _rank_by_metric(rows: list[dict], metric_key: str) -> list[tuple[int, dict]]:
-        sorted_rows = sorted(rows, key=lambda x: x.get(metric_key, 0), reverse=True)
+    def _parse_date(value: str) -> dt_date | None:
+        try:
+            return dt_date.fromisoformat((value or "")[:10])
+        except ValueError:
+            return None
+
+    latest_date = _parse_date(latest.get("file_date", "")) or _parse_date(payload.dispatch_date) or dt_date.today()
+    previous_dates = [
+        parsed for row in previous_snapshot.values()
+        if (parsed := _parse_date(row.get("dispatch_date", ""))) is not None
+    ]
+    previous_date = max(previous_dates) if previous_dates else None
+    incremental_days = max((latest_date - previous_date).days, 1) if previous_date else 14
+
+    def _score_rows(
+        rows: list[dict],
+        points_key: str,
+        gaotao_key: str,
+        points_weight: float,
+        gaotao_weight: float,
+        days: int,
+    ) -> list[dict]:
+        points_target = 2500 * days / 14
+        gaotao_target = 14 * days / 14
+        base_rows = []
+        for row in rows:
+            completion_score = (
+                (row.get(points_key, 0) / points_target * points_weight)
+                + (row.get(gaotao_key, 0) / gaotao_target * gaotao_weight)
+            ) * 70
+            base_rows.append({**row, "completion_score": completion_score})
+
+        total = len(base_rows)
+        ranked_by_completion = sorted(base_rows, key=lambda x: x.get("completion_score", 0), reverse=True)
+        for idx, row in enumerate(ranked_by_completion):
+            rank_score = 30 if total <= 1 else 30 * (total - 1 - idx) / (total - 1)
+            row["rank_score"] = rank_score
+            row["score"] = row.get("completion_score", 0) + rank_score
+        return ranked_by_completion
+
+    def _rank_by_score(rows: list[dict]) -> list[tuple[int, dict]]:
+        sorted_rows = sorted(rows, key=lambda x: x.get("score", 0), reverse=True)
         return [(i + 1, r) for i, r in enumerate(sorted_rows)]
 
     dispatches_to_save: list[dict] = []
@@ -880,16 +931,22 @@ def dispatch_awards_api(payload: DispatchPayload):
         metric = cfg["metric"]
         rank_from = cfg["rank_from"]
         rank_to = cfg["rank_to"]
+        points_weight = cfg.get("points_weight", 0.4)
+        gaotao_weight = cfg.get("gaotao_weight", 0.6)
 
-        # 第一轮用累计，后续用增量
-        if award_round == 1:
-            metric_key = "cumulative_points" if metric == "points" else "cumulative_gaotao"
-            source_rows = cum_rows
+        if metric == "incremental_score":
+            source_rows = _score_rows(inc_rows_latest, "inc_points", "inc_gaotao", points_weight, gaotao_weight, incremental_days)
+            days = incremental_days
+        elif metric == "cumulative_score":
+            source_rows = _score_rows(cum_rows, "cumulative_points", "cumulative_gaotao", points_weight, gaotao_weight, 14)
+            days = 14
         else:
-            metric_key = "inc_points" if metric == "points" else "inc_gaotao"
-            source_rows = inc_rows_latest
+            # 兼容旧配置：points/gaotao 仍按对应单项排名。
+            points_key = "cumulative_points" if metric == "points" else "cumulative_gaotao"
+            source_rows = _score_rows(cum_rows, points_key, points_key, 1.0, 0.0, 14)
+            days = 14
 
-        ranked = _rank_by_metric(source_rows, metric_key)
+        ranked = _rank_by_score(source_rows)
         for rank, row in ranked:
             if rank_from <= rank <= rank_to:
                 dispatches_to_save.append({
@@ -898,6 +955,11 @@ def dispatch_awards_api(payload: DispatchPayload):
                     "prize_amount": cfg["prize_amount"],
                     "metric": metric,
                     "rank_position": rank,
+                    "note": (
+                        f"综合得分 {row.get('score', 0):.2f}"
+                        f"（完成率得分 {row.get('completion_score', 0):.2f}，排名修正 {row.get('rank_score', 0):.2f}，"
+                        f"积分系数 {points_weight:g}，高套系数 {gaotao_weight:g}，任务天数 {days}）"
+                    ),
                 })
 
     if not dispatches_to_save:

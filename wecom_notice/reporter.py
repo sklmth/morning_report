@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import date, datetime, timedelta
+import re
 from typing import Any
 
 from wecom_notice.config import CUSTOMER_MANAGERS, GAOZHUANG_STAFF, MANAGER_RECIPIENTS, ZHIYUN_ENGINEERS
@@ -1366,23 +1367,68 @@ def build_performance_award_notice(month: str, award_round: int = 1) -> dict[str
         "本次奖励明细如下：",
     ]
 
-    # 按指标分组展示
+    def _metric_label(metric: str) -> str:
+        labels = {
+            "cumulative_score": "🥇 累计综合得分排名",
+            "incremental_score": "📈 本期新增综合得分排名",
+            "points": "🥇 积分排名",
+            "gaotao": "📡 高套排名",
+        }
+        return labels.get(metric, metric or "综合排名")
+
+    def _score_detail(dispatch: dict[str, Any]) -> dict[str, str]:
+        note = dispatch.get("note") or ""
+        score_match = re.search(r"综合得分\s*([0-9.]+)", note)
+        completion_match = re.search(r"完成率得分\s*([0-9.]+)", note)
+        rank_match = re.search(r"排名修正\s*([0-9.]+)", note)
+        weights_match = re.search(r"积分系数\s*([0-9.]+)，高套系数\s*([0-9.]+)", note)
+        days_match = re.search(r"任务天数\s*([0-9.]+)", note)
+        return {
+            "score": score_match.group(1) if score_match else "",
+            "completion_score": completion_match.group(1) if completion_match else "",
+            "rank_score": rank_match.group(1) if rank_match else "",
+            "points_weight": weights_match.group(1) if weights_match else "0.4",
+            "gaotao_weight": weights_match.group(2) if weights_match else "0.6",
+            "days": days_match.group(1) if days_match else "14",
+        }
+
+    def _formula_line(metric: str, group: list[dict[str, Any]]) -> str:
+        if metric not in {"cumulative_score", "incremental_score"}:
+            return ""
+        detail = _score_detail(group[0])
+        source = "累计积分、累计高套数" if metric == "cumulative_score" else "本期新增积分、本期新增高套数"
+        target = "高套任务 14、积分任务 2500" if metric == "cumulative_score" else f"按 {detail['days']} 天折算任务值（高套 14×{detail['days']}/14、积分 2500×{detail['days']}/14）"
+        return (
+            f"   计算规则：按{source}计算；{target}；完成率得分 = "
+            f"(积分完成率 × {detail['points_weight']} + 高套完成率 × {detail['gaotao_weight']}) × 70；"
+            f"排名修正最高 30 分、最后 0 分，按客户经理人数线性分配；综合得分 = 完成率得分 + 排名修正。"
+        )
+
+    metric_order = ["cumulative_score", "incremental_score", "points", "gaotao"]
+
+    # 按指标/类型分组展示
     by_metric: dict[str, list] = {}
     for d in dispatches:
-        key = d.get("metric", "points")
+        key = d.get("metric", "cumulative_score")
         by_metric.setdefault(key, []).append(d)
 
-    metric_labels = {"points": "🥇 积分排名", "gaotao": "📡 高套排名"}
-    for metric_key in ("points", "gaotao"):
+    for metric_key in metric_order + [k for k in by_metric if k not in metric_order]:
         group = by_metric.get(metric_key, [])
         if not group:
             continue
         lines.append("")
-        lines.append(metric_labels.get(metric_key, metric_key) + "：")
+        lines.append(_metric_label(metric_key) + "：")
+        formula = _formula_line(metric_key, group)
+        if formula:
+            lines.append(formula)
         for d in sorted(group, key=lambda x: x.get("rank_position", 99)):
             rank = d.get("rank_position", 0)
             rank_str = f"第{rank}名 " if rank > 0 else ""
-            lines.append(f"   {rank_str}{d['manager_name']} — {d['prize_name']}（{d['prize_amount']}元）")
+            detail = _score_detail(d)
+            score_str = f"｜得分 {detail['score']}" if detail["score"] else ""
+            if detail["completion_score"] and detail["rank_score"]:
+                score_str += f"（完成率 {detail['completion_score']} + 排名修正 {detail['rank_score']}）"
+            lines.append(f"   {rank_str}{d['manager_name']} — {d['prize_name']}（{d['prize_amount']}元）{score_str}")
 
     lines.extend([
         "",

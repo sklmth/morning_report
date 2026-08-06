@@ -985,11 +985,19 @@
         <input type="number" class="inp text-sm py-1 w-16" x-model.number="pf.newConfig.rank_to" min="1">
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-stone-500">指标</label>
+        <label class="text-xs text-stone-500">类型</label>
         <select class="inp text-sm py-1" x-model="pf.newConfig.metric">
-          <option value="points">积分</option>
-          <option value="gaotao">高套数</option>
+          <option value="cumulative_score">累计综合</option>
+          <option value="incremental_score">本期新增综合</option>
         </select>
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-stone-500">积分系数</label>
+        <input type="number" class="inp text-sm py-1 w-20" x-model.number="pf.newConfig.points_weight" min="0" step="0.1">
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs text-stone-500">高套系数</label>
+        <input type="number" class="inp text-sm py-1 w-20" x-model.number="pf.newConfig.gaotao_weight" min="0" step="0.1">
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-xs text-stone-500">奖品</label>
@@ -1012,7 +1020,9 @@
           <span class="text-xs text-stone-400 w-12 shrink-0 text-center" x-text="'第'+cfg.award_round+'轮'"></span>
           <span class="text-xs text-stone-400 w-20 shrink-0"
             x-text="'第'+cfg.rank_from+(cfg.rank_to!==cfg.rank_from?'~'+cfg.rank_to:'')+'名'"></span>
-          <span class="text-xs badge-n shrink-0" x-text="cfg.metric==='points'?'积分':'高套'"></span>
+          <span class="text-xs badge-n shrink-0" x-text="perfMetricLabel(cfg)"></span>
+          <span class="text-xs text-stone-400 shrink-0"
+            x-text="'积分×'+(cfg.points_weight??0.4)+' + 高套×'+(cfg.gaotao_weight??0.6)"></span>
           <span class="font-medium text-stone-700 flex-1" x-text="cfg.prize_name||'—'"></span>
           <span class="text-stone-500 text-xs" x-show="cfg.prize_amount>0" x-text="cfg.prize_amount+'元'"></span>
           <button class="text-red-400 hover:text-red-600 text-xs px-2 py-0.5 rounded hover:bg-red-50 transition-colors"
@@ -1388,8 +1398,8 @@ function app(){
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
     lg:{list:[],lim:20,page:1,total:0,pages:1,succ:0,fail:0},
     logModal:{show:false,item:null},
-    pf:{month:'',uploads:[],cumulative:{},incremental:{},dispatches:[],configs:[],snapshots:[],loading:false,
-        newConfig:{award_round:1,rank_from:1,rank_to:1,metric:'points',prize_name:'聚灵丹',prize_amount:5,note:''},
+    pf:{month:'',uploads:[],cumulative:{},incremental:{},currentIncremental:[],dispatches:[],configs:[],snapshots:[],loading:false,
+        newConfig:{award_round:1,rank_from:1,rank_to:1,metric:'cumulative_score',points_weight:0.4,gaotao_weight:0.6,prize_name:'聚灵丹',prize_amount:5,note:''},
         dispatchRound:1},
 
     async init(){
@@ -2043,6 +2053,7 @@ function app(){
         this.pf.uploads   = data.uploads      || [];
         this.pf.cumulative= data.cumulative   || {};
         this.pf.incremental=data.incremental  || {};
+        this.pf.currentIncremental=data.current_incremental || [];
         this.pf.dispatches= data.dispatches   || [];
         this.pf.configs   = data.award_configs|| [];
         this.pf.snapshots = data.snapshots    || [];
@@ -2073,6 +2084,8 @@ function app(){
           rank_from:     c.rank_from,
           rank_to:       c.rank_to,
           metric:        c.metric,
+          points_weight: c.points_weight??0.4,
+          gaotao_weight: c.gaotao_weight??0.6,
           prize_name:    c.prize_name||(c.prize_amount+'元'),
           prize_amount:  c.prize_amount,
           note:          c.note||'',
@@ -2114,12 +2127,21 @@ function app(){
       const latest=this.pf.uploads[0]; // uploads 按 uploaded_at DESC，[0] 最新
       Api.perfExport(this.pf.month, latest.id);
     },
+    perfMetricLabel(cfg){
+      const labels={
+        cumulative_score:'累计综合',
+        incremental_score:'本期新增综合',
+        points:'积分',
+        gaotao:'高套',
+      };
+      return labels[cfg.metric]||cfg.metric||'综合';
+    },
     // 辅助：取最新上传的积分排名行（按累计降序）
     perfPointsRows(){
       if(!this.pf.uploads.length) return [];
       const uid=String(this.pf.uploads[0].id);  // uploads 按 uploaded_at DESC，[0] 最新
       const cum=this.pf.cumulative[uid]||[];
-      const inc=this.pf.incremental[uid]||[];
+      const inc=this.pf.currentIncremental||[];
       const incMap=Object.fromEntries(inc.map(r=>[r.manager_name, r.inc_points??0]));
       return cum
         .map(r=>({name:r.manager_name, total:r.cumulative_points??0, inc:incMap[r.manager_name]??0}))
@@ -2130,7 +2152,7 @@ function app(){
       if(!this.pf.uploads.length) return [];
       const uid=String(this.pf.uploads[0].id);  // uploads 按 uploaded_at DESC，[0] 最新
       const cum=this.pf.cumulative[uid]||[];
-      const inc=this.pf.incremental[uid]||[];
+      const inc=this.pf.currentIncremental||[];
       const incMap=Object.fromEntries(inc.map(r=>[r.manager_name, r.inc_gaotao??0]));
       return cum
         .map(r=>({name:r.manager_name, total:r.cumulative_gaotao??0, inc:incMap[r.manager_name]??0}))
