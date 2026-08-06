@@ -429,6 +429,60 @@ def sync_kingsoft_data(update_statistics: bool = False):
 # 周末数据同步时间点（周六、周日均执行；仅入库，不影响填报统计指标）
 WEEKEND_SYNC_TIMES = ["12:00", "18:00", "22:00", "23:30"]
 
+# 只读数据同步时间点（周一~周五，仅同步金山数据，不发送任何通报）
+# 用于在页面上查看客户经理的实时预约情况
+READONLY_SYNC_TIMES = ["10:00", "12:00", "14:00", "16:00"]
+
+
+def sync_kingsoft_data_readonly():
+    """工作日只读同步（周一~周五）：仅触发金山文档数据同步入库，不发送任何通报，不更新统计。
+
+    用于在前端页面上实时查看客户经理的预约情况。
+    与通报时间点的同步独立，不共享批次缓存。
+    """
+    logger.info("只读数据同步：触发金山文档数据入库（不发送通报，不更新统计）")
+
+    before = latest_airscript_upload()
+    try:
+        result = trigger_kingsoft_data_sync()
+        logger.info(f"只读数据同步触发成功：{result}")
+    except Exception as e:
+        logger.error(f"只读数据同步失败：{e}")
+        add_send_log(
+            rule_key="readonly_kingsoft_sync",
+            status="failed",
+            message_text="只读数据同步失败",
+            mentioned=[],
+            record_ids=[],
+            error=str(e),
+        )
+        return
+
+    # 使用短窗口，避免占住后续任务
+    _POLL_INTERVAL = 2
+    _TIMEOUT = 30
+    elapsed = 0
+    while elapsed < _TIMEOUT:
+        time.sleep(_POLL_INTERVAL)
+        elapsed += _POLL_INTERVAL
+        after = latest_airscript_upload()
+        if after != before:
+            logger.info(f"只读同步：金山数据已到达，接收时间：{after}，耗时 {elapsed}s")
+            break
+    else:
+        logger.warning(f"只读同步：等待金山数据超时（{_TIMEOUT}s）")
+
+    add_send_log(
+        rule_key="readonly_kingsoft_sync",
+        status="success",
+        message_text="只读数据同步完成（仅入库，不发送通报，不更新统计）",
+        mentioned=[],
+        record_ids=[],
+        webhook_response=str(result),
+    )
+    # 注意：此处故意不调用 build_final_data_collection，
+    # 只读同步不影响任何统计指标，纯粹用于页面查看。
+
 
 def sync_kingsoft_data_only():
     """周末专用（周六/周日）：仅触发金山文档数据同步入库，不更新 fill_statistics。
@@ -592,6 +646,17 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
             CronTrigger(day_of_week="sat,sun", hour=int(hour), minute=int(minute)),
             id=f"weekend_sync_{time_str.replace(':', '')}",
             name=f"周末数据同步 {time_str}",
+            replace_existing=True,
+        )
+
+    # 11. 只读数据同步（周一~周五；仅入库查看，不发送通报，不更新统计）
+    for time_str in READONLY_SYNC_TIMES:
+        hour, minute = time_str.split(":")
+        scheduler.add_job(
+            sync_kingsoft_data_readonly,
+            CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
+            id=f"readonly_sync_{time_str.replace(':', '')}",
+            name=f"只读数据同步 {time_str}",
             replace_existing=True,
         )
 
