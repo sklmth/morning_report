@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tianming_decree import db, lottery
-from wecom_notice.config import CUSTOMER_MANAGERS
+from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
 from wecom_notice.db import get_fill_statistics
 
 app = Flask(__name__, static_folder="static")
@@ -30,9 +30,14 @@ def index():
 
 @app.route("/api/managers", methods=["GET"])
 def get_managers():
-    """获取所有客户经理列表"""
+    """获取所有客户经理和管理者列表"""
     current_month = date.today().strftime("%Y-%m")
-    configured = [m["name"] for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)]
+    # 客户经理（排除实习期）
+    configured_managers = [m["name"] for m in CUSTOMER_MANAGERS if not m.get("exclude_reminder", False)]
+    # 管理者
+    configured_management = [m["name"] for m in MANAGER_RECIPIENTS]
+    # 合并并去重
+    configured = configured_managers + configured_management
     monthly_names = db.get_monthly_manager_names(current_month)
     managers = list(dict.fromkeys(configured + monthly_names))
     return jsonify({"managers": managers})
