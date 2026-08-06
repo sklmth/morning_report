@@ -476,7 +476,7 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
                 opportunity = r.get("opportunity_content", "")
 
                 # 第一行：企业名称（交付人员）+ 拜访对象类型
-                line1_parts = [company, f"（{delivery_label(r['delivery_staff_name'])}）"]
+                line1_parts = ["    · ", company, f"（{delivery_label(r['delivery_staff_name'])}）"]
                 if object_type:
                     line1_parts.append(f" [{object_type}]")
                 details.append("".join(line1_parts))
