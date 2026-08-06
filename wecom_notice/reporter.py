@@ -210,26 +210,26 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
     客户经理提醒消息：单独@客户经理，显示已填户数、超时/漏填历史、今日提醒次数。
     填了2户及以上的不返回消息（should_send=False）。
     实习期人员（exclude_reminder=True）不发送提醒。
-    休假人员（vacation_dates包含今天或明天）不发送提醒。
+    休假人员（通过天命赦令模块判断）不发送提醒。
     """
     # 检查是否需要排除提醒
     manager_obj = next((m for m in CUSTOMER_MANAGERS if m["name"] == manager_name), None)
     if manager_obj and manager_obj.get("exclude_reminder", False):
         return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name, "excluded": True}
 
-    # 检查休假：休假前一天和休假期间不提醒
-    if manager_obj:
-        vacation_dates = manager_obj.get("vacation_dates", [])
-        if vacation_dates:
-            from datetime import date as dt_date, timedelta
-            today = dt_date.today()
-            tomorrow = today + timedelta(days=1)
-            today_str = today.isoformat()
-            tomorrow_str = tomorrow.isoformat()
+    # 检查休假：通过天命赦令模块判断（休假前一天和休假期间不提醒）
+    try:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from tianming_decree import db as tianming_db
 
-            # 如果今天或明天在休假列表中，不发送提醒
-            if today_str in vacation_dates or tomorrow_str in vacation_dates:
-                return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name, "on_vacation": True}
+        today = date.today().isoformat()
+        if tianming_db.is_on_vacation(manager_name, today):
+            return {"message": "", "recipients": [], "should_send": False, "manager_name": manager_name, "on_vacation": True}
+    except Exception:
+        # 如果天命赦令模块不可用，继续执行（不影响提醒）
+        pass
 
     records = records_in_window(target_date, manager_name)
     current_count = len(records)
@@ -472,14 +472,19 @@ def build_manager_detailed_notice(target_date: str, required: int = 2) -> dict[s
             details = []
             for r in manager_records[:3]:  # 最多显示3条
                 company = r["company_name"] or "未填写企业"
+                object_type = r.get("object_type", "")
                 opportunity = r.get("opportunity_content", "")
-                # 商机内容：截取前30字符避免过长
+
+                # 第一行：企业名称（交付人员）+ 拜访对象类型
+                line1_parts = [company, f"（{delivery_label(r['delivery_staff_name'])}）"]
+                if object_type:
+                    line1_parts.append(f" [{object_type}]")
+                details.append("".join(line1_parts))
+
+                # 第二行：商机内容（如果有）
                 if opportunity:
                     opportunity_short = opportunity[:30] + "..." if len(opportunity) > 30 else opportunity
-                    details.append(f"    · {company}（{delivery_label(r['delivery_staff_name'])}）")
                     details.append(f"      商机：{opportunity_short}")
-                else:
-                    details.append(f"    · {company}（{delivery_label(r['delivery_staff_name'])}）")
             if len(manager_records) > 3:
                 details.append(f"    ... 还有 {len(manager_records) - 3} 户")
 
