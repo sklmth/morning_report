@@ -7,9 +7,9 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -696,6 +696,227 @@ def send_rules_introduction(payload: SendRulesRequest):
 
     add_send_log("rules_introduction", "success", message, recipients, [], webhook_response=str(response))
     return {"ok": True, "response": response, "mentioned": recipients}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 专项业绩奖励接口
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AwardConfigPayload(BaseModel):
+    month: str
+    award_round: int = 1
+    rank_from: int
+    rank_to: int
+    metric: str = "points"    # "points" | "gaotao"
+    prize_name: str
+    prize_amount: int
+    note: str = ""
+
+
+class DispatchPayload(BaseModel):
+    month: str
+    award_round: int = 1
+    dispatch_date: str        # YYYY-MM-DD
+
+
+@app.post("/api/performance/upload")
+async def performance_upload(file: UploadFile = File(...), month: str = Query("")):
+    """上传完美一单 Excel，解析后入库。"""
+    import tempfile, os
+    from wecom_notice.performance import parse_wanmei_excel
+    from wecom_notice.db import save_performance_upload, save_performance_stats
+
+    if not month:
+        month = date.today().strftime("%Y-%m")
+
+    # 临时落盘
+    suffix = Path(file.filename or "upload.xlsx").suffix or ".xlsx"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        tmp.write(await file.read())
+        tmp.flush()
+        tmp.close()
+        parsed = parse_wanmei_excel(tmp.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        os.unlink(tmp.name)
+
+    file_date = parsed.get("file_date") or date.today().isoformat()
+    upload_id = save_performance_upload(month, file_date, note=file.filename or "")
+    save_performance_stats(upload_id, month, parsed["stats"])
+
+    return {"ok": True, "upload_id": upload_id, "file_date": file_date,
+            "manager_count": len(parsed["stats"])}
+
+
+@app.get("/api/performance/stats/{month}")
+def performance_stats(month: str):
+    """返回本月各轮次的累计 + 增量数据，以及本月已下发的奖励明细。"""
+    from wecom_notice.performance import compute_incremental_stats
+    from wecom_notice.db import get_dispatches, get_award_configs
+
+    from wecom_notice.db import get_performance_snapshots
+    result = compute_incremental_stats(month)
+    dispatches = get_dispatches(month, include_revoked=True)
+    configs = get_award_configs(month)
+    snapshots = get_performance_snapshots(month)
+    return {
+        "month": month,
+        "uploads": result["uploads"],
+        "cumulative": result["cumulative"],
+        "incremental": result["incremental"],
+        "dispatches": dispatches,
+        "award_configs": configs,
+        "snapshots": snapshots,
+    }
+
+
+@app.get("/api/performance/stats/{month}/export")
+def performance_stats_export(month: str, upload_id: int = Query(0), prev_id: int = Query(0)):
+    """下载专项业绩 Excel（风格对齐企业走访通报）。"""
+    from wecom_notice.performance import export_performance_excel
+    from wecom_notice.db import get_latest_performance_upload
+
+    if not upload_id:
+        latest = get_latest_performance_upload(month)
+        if not latest:
+            raise HTTPException(status_code=404, detail="本月暂无上传记录")
+        upload_id = latest["id"]
+
+    xlsx_bytes = export_performance_excel(month, upload_id,
+                                          prev_upload_id=prev_id or None)
+    filename = f"专项业绩_{month}.xlsx"
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/performance/award-configs")
+def save_award_config_api(payload: AwardConfigPayload):
+    """保存（新建）一条奖励配置。"""
+    from wecom_notice.db import save_award_config
+    cfg_id = save_award_config(
+        payload.month, payload.award_round,
+        payload.rank_from, payload.rank_to,
+        payload.metric, payload.prize_name, payload.prize_amount, payload.note,
+    )
+    return {"ok": True, "id": cfg_id}
+
+
+@app.get("/api/performance/award-configs/{month}")
+def get_award_config_api(month: str, award_round: int = Query(0)):
+    """读取奖励配置（award_round=0 表示全部）。"""
+    from wecom_notice.db import get_award_configs
+    configs = get_award_configs(month, award_round=award_round or None)
+    return {"configs": configs}
+
+
+@app.delete("/api/performance/award-configs/{config_id}")
+def delete_award_config_api(config_id: int):
+    """删除一条奖励配置。"""
+    from wecom_notice.db import delete_award_config
+    ok = delete_award_config(config_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="配置不存在")
+    return {"ok": True}
+
+
+@app.post("/api/performance/dispatch")
+def dispatch_awards_api(payload: DispatchPayload):
+    """
+    根据当月已配置的奖励规则 + 最新上传数据自动下发奖励（入库）。
+    下发后奖品自动抵扣罚款。不发企业微信通知（由手动通报规则处理）。
+    """
+    from wecom_notice.db import (
+        get_award_configs, get_latest_performance_upload,
+        get_performance_stats, dispatch_awards,
+    )
+    from wecom_notice.performance import compute_incremental_stats
+
+    month = payload.month
+    award_round = payload.award_round
+
+    configs = get_award_configs(month, award_round=award_round)
+    if not configs:
+        raise HTTPException(status_code=400, detail="本轮次暂无奖励配置，请先配置")
+
+    latest = get_latest_performance_upload(month)
+    if not latest:
+        raise HTTPException(status_code=400, detail="本月暂无上传数据，请先上传完美一单")
+
+    # 根据配置规则计算各人应得奖励
+    inc_result = compute_incremental_stats(month)
+    incremental = inc_result["incremental"]
+
+    # 找到本轮次之前的最新上传（用于计算增量）
+    # 若第一轮用累计，否则用最近两次上传的增量
+    latest_uid = latest["id"]
+    cum_rows = get_performance_stats(month, upload_id=latest_uid)
+    inc_rows_latest = incremental.get(latest_uid, [])
+
+    def _rank_by_metric(rows: list[dict], metric_key: str) -> list[tuple[int, dict]]:
+        sorted_rows = sorted(rows, key=lambda x: x.get(metric_key, 0), reverse=True)
+        return [(i + 1, r) for i, r in enumerate(sorted_rows)]
+
+    dispatches_to_save: list[dict] = []
+    for cfg in configs:
+        metric = cfg["metric"]
+        rank_from = cfg["rank_from"]
+        rank_to = cfg["rank_to"]
+
+        # 第一轮用累计，后续用增量
+        if award_round == 1:
+            metric_key = "cumulative_points" if metric == "points" else "cumulative_gaotao"
+            source_rows = cum_rows
+        else:
+            metric_key = "inc_points" if metric == "points" else "inc_gaotao"
+            source_rows = inc_rows_latest
+
+        ranked = _rank_by_metric(source_rows, metric_key)
+        for rank, row in ranked:
+            if rank_from <= rank <= rank_to:
+                dispatches_to_save.append({
+                    "manager_name": row["manager_name"],
+                    "prize_name": cfg["prize_name"],
+                    "prize_amount": cfg["prize_amount"],
+                    "metric": metric,
+                    "rank_position": rank,
+                })
+
+    if not dispatches_to_save:
+        raise HTTPException(status_code=400, detail="根据当前数据和配置，没有符合条件的客户经理")
+
+    ids = dispatch_awards(month, award_round, payload.dispatch_date, dispatches_to_save)
+
+    # 下发完成后保存快照（取当前最新上传的所有经理累计数据）
+    try:
+        from wecom_notice.db import save_performance_snapshot
+        snapshot_stats = get_performance_stats(month, upload_id=latest_uid)
+        save_performance_snapshot(month, award_round, payload.dispatch_date, snapshot_stats)
+    except Exception:
+        pass  # 快照失败不影响下发主流程
+
+    return {"ok": True, "dispatched": len(ids), "ids": ids}
+
+
+@app.post("/api/performance/dispatch/{dispatch_id}/revoke")
+def revoke_dispatch_api(dispatch_id: int):
+    """撤回单条下发记录，同时将对应奖品标记为已撤销。"""
+    from wecom_notice.db import revoke_dispatch
+    ok = revoke_dispatch(dispatch_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="下发记录不存在")
+    return {"ok": True}
+
+
+@app.get("/api/performance/dispatches/{month}")
+def get_dispatches_api(month: str, include_revoked: bool = Query(False)):
+    """查询本月下发记录。"""
+    from wecom_notice.db import get_dispatches
+    return {"dispatches": get_dispatches(month, include_revoked=include_revoked)}
 
 
 # 前端静态文件（放在所有 API 路由之后，不会覆盖 /api/* 路由）

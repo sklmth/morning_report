@@ -13,6 +13,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tianming_decree import db, lottery
+
+# 消耗档位名称（修仙主题）
+CONSUME_COUNT_NAMES: dict[int, str] = {
+    3: "轻装上阵",  # 消耗3次
+    4: "乘势而为",  # 消耗4次
+    5: "五路并进",  # 消耗5次
+    6: "六合归一",  # 消耗6次
+    7: "七星聚力",  # 消耗7次
+}
 from wecom_notice.config import CUSTOMER_MANAGERS, MANAGER_RECIPIENTS
 from wecom_notice.db import get_fill_statistics
 
@@ -119,6 +128,14 @@ def get_my_stats():
     # 获取抽奖历史
     history = db.get_lottery_history(manager_name, current_month)
 
+    # 在每个消耗选项中附加档位名称
+    for opt in consume_options:
+        cnt = opt.get("consumed_count", 0)
+        opt["label"] = CONSUME_COUNT_NAMES.get(cnt, f"消耗{cnt}次")
+
+    # 待使用奖品（is_used=0）
+    pending_prizes = [r for r in history if not r.get("is_used")]
+
     return jsonify({
         "manager_name": manager_name,
         "month": current_month,
@@ -128,7 +145,8 @@ def get_my_stats():
         "available_lottery": available_lottery,
         "total_prize_amount": stats["total_prize_amount"],
         "consume_options": consume_options,
-        "history": history
+        "history": history,
+        "pending_prizes": pending_prizes,
     })
 
 
@@ -184,6 +202,28 @@ def perform_draw():
         },
         "consumed_count": consumed_count,
         "remaining_ontime": available_ontime - consumed_count
+    })
+
+
+@app.route("/api/lottery/use", methods=["POST"])
+def use_prize():
+    """使用指定奖品（将奖品入库并自动抵扣罚款）。"""
+    data = request.json
+    manager_name = data.get("manager_name")
+    lottery_id = data.get("lottery_id")
+
+    if not manager_name or lottery_id is None:
+        return jsonify({"error": "缺少 manager_name 或 lottery_id"}), 400
+
+    result = db.use_lottery_prize(lottery_id, manager_name)
+    if not result.get("ok"):
+        return jsonify({"error": result.get("error", "使用失败")}), 400
+
+    return jsonify({
+        "success": True,
+        "covered": result.get("covered", 0),
+        "change_amount": result.get("change_amount", 0),
+        "warn": result.get("warn"),
     })
 
 

@@ -102,6 +102,101 @@ CREATE TABLE IF NOT EXISTS app_settings (
     value TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
+
+-- 奖品钱包：记录每个客户经理获得的每一个奖品（来源：抽签/业绩）
+CREATE TABLE IF NOT EXISTS prize_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manager_name TEXT NOT NULL,
+    month TEXT NOT NULL,
+    prize_name TEXT NOT NULL,
+    face_amount INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT 'lottery',   -- 'lottery' | 'performance'
+    source_ref_id INTEGER,                    -- lottery_history.id 或 dispatch.id
+    acquired_at TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'available', -- available | exhausted
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_prize_items_mgr ON prize_items(manager_name, month, status);
+
+-- 罚款抵扣事件：记录奖品如何抵扣罚款
+CREATE TABLE IF NOT EXISTS fine_coverage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    manager_name TEXT NOT NULL,
+    month TEXT NOT NULL,
+    prize_item_id INTEGER REFERENCES prize_items(id),
+    covered_amount INTEGER NOT NULL,
+    total_fine_at_time INTEGER NOT NULL DEFAULT 0,
+    covered_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+
+-- 完美一单上传记录
+CREATE TABLE IF NOT EXISTS performance_uploads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    month TEXT NOT NULL,
+    file_date TEXT NOT NULL,
+    uploaded_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+
+-- 每次上传对应的客户经理累计统计
+CREATE TABLE IF NOT EXISTS performance_manager_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    upload_id INTEGER NOT NULL REFERENCES performance_uploads(id),
+    month TEXT NOT NULL,
+    manager_name TEXT NOT NULL,
+    cumulative_points REAL NOT NULL DEFAULT 0,
+    cumulative_gaotao REAL NOT NULL DEFAULT 0,
+    UNIQUE(upload_id, manager_name)
+);
+CREATE INDEX IF NOT EXISTS idx_perf_stats_month ON performance_manager_stats(month, manager_name);
+
+-- 业绩奖励下发配置（每轮可自定义排名和奖项）
+CREATE TABLE IF NOT EXISTS performance_award_configs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    month TEXT NOT NULL,
+    award_round INTEGER NOT NULL DEFAULT 1,
+    rank_from INTEGER NOT NULL,
+    rank_to INTEGER NOT NULL,
+    metric TEXT NOT NULL DEFAULT 'points',   -- 'points' | 'gaotao'
+    prize_name TEXT NOT NULL,
+    prize_amount INTEGER NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+
+-- 奖励下发记录
+CREATE TABLE IF NOT EXISTS performance_award_dispatches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    month TEXT NOT NULL,
+    award_round INTEGER NOT NULL DEFAULT 1,
+    dispatch_date TEXT NOT NULL,
+    manager_name TEXT NOT NULL,
+    prize_name TEXT NOT NULL,
+    prize_amount INTEGER NOT NULL,
+    metric TEXT NOT NULL DEFAULT 'points',
+    rank_position INTEGER NOT NULL DEFAULT 0,
+    is_revoked INTEGER NOT NULL DEFAULT 0,
+    revoked_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_perf_dispatch_month ON performance_award_dispatches(month, manager_name);
+
+-- 下发时历史快照（历史看板数据源）
+CREATE TABLE IF NOT EXISTS performance_dispatch_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    month TEXT NOT NULL,
+    award_round INTEGER NOT NULL,
+    dispatch_date TEXT NOT NULL,
+    manager_name TEXT NOT NULL,
+    cumulative_points REAL NOT NULL DEFAULT 0,
+    cumulative_gaotao REAL NOT NULL DEFAULT 0,
+    inc_points REAL NOT NULL DEFAULT 0,
+    inc_gaotao REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_perf_snapshot_month ON performance_dispatch_snapshots(month, award_round);
 """
 
 RECORD_COLUMNS = [
@@ -463,6 +558,455 @@ def increment_reminder_count(date: str, manager_name: str) -> int:
 
 
 # ====== 应用设置 ======
+
+
+# ====== 奖品钱包 ======
+
+# 面值 → 奖品名映射（用于"找零"时生成新奖品名）
+_AMOUNT_TO_PRIZE: dict[int, str] = {
+    0: "凡尘符咒",
+    5: "聚灵丹",
+    10: "护身符",
+    15: "筑基丹",
+    20: "天罡令",
+    25: "金丹圣果",
+    30: "天命赦令",
+}
+
+
+def _prize_name_for_amount(amount: int) -> str:
+    """根据金额返回最接近的奖品名（用于找零）。"""
+    if amount in _AMOUNT_TO_PRIZE:
+        return _AMOUNT_TO_PRIZE[amount]
+    # 向下取整到最接近的
+    for v in sorted(_AMOUNT_TO_PRIZE.keys(), reverse=True):
+        if v <= amount:
+            return _AMOUNT_TO_PRIZE[v]
+    return "聚灵丹"
+
+
+def add_prize_item(
+    manager_name: str,
+    month: str,
+    prize_name: str,
+    face_amount: int,
+    source: str,
+    source_ref_id: int | None = None,
+    note: str = "",
+) -> int:
+    """入库一个新奖品。返回 prize_item id。"""
+    if face_amount <= 0:
+        return -1  # 空奖不入库
+    timestamp = now()
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO prize_items
+               (manager_name, month, prize_name, face_amount, source, source_ref_id, acquired_at, status, note)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?)""",
+            (manager_name, month, prize_name, face_amount, source, source_ref_id, timestamp, note),
+        )
+        return cursor.lastrowid
+
+
+def get_prize_items(manager_name: str, month: str, status: str = "") -> list[dict[str, Any]]:
+    """获取奖品列表。status 为空时返回所有。"""
+    clauses = ["manager_name = ?", "month = ?"]
+    params: list[Any] = [manager_name, month]
+    if status:
+        clauses.append("status = ?")
+        params.append(status)
+    where = " AND ".join(clauses)
+    with connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM prize_items WHERE {where} ORDER BY acquired_at",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_prize_items_month(month: str) -> list[dict[str, Any]]:
+    """获取指定月份所有客户经理的奖品。"""
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM prize_items WHERE month = ? ORDER BY manager_name, acquired_at",
+            (month,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def apply_prize_against_fine(
+    manager_name: str,
+    month: str,
+    prize_item_id: int,
+    total_fine: int,
+) -> dict[str, Any]:
+    """
+    用指定奖品抵扣罚款。处理找零逻辑。
+
+    返回：
+      {
+        "covered": int,         # 本次实际抵扣金额
+        "change_item_id": int,  # 找零产生的新奖品 id（-1 表示没有找零）
+        "change_amount": int,   # 找零金额
+      }
+    """
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM prize_items WHERE id = ? AND manager_name = ? AND status = 'available'",
+            (prize_item_id, manager_name),
+        ).fetchone()
+    if not row:
+        return {"covered": 0, "change_item_id": -1, "change_amount": 0}
+
+    prize = dict(row)
+    face = prize["face_amount"]
+
+    # 当前已抵扣总额（用于计算实际欠款）
+    already_covered = get_total_prize_covered(manager_name, month)
+    outstanding = max(0, total_fine - already_covered)
+
+    if outstanding <= 0:
+        return {"covered": 0, "change_item_id": -1, "change_amount": 0}
+
+    covered = min(face, outstanding)
+    change_amount = face - covered  # 找零
+
+    timestamp = now()
+    with connection() as conn:
+        # 标记奖品已用尽
+        conn.execute(
+            "UPDATE prize_items SET status = 'exhausted' WHERE id = ?",
+            (prize_item_id,),
+        )
+        # 记录抵扣事件
+        conn.execute(
+            """INSERT INTO fine_coverage_events
+               (manager_name, month, prize_item_id, covered_amount, total_fine_at_time, covered_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (manager_name, month, prize_item_id, covered, total_fine, timestamp),
+        )
+
+    # 处理找零：生成新奖品入库
+    change_id = -1
+    if change_amount > 0:
+        change_name = _prize_name_for_amount(change_amount)
+        change_id = add_prize_item(
+            manager_name, month, change_name, change_amount,
+            source=prize["source"],
+            source_ref_id=prize["id"],
+            note=f"找零：{prize['prize_name']}({face}元)→{covered}元，余{change_amount}元",
+        )
+
+    return {"covered": covered, "change_item_id": change_id, "change_amount": change_amount}
+
+
+def auto_apply_prizes(manager_name: str, month: str, total_fine: int) -> dict[str, Any]:
+    """
+    自动将所有 available 奖品按顺序抵扣罚款。
+
+    返回：
+      {"total_covered": int, "events": [...]}
+    """
+    available = [p for p in get_prize_items(manager_name, month, status="available")]
+    total_covered = get_total_prize_covered(manager_name, month)
+
+    events = []
+    for prize in available:
+        outstanding = max(0, total_fine - total_covered)
+        if outstanding <= 0:
+            break
+        result = apply_prize_against_fine(manager_name, month, prize["id"], total_fine)
+        if result["covered"] > 0:
+            total_covered += result["covered"]
+            events.append({
+                "prize_id": prize["id"],
+                "prize_name": prize["prize_name"],
+                "covered": result["covered"],
+                "change_amount": result["change_amount"],
+            })
+        # 如果找零产生新奖品，下一轮自然会处理（因为已入库 available）
+    return {"total_covered": total_covered, "events": events}
+
+
+def get_total_prize_covered(manager_name: str, month: str) -> int:
+    """获取本月已抵扣罚款总额。"""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(covered_amount), 0) AS total
+               FROM fine_coverage_events
+               WHERE manager_name = ? AND month = ?""",
+            (manager_name, month),
+        ).fetchone()
+    return int(row["total"])
+
+
+def get_available_prize_total(manager_name: str, month: str) -> int:
+    """获取尚未使用的奖品总面值（available 状态）。"""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(face_amount), 0) AS total
+               FROM prize_items
+               WHERE manager_name = ? AND month = ? AND status = 'available'""",
+            (manager_name, month),
+        ).fetchone()
+    return int(row["total"])
+
+
+# ====== 业绩奖励 ======
+
+
+def save_performance_upload(month: str, file_date: str, note: str = "") -> int:
+    """记录一次完美一单上传。返回 upload_id。"""
+    timestamp = now()
+    with connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO performance_uploads (month, file_date, uploaded_at, note) VALUES (?, ?, ?, ?)",
+            (month, file_date, timestamp, note),
+        )
+        return cursor.lastrowid
+
+
+def save_performance_stats(upload_id: int, month: str, stats: list[dict[str, Any]]) -> None:
+    """保存客户经理业绩统计（upsert）。stats 每项含 manager_name, cumulative_points, cumulative_gaotao。"""
+    with connection() as conn:
+        for s in stats:
+            conn.execute(
+                """INSERT INTO performance_manager_stats
+                   (upload_id, month, manager_name, cumulative_points, cumulative_gaotao)
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(upload_id, manager_name) DO UPDATE SET
+                       cumulative_points = excluded.cumulative_points,
+                       cumulative_gaotao = excluded.cumulative_gaotao""",
+                (upload_id, month, s["manager_name"], s["cumulative_points"], s["cumulative_gaotao"]),
+            )
+
+
+def get_performance_uploads(month: str) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM performance_uploads WHERE month = ? ORDER BY uploaded_at DESC",
+            (month,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_latest_performance_upload(month: str) -> dict[str, Any] | None:
+    uploads = get_performance_uploads(month)
+    return uploads[0] if uploads else None
+
+
+def get_performance_stats(month: str, upload_id: int | None = None) -> list[dict[str, Any]]:
+    """获取指定月份/upload_id 的业绩统计，默认取最新一次上传。"""
+    if upload_id is None:
+        latest = get_latest_performance_upload(month)
+        if not latest:
+            return []
+        upload_id = latest["id"]
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM performance_manager_stats WHERE upload_id = ? ORDER BY cumulative_points DESC",
+            (upload_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_award_config(
+    month: str,
+    award_round: int,
+    rank_from: int,
+    rank_to: int,
+    metric: str,
+    prize_name: str,
+    prize_amount: int,
+    note: str = "",
+) -> int:
+    timestamp = now()
+    with connection() as conn:
+        cursor = conn.execute(
+            """INSERT INTO performance_award_configs
+               (month, award_round, rank_from, rank_to, metric, prize_name, prize_amount, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (month, award_round, rank_from, rank_to, metric, prize_name, prize_amount, note, timestamp),
+        )
+        return cursor.lastrowid
+
+
+def get_award_configs(month: str, award_round: int | None = None) -> list[dict[str, Any]]:
+    clauses = ["month = ?"]
+    params: list[Any] = [month]
+    if award_round is not None:
+        clauses.append("award_round = ?")
+        params.append(award_round)
+    where = " AND ".join(clauses)
+    with connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM performance_award_configs WHERE {where} ORDER BY award_round, rank_from",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_award_config(config_id: int) -> bool:
+    with connection() as conn:
+        conn.execute("DELETE FROM performance_award_configs WHERE id = ?", (config_id,))
+    return True
+
+
+def dispatch_awards(month: str, award_round: int, dispatch_date: str, dispatches: list[dict[str, Any]]) -> list[int]:
+    """
+    批量下发奖励入库，并自动触发奖品抵扣逻辑。
+    dispatches 每项: {manager_name, prize_name, prize_amount, metric, rank_position, note}
+    返回所有 dispatch_id 列表。
+    """
+    timestamp = now()
+    ids = []
+    with connection() as conn:
+        for d in dispatches:
+            cursor = conn.execute(
+                """INSERT INTO performance_award_dispatches
+                   (month, award_round, dispatch_date, manager_name, prize_name, prize_amount,
+                    metric, rank_position, is_revoked, revoked_at, created_at, note)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?)""",
+                (
+                    month, award_round, dispatch_date,
+                    d["manager_name"], d["prize_name"], d["prize_amount"],
+                    d.get("metric", "points"), d.get("rank_position", 0),
+                    timestamp, d.get("note", ""),
+                ),
+            )
+            dispatch_id = cursor.lastrowid
+            ids.append(dispatch_id)
+
+    # 每个奖品入库，然后立即自动抵扣
+    from datetime import date as dt_date
+    from wecom_notice.reporter import compute_fine_for_manager  # 延迟导入避免循环
+    for d, dispatch_id in zip(dispatches, ids):
+        mgr = d["manager_name"]
+        amount = d["prize_amount"]
+        if amount > 0:
+            add_prize_item(mgr, month, d["prize_name"], amount, "performance", dispatch_id)
+            # 计算当前罚款，自动抵扣
+            try:
+                total_fine = compute_fine_for_manager(mgr, month)
+                if total_fine > 0:
+                    auto_apply_prizes(mgr, month, total_fine)
+            except Exception:
+                pass
+
+    return ids
+
+
+def revoke_dispatch(dispatch_id: int) -> bool:
+    """撤回一条奖励下发记录，并回收对应奖品项。"""
+    timestamp = now()
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM performance_award_dispatches WHERE id = ? AND is_revoked = 0",
+            (dispatch_id,),
+        ).fetchone()
+        if not row:
+            return False
+        conn.execute(
+            "UPDATE performance_award_dispatches SET is_revoked = 1, revoked_at = ? WHERE id = ?",
+            (timestamp, dispatch_id),
+        )
+        # 将对应 prize_item 标记为 revoked（如果还是 available 状态）
+        conn.execute(
+            """UPDATE prize_items SET status = 'revoked', note = '已撤回'
+               WHERE source = 'performance' AND source_ref_id = ? AND status = 'available'""",
+            (dispatch_id,),
+        )
+    return True
+
+
+def get_dispatches(month: str, include_revoked: bool = False) -> list[dict[str, Any]]:
+    params: list[Any] = [month]
+    extra = "" if include_revoked else " AND is_revoked = 0"
+    with connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM performance_award_dispatches WHERE month = ?{extra} ORDER BY dispatch_date DESC, created_at DESC",
+            params,
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_performance_snapshot(
+    month: str, award_round: int, dispatch_date: str, current_stats: list[dict[str, Any]]
+) -> None:
+    """
+    在下发奖励时保存快照：记录所有客户经理此刻的累计数据，以及较上一轮快照的增量。
+    current_stats 每项含 manager_name, cumulative_points, cumulative_gaotao。
+    """
+    # 取本月上一轮（award_round-1 及之前）最新那轮的快照，用于计算增量
+    with connection() as conn:
+        prev_rows = conn.execute(
+            """SELECT * FROM performance_dispatch_snapshots
+               WHERE month = ? AND award_round < ?
+               ORDER BY award_round DESC""",
+            (month, award_round),
+        ).fetchall()
+
+    prev_map: dict[str, dict[str, Any]] = {}
+    if prev_rows:
+        max_prev_round = prev_rows[0]["award_round"]
+        for r in prev_rows:
+            if r["award_round"] == max_prev_round:
+                prev_map[r["manager_name"]] = dict(r)
+
+    timestamp = now()
+    with connection() as conn:
+        # 如果同一轮已有快照，先删旧的（重复下发时覆盖）
+        conn.execute(
+            "DELETE FROM performance_dispatch_snapshots WHERE month = ? AND award_round = ?",
+            (month, award_round),
+        )
+        for s in current_stats:
+            name = s["manager_name"]
+            prev = prev_map.get(name)
+            inc_pts = s["cumulative_points"] - (prev["cumulative_points"] if prev else 0)
+            inc_gt = s["cumulative_gaotao"] - (prev["cumulative_gaotao"] if prev else 0)
+            conn.execute(
+                """INSERT INTO performance_dispatch_snapshots
+                   (month, award_round, dispatch_date, manager_name,
+                    cumulative_points, cumulative_gaotao, inc_points, inc_gaotao, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    month, award_round, dispatch_date, name,
+                    s["cumulative_points"], s["cumulative_gaotao"],
+                    max(inc_pts, 0), max(inc_gt, 0),
+                    timestamp,
+                ),
+            )
+
+
+def get_performance_snapshots(month: str) -> list[dict[str, Any]]:
+    """
+    获取指定月份的所有历史快照，按轮次升序分组返回。
+    每组结构：{award_round, dispatch_date, month, rows:[{manager_name, cumulative_points, ...}]}
+    rows 内按累计积分降序排列。
+    """
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM performance_dispatch_snapshots
+               WHERE month = ?
+               ORDER BY award_round ASC, cumulative_points DESC""",
+            (month,),
+        ).fetchall()
+
+    rows = [dict(r) for r in rows]
+    groups: dict[tuple, dict[str, Any]] = {}
+    for r in rows:
+        key = (r["award_round"], r["dispatch_date"])
+        if key not in groups:
+            groups[key] = {
+                "award_round": r["award_round"],
+                "dispatch_date": r["dispatch_date"],
+                "month": r["month"],
+                "rows": [],
+            }
+        groups[key]["rows"].append(r)
+
+    return sorted(groups.values(), key=lambda g: g["award_round"])
 
 
 def get_setting(key: str, default: str = "") -> str:

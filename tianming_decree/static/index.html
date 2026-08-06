@@ -649,6 +649,15 @@
         </button>
       </div>
 
+      <!-- 待使用奖品 -->
+      <div class="card" id="pendingPrizesCard" style="display:none;">
+        <div class="card-title">◈ 待使用奖品 ◈</div>
+        <p style="text-align:center;font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+          奖品有效期为本月内，点击"使用"后自动抵扣本月罚款
+        </p>
+        <div id="pendingPrizesList"></div>
+      </div>
+
       <div class="card">
         <div class="card-title">◈ 本月抽签历史 ◈</div>
         <div class="history-list" id="historyList"></div>
@@ -810,48 +819,50 @@ async function loadMyStats() {
     document.getElementById('totalAmount').textContent = myStats.total_prize_amount + '元';
 
     renderConsumeOptions(myStats.consume_options);
+    renderPendingPrizes(myStats.pending_prizes || []);
     renderHistory(myStats.history);
 
     document.getElementById('statsArea').classList.remove('hidden');
 
-    if (myStats.consume_options.length > 0) {
-      selectedConsumeCount = myStats.consume_options[0];
-      loadProbabilities(selectedConsumeCount);
-    }
   } catch (err) {
     console.error('加载统计失败:', err);
     alert('加载统计失败');
   }
 }
 
-// 渲染消耗选项
+// 渲染消耗选项（options 现在是对象数组，含 consumed_count / label）
 function renderConsumeOptions(options) {
   const container = document.getElementById('consumeOptions');
   container.innerHTML = '';
 
-  if (options.length === 0) {
+  if (!options || options.length === 0) {
     container.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">准时次数不足，至少需要3次</p>';
     document.getElementById('drawBtn').disabled = true;
     return;
   }
 
-  options.forEach((count, idx) => {
+  options.forEach((opt, idx) => {
+    // 兼容旧版（纯数字）和新版（对象）
+    const count = typeof opt === 'object' ? opt.consumed_count : opt;
+    const label = typeof opt === 'object' && opt.label ? `${count}次 · ${opt.label}` : `消耗 ${count} 次`;
     const btn = document.createElement('div');
     btn.className = 'consume-btn' + (idx === 0 ? ' selected' : '');
-    btn.textContent = `消耗 ${count} 次`;
-    btn.onclick = () => selectConsumeCount(count);
+    btn.textContent = label;
+    btn.dataset.count = count;
+    btn.onclick = () => {
+      selectedConsumeCount = count;
+      document.querySelectorAll('.consume-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      loadProbabilities(count);
+    };
     container.appendChild(btn);
   });
 
+  // 默认选中第一项
+  const first = typeof options[0] === 'object' ? options[0].consumed_count : options[0];
+  selectedConsumeCount = first;
+  loadProbabilities(first);
   document.getElementById('drawBtn').disabled = false;
-}
-
-// 选择消耗次数
-function selectConsumeCount(count) {
-  selectedConsumeCount = count;
-  document.querySelectorAll('.consume-btn').forEach(btn => btn.classList.remove('selected'));
-  event.target.classList.add('selected');
-  loadProbabilities(count);
 }
 
 // 加载中奖概率
@@ -934,6 +945,58 @@ function closeResult() {
   document.getElementById('resultFlash').classList.remove('show');
 }
 
+// 渲染待用奖品列表
+function renderPendingPrizes(prizes) {
+  const card = document.getElementById('pendingPrizesCard');
+  const list = document.getElementById('pendingPrizesList');
+  if (!prizes || prizes.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  list.innerHTML = '';
+  prizes.forEach(item => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:10px 12px;margin-bottom:8px;background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.25);border-radius:8px;';
+    div.innerHTML = `
+      <div>
+        <span style="color:var(--gold);font-weight:700;font-size:15px;">${item.prize_name}</span>
+        <span style="color:var(--text-dim);font-size:12px;margin-left:10px;">${item.prize_amount > 0 ? '-' + item.prize_amount + '元' : ''}</span>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">抽签于 ${item.created_at}</div>
+      </div>
+      <button
+        style="padding:6px 16px;background:linear-gradient(135deg,#FFD700,#B8860B);color:#050A18;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:13px;"
+        onclick="usePrize(${item.id})">
+        使用
+      </button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+// 使用奖品
+async function usePrize(lotteryId) {
+  if (!currentManager) return;
+  if (!confirm('确认使用该奖品？奖品将自动抵扣本月罚款。')) return;
+  try {
+    const resp = await fetch(`${API_BASE}/api/lottery/use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manager_name: currentManager, lottery_id: lotteryId }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { alert(data.error || '使用失败'); return; }
+    let msg = '奖品使用成功！';
+    if (data.covered > 0) msg += `\n已抵扣罚款 ${data.covered} 元`;
+    if (data.change_amount > 0) msg += `\n找零 ${data.change_amount} 元已存入钱包`;
+    if (data.warn) msg += `\n⚠️ ${data.warn}`;
+    alert(msg);
+    loadMyStats();
+  } catch (err) {
+    alert('请求失败');
+  }
+}
+
 // 渲染历史记录
 function renderHistory(history) {
   const container = document.getElementById('historyList');
@@ -947,10 +1010,15 @@ function renderHistory(history) {
   history.forEach(item => {
     const div = document.createElement('div');
     div.className = 'history-item';
+    const isUsed = item.is_used === 1 || item.is_used === true;
+    const statusBadge = isUsed
+      ? `<span style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(100,200,100,0.15);color:#6ec46e;">已使用</span>`
+      : `<span style="font-size:11px;padding:2px 7px;border-radius:4px;background:rgba(255,215,0,0.15);color:var(--gold);">待使用</span>`;
     div.innerHTML = `
       <div>
-        <div class="history-prize">${item.prize_name}</div>
+        <div class="history-prize">${item.prize_name} ${statusBadge}</div>
         <div class="history-consumed">消耗 ${item.consumed_ontime_count} 次 | ${item.created_at}</div>
+        ${isUsed && item.used_at ? `<div style="font-size:11px;color:var(--text-dim);">使用于 ${item.used_at}</div>` : ''}
       </div>
       <div class="history-amount">${item.prize_amount > 0 ? '-' + item.prize_amount + '元' : '0元'}</div>
     `;

@@ -16,25 +16,32 @@ from wecom_notice.db import (
 
 def get_prize_discount(manager_name: str, month: str) -> int:
     """
-    获取指定客户经理在指定月份的天命赦令奖品减免总额。
-
-    参数：
-        manager_name: 客户经理姓名
-        month: 月份，格式 YYYY-MM
-
-    返回：
-        减免金额（元）
+    获取指定客户经理在指定月份已抵扣的罚款金额（来自奖品钱包）。
+    数据源：wecom_notice.db.get_total_prize_covered（新钱包模型）。
     """
     try:
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).parent.parent))
-        from tianming_decree import db as tianming_db
-        stats = tianming_db.get_monthly_stats(manager_name, month)
-        return stats.get("total_prize_amount", 0)
+        from wecom_notice.db import get_total_prize_covered
+        return get_total_prize_covered(manager_name, month)
     except Exception:
-        # 如果天命赦令模块不可用，返回0
         return 0
+
+
+def compute_fine_for_manager(manager_name: str, month: str) -> int:
+    """
+    计算指定客户经理在指定月份的应缴罚款总额（税前，未减免奖品）。
+
+    规则与 build_customer_manager_reminder 中的计算方式完全一致：
+        漏填次数 × 10 + (超时次数 // 5) × 10
+    """
+    year, mon = map(int, month.split("-"))
+    start = f"{year}-{mon:02d}-01"
+    end = f"{year}-{mon + 1:02d}-01" if mon < 12 else f"{year + 1}-01-01"
+
+    from wecom_notice.db import get_manager_history_counts
+    counts = get_manager_history_counts(manager_name, start, end)
+    overtime_count = counts.get("overtime_count", 0)
+    missing_count = counts.get("missing_count", 0)
+    return missing_count * 10 + (overtime_count // 5) * 10
 
 
 def next_workday(from_date: date | None = None) -> date:
@@ -343,6 +350,20 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
                     lines.append(f"   🎉 已全额抵扣，本月无需上交！")
             else:
                 lines.append(f"   请上交 {total_fine} 元至部门下午茶基金。")
+
+    # 可用奖品列表（来源：天命赦令 + 专项业绩，均含 available 状态）
+    try:
+        from wecom_notice.db import get_prize_items
+        current_month = date.today().strftime("%Y-%m")
+        available_prizes = get_prize_items(manager_name, current_month, status="available")
+        if available_prizes:
+            lines.append("")
+            lines.append("🎁 当前可用奖品：")
+            for p in available_prizes:
+                src_label = "🎴 天命赦令" if p.get("source") == "lottery" else "🏆 专项业绩"
+                lines.append(f"   · {p['prize_name']}（{p['face_amount']}元）— {src_label}")
+    except Exception:
+        pass
 
     lines.extend([
         "",
@@ -1322,6 +1343,63 @@ def build_visit_result_missing(target_date: str, rule: dict[str, Any]) -> dict[s
     return {"message": "\n".join(lines), "recipients": recipients, "records": records, "items": []}
 
 
+def build_performance_award_notice(month: str, award_round: int = 1) -> dict[str, Any]:
+    """
+    构建专项业绩奖励下发通报（手动发送规则用）。
+
+    从 performance_award_dispatches 回查本轮下发明细，拼出企业微信消息。
+    仅包含未撤回（is_revoked=0）的记录。
+    """
+    try:
+        from wecom_notice.db import get_dispatches
+        dispatches = [d for d in get_dispatches(month, include_revoked=False) if d.get("award_round") == award_round]
+    except Exception as e:
+        return {"message": f"获取下发记录失败：{e}", "recipients": [], "should_send": False}
+
+    if not dispatches:
+        return {"message": "", "recipients": [], "should_send": False}
+
+    lines = [
+        f"🏆【专项业绩奖励通报】{month} 第 {award_round} 轮",
+        f"📅 下发日期：{dispatches[0].get('dispatch_date', '')}",
+        "",
+        "本次奖励明细如下：",
+    ]
+
+    # 按指标分组展示
+    by_metric: dict[str, list] = {}
+    for d in dispatches:
+        key = d.get("metric", "points")
+        by_metric.setdefault(key, []).append(d)
+
+    metric_labels = {"points": "🥇 积分排名", "gaotao": "📡 高套排名"}
+    for metric_key in ("points", "gaotao"):
+        group = by_metric.get(metric_key, [])
+        if not group:
+            continue
+        lines.append("")
+        lines.append(metric_labels.get(metric_key, metric_key) + "：")
+        for d in sorted(group, key=lambda x: x.get("rank_position", 99)):
+            rank = d.get("rank_position", 0)
+            rank_str = f"第{rank}名 " if rank > 0 else ""
+            lines.append(f"   {rank_str}{d['manager_name']} — {d['prize_name']}（{d['prize_amount']}元）")
+
+    lines.extend([
+        "",
+        "以上奖励已入库，奖品将自动抵扣当月下午茶基金欠缴。",
+        "如有疑问请联系管理人员。",
+    ])
+
+    return {
+        "message": "\n".join(lines),
+        "recipients": MANAGER_RECIPIENTS,
+        "should_send": True,
+        "month": month,
+        "award_round": award_round,
+        "dispatch_count": len(dispatches),
+    }
+
+
 def build_report(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
     builders = {
         "missing_tomorrow_booking": build_missing_tomorrow_booking,
@@ -1331,6 +1409,10 @@ def build_report(target_date: str, rule: dict[str, Any]) -> dict[str, Any]:
         "manager_brief_notice": lambda td, r: build_manager_brief_notice(td),
         "manager_detailed_notice": lambda td, r: build_manager_detailed_notice(td),
         "final_data_collection": lambda td, r: build_final_data_collection(td),
+        "performance_award_notice": lambda td, r: build_performance_award_notice(
+            r.get("params", {}).get("month", date.today().strftime("%Y-%m")),
+            r.get("params", {}).get("award_round", 1),
+        ),
     }
     try:
         return builders[rule["template_key"]](target_date or default_target_date(), rule)

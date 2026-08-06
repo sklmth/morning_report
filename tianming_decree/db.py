@@ -41,7 +41,7 @@ def init_tables():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vacation_dates ON vacation_records(start_date, end_date)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_vacation_manager ON vacation_records(manager_name)")
 
-    # 2. 抽签历史表
+    # 2. 抽签历史表（支持延迟使用）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS lottery_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,13 +50,15 @@ def init_tables():
             prize_name TEXT NOT NULL,
             prize_amount INTEGER NOT NULL,
             month TEXT NOT NULL,
+            is_used INTEGER NOT NULL DEFAULT 0,
+            used_at TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         )
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_lottery_month ON lottery_history(month)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_lottery_manager ON lottery_history(manager_name)")
 
-    # 3. 月度统计缓存表（存储每人每月的准时次数、已抽签次数、奖品总额）
+    # 3. 月度统计缓存表（存储每人每月的准时次数、已消耗次数）
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS monthly_lottery_stats (
             manager_name TEXT NOT NULL,
@@ -67,6 +69,16 @@ def init_tables():
             PRIMARY KEY (manager_name, month)
         )
     """)
+
+    # 迁移：为已有 DB 添加新列（SQLite 无 IF NOT EXISTS 子句，忽略错误）
+    for migration_sql in [
+        "ALTER TABLE lottery_history ADD COLUMN is_used INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE lottery_history ADD COLUMN used_at TEXT",
+    ]:
+        try:
+            cursor.execute(migration_sql)
+        except Exception:
+            pass  # 列已存在，忽略
 
     conn.commit()
     conn.close()
@@ -225,21 +237,88 @@ def update_monthly_stats(manager_name: str, month: str, ontime_count: int):
     conn.close()
 
 
-def consume_ontime_and_add_prize(manager_name: str, month: str, consumed_count: int, prize_amount: int):
-    """消耗准时次数并增加奖品总额。"""
+def consume_ontime_and_add_prize(manager_name: str, month: str, consumed_count: int, prize_amount: int = 0):
+    """消耗准时次数（抽签时调用）。prize_amount 保留兼容性，抽签时不再立即入账——奖品由用户手动使用后入库。"""
+    _ = prize_amount  # 不再立即入账
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        """
-        UPDATE monthly_lottery_stats
-        SET used_ontime_count = used_ontime_count + ?,
-            total_prize_amount = total_prize_amount + ?
-        WHERE manager_name = ? AND month = ?
-        """,
-        (consumed_count, prize_amount, manager_name, month),
+        "UPDATE monthly_lottery_stats SET used_ontime_count = used_ontime_count + ? WHERE manager_name = ? AND month = ?",
+        (consumed_count, manager_name, month),
     )
     conn.commit()
     conn.close()
+
+
+def use_lottery_prize(lottery_id: int, manager_name: str) -> dict:
+    """
+    标记抽签奖品为已使用，并将其加入奖品钱包（自动触发罚款抵扣）。
+
+    返回：
+        {"ok": bool, "error": str, "covered": int, "change_amount": int}
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT * FROM lottery_history WHERE id = ? AND manager_name = ? AND is_used = 0",
+        (lottery_id, manager_name),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return {"ok": False, "error": "奖品不存在或已使用"}
+
+    row = dict(row)
+    prize_amount = row["prize_amount"]
+    month = row["month"]
+
+    if prize_amount <= 0:
+        # 空奖直接标记已用
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE lottery_history SET is_used = 1, used_at = datetime('now','localtime') WHERE id = ?",
+            (lottery_id,),
+        )
+        conn.commit()
+        conn.close()
+        return {"ok": True, "covered": 0, "change_amount": 0}
+
+    # 标记已用
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE lottery_history SET is_used = 1, used_at = datetime('now','localtime') WHERE id = ?",
+        (lottery_id,),
+    )
+    # 同步更新 total_prize_amount（向后兼容）
+    cursor.execute(
+        """UPDATE monthly_lottery_stats
+           SET total_prize_amount = total_prize_amount + ?
+           WHERE manager_name = ? AND month = ?""",
+        (prize_amount, manager_name, month),
+    )
+    conn.commit()
+    conn.close()
+
+    # 加入奖品钱包并自动抵扣
+    try:
+        from wecom_notice.db import add_prize_item, auto_apply_prizes
+        from wecom_notice.reporter import compute_fine_for_manager
+        add_prize_item(
+            manager_name, month,
+            row["prize_name"], prize_amount,
+            source="lottery", source_ref_id=lottery_id,
+        )
+        total_fine = compute_fine_for_manager(manager_name, month)
+        result = auto_apply_prizes(manager_name, month, total_fine)
+        return {
+            "ok": True,
+            "covered": result.get("total_covered", 0),
+            "change_amount": sum(e.get("change_amount", 0) for e in result.get("events", [])),
+        }
+    except Exception as e:
+        return {"ok": True, "covered": 0, "change_amount": 0, "warn": str(e)}
 
 
 def get_all_managers_stats(month: str) -> list[dict[str, Any]]:

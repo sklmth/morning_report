@@ -58,5 +58,17 @@ const Api = (() => {
     // 应用设置
     settings:     () => req('/config/settings'),
     saveSettings: (body) => post('/config/settings', body),
+
+    // 专项业绩
+    perfStats:       (month) => req(`/performance/stats/${encodeURIComponent(month)}`),
+    perfUpload:      (formData) => fetch('/api/performance/upload', {method:'POST', body:formData})
+                       .then(r => r.json().then(b => { if (!r.ok) throw new Error(b.detail || `上传失败 ${r.status}`); return b; })),
+    perfExport:      (month, uploadId) => { window.open(`/api/performance/stats/${encodeURIComponent(month)}/export?upload_id=${uploadId}`, '_blank'); },
+    perfAwardConfigs:(month) => req(`/performance/award-configs/${encodeURIComponent(month)}`),
+    saveAwardConfig: (body) => post('/performance/award-configs', body),
+    deleteAwardConfig:(id)  => req(`/performance/award-configs/${id}`, {method:'DELETE'}),
+    dispatchPerf:    (body) => post('/performance/dispatch', body),
+    revokeDispatch:  (id)   => post(`/performance/dispatch/${id}/revoke`, {}),
+    perfDispatches:  (month) => req(`/performance/dispatches/${encodeURIComponent(month)}`),
   };
 })();
