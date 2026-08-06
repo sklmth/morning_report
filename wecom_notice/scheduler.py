@@ -598,7 +598,7 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         collect_final_data,
         CronTrigger(day_of_week=WORKDAY_CRON, hour=int(hour), minute=int(minute)),
         id="final_data_collection",
-        name=f"最终数据收集 {FINAL_COLLECTION_TIME}（先同步）",
+        name=f"最终数据收集 {FINAL_COLLECTION_TIME}",
         replace_existing=True,
     )
 
@@ -634,7 +634,7 @@ def start_scheduler(enabled: bool = False) -> BackgroundScheduler:
         send_monthly_report,
         CronTrigger(day="last", hour=12, minute=0),
         id="monthly_report",
-        name="月报-每月最后一天 12:00 (@all)",
+        name="月报-每月最后一天 12:00",
         replace_existing=True,
     )
 
