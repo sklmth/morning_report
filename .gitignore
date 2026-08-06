@@ -74,3 +74,20 @@ Thumbs.db
 **/uploads/
 **/cache/
 /gaotao_stats/temp/
+
+# 测试临时输出文件
+test_*.txt
+test_*.json
+*_test_output.*
+
+# 临时调试脚本（test_ 前缀视为临时，正式测试套件不受影响）
+test_*.py
+create_test_*.py
+
+# 说明/架构文档（本地参考，不入库）
+# README.md / RUNBOOK.md 正式文档不受影响
+.plan*.md
+**/*_SCHEMA.md
+**/*_ARCHITECTURE.md
+**/DATABASE_SCHEMA.md
+**/SYSTEM_ARCHITECTURE.md
