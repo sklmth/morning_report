@@ -805,14 +805,30 @@
             </template>
           </div>
         </div>
-        <!-- 数据同步时间点 -->
+        <!-- 工作日只读数据同步 -->
         <div>
           <p class="text-xs text-stone-500 font-medium mb-2 flex items-center gap-1.5">
-            <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>数据同步时间点
+            <span class="w-1.5 h-1.5 rounded-full bg-violet-400"></span>工作日只读数据同步
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <template x-for="job in schedJobsByGroup('sync')" :key="job.id">
-              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-violet-50 border border-violet-100">
+            <template x-for="job in schedJobsByGroup('weekdaySync')" :key="job.id">
+            <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-violet-50 border border-violet-100">
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
+                  <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmtSchedule(job.next_run_time):'未安排'"></p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- 周末只读数据同步 -->
+        <div>
+          <p class="text-xs text-stone-500 font-medium mb-2 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>周末只读数据同步
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <template x-for="job in schedJobsByGroup('weekendSync')" :key="job.id">
+              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-cyan-50 border border-cyan-100">
                 <div class="flex-1 min-w-0">
                   <p class="text-sm text-stone-700 truncate" x-text="job.name||job.id"></p>
                   <p class="text-xs text-stone-400" x-text="job.next_run_time?'下次：'+fmtSchedule(job.next_run_time):'未安排'"></p>
@@ -1557,9 +1573,8 @@ function app(){
       const jobs = this.sched.jobs.filter(j=>{
         if(group==='customer') return j.id?.startsWith('cm_reminder_')||j.name?.includes('客户经理提醒');
         if(group==='manager') return j.id?.startsWith('brief_')||j.id==='detailed_notice_all'||j.name?.includes('简洁通报')||j.name?.includes('详细通报');
-        if(group==='sync') return j.id?.startsWith('readonly_sync_')
-          || j.id?.startsWith('weekend_sync_')
-          || j.name?.includes('数据同步');
+        if(group==='weekdaySync') return j.id?.startsWith('readonly_sync_') || j.name?.startsWith('只读数据同步');
+        if(group==='weekendSync') return j.id?.startsWith('weekend_sync_') || j.name?.startsWith('周末数据同步');
         return j.id==='final_data_collection'
           || j.id?.startsWith('weekly_report_')
           || j.id==='biweekly_report'
