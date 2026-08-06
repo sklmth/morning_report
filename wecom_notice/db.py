@@ -930,6 +930,16 @@ def get_dispatches(month: str, include_revoked: bool = False) -> list[dict[str, 
     return [dict(r) for r in rows]
 
 
+def get_dispatch_by_id(dispatch_id: int) -> dict[str, Any] | None:
+    """按主键取单条下发记录（含已撤回）。"""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM performance_award_dispatches WHERE id = ?",
+            (dispatch_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def save_performance_snapshot(
     month: str, award_round: int, dispatch_date: str, current_stats: list[dict[str, Any]]
 ) -> None:

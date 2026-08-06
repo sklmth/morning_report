@@ -751,8 +751,17 @@ async def performance_upload(file: UploadFile = File(...), month: str = Query(""
     upload_id = save_performance_upload(month, file_date, note=file.filename or "")
     save_performance_stats(upload_id, month, parsed["stats"])
 
+    manager_count = len(parsed["stats"])
+    add_send_log(
+        rule_key="performance_upload",
+        status="success",
+        message_text=f"[专项业绩] 上传完美一单 {month} | 文件：{file.filename} | 数据日期：{file_date} | 共 {manager_count} 人",
+        mentioned=[],
+        record_ids=[],
+        webhook_response=f"upload_id={upload_id}",
+    )
     return {"ok": True, "upload_id": upload_id, "file_date": file_date,
-            "manager_count": len(parsed["stats"])}
+            "manager_count": manager_count}
 
 
 @app.get("/api/performance/stats/{month}")
@@ -904,16 +913,40 @@ def dispatch_awards_api(payload: DispatchPayload):
     except Exception:
         pass  # 快照失败不影响下发主流程
 
+    # 下发操作写日志
+    detail_lines = [f"   · {d['manager_name']} {d['prize_name']}（{d['prize_amount']}元）第{d['rank_position']}名" for d in dispatches_to_save]
+    add_send_log(
+        rule_key="performance_dispatch",
+        status="success",
+        message_text=f"[专项业绩] 下发奖励 {month} 第{award_round}轮 | 共 {len(ids)} 人\n" + "\n".join(detail_lines),
+        mentioned=[],
+        record_ids=[],
+        webhook_response=f"dispatch_date={payload.dispatch_date}",
+    )
     return {"ok": True, "dispatched": len(ids), "ids": ids}
 
 
 @app.post("/api/performance/dispatch/{dispatch_id}/revoke")
 def revoke_dispatch_api(dispatch_id: int):
     """撤回单条下发记录，同时将对应奖品标记为已撤销。"""
-    from wecom_notice.db import revoke_dispatch
+    from wecom_notice.db import revoke_dispatch, get_dispatch_by_id
+    # 先取记录信息用于日志
+    record = get_dispatch_by_id(dispatch_id)
     ok = revoke_dispatch(dispatch_id)
     if not ok:
         raise HTTPException(status_code=404, detail="下发记录不存在")
+    if record:
+        add_send_log(
+            rule_key="performance_revoke",
+            status="success",
+            message_text=(
+                f"[专项业绩] 撤回奖励 | {record.get('month','')} 第{record.get('award_round','')}轮 "
+                f"| {record.get('manager_name','')} {record.get('prize_name','')}（{record.get('prize_amount','')}元）"
+            ),
+            mentioned=[],
+            record_ids=[],
+            webhook_response=f"dispatch_id={dispatch_id}",
+        )
     return {"ok": True}
 
 

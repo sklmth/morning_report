@@ -1942,7 +1942,7 @@ function app(){
         'manager_detailed_notice': '管理人员详细通报',
         'final_data_collection': '最终数据收集',
       };
-      return nameMap[rule.rule_key] || rule.rule_name || rule.rule_key;
+      return nameMap[rule.rule_key] || rule.name || rule.rule_key;
     },
 
     onTimeRate(){
