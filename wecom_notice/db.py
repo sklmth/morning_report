@@ -1009,6 +1009,36 @@ def get_performance_snapshots(month: str) -> list[dict[str, Any]]:
     return sorted(groups.values(), key=lambda g: g["award_round"])
 
 
+def get_latest_dispatch_snapshot_map(month: str) -> dict[str, Any] | None:
+    """
+    获取指定月份最新一轮下发快照，返回 {manager_name: {cumulative_points, cumulative_gaotao, dispatch_date, award_round}}。
+    无快照时返回 None。供 Excel 导出时作为新增计算基准。
+    """
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM performance_dispatch_snapshots
+               WHERE month = ?
+               ORDER BY award_round DESC""",
+            (month,),
+        ).fetchall()
+
+    if not rows:
+        return None
+
+    max_round = rows[0]["award_round"]
+    latest_rows = [dict(r) for r in rows if r["award_round"] == max_round]
+    dispatch_date = latest_rows[0].get("dispatch_date", "")
+    return {
+        r["manager_name"]: {
+            "cumulative_points": r["cumulative_points"],
+            "cumulative_gaotao": r["cumulative_gaotao"],
+            "dispatch_date": dispatch_date,
+            "award_round": max_round,
+        }
+        for r in latest_rows
+    }
+
+
 def get_setting(key: str, default: str = "") -> str:
     """读取应用设置，key不存在时返回default。"""
     with connection() as conn:

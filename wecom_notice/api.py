@@ -773,10 +773,10 @@ def performance_stats(month: str):
 
 
 @app.get("/api/performance/stats/{month}/export")
-def performance_stats_export(month: str, upload_id: int = Query(0), prev_id: int = Query(0)):
-    """下载专项业绩 Excel（风格对齐企业走访通报）。"""
+def performance_stats_export(month: str, upload_id: int = Query(0)):
+    """下载专项业绩 Excel。新增列基准：本月最新一次下发奖励快照；首次发奖前显示 "-"。"""
     from wecom_notice.performance import export_performance_excel
-    from wecom_notice.db import get_latest_performance_upload
+    from wecom_notice.db import get_latest_performance_upload, get_latest_dispatch_snapshot_map
 
     if not upload_id:
         latest = get_latest_performance_upload(month)
@@ -784,8 +784,8 @@ def performance_stats_export(month: str, upload_id: int = Query(0), prev_id: int
             raise HTTPException(status_code=404, detail="本月暂无上传记录")
         upload_id = latest["id"]
 
-    xlsx_bytes = export_performance_excel(month, upload_id,
-                                          prev_upload_id=prev_id or None)
+    prev_snapshot = get_latest_dispatch_snapshot_map(month)  # None → 尚未发过奖
+    xlsx_bytes = export_performance_excel(month, upload_id, prev_snapshot=prev_snapshot)
     filename = f"专项业绩_{month}.xlsx"
     return Response(
         content=xlsx_bytes,

@@ -2076,7 +2076,7 @@ function app(){
     },
     exportPerfExcel(){
       if(!this.pf.uploads.length){this.toast('暂无数据可导出',true);return;}
-      const latest=this.pf.uploads[this.pf.uploads.length-1];
+      const latest=this.pf.uploads[0]; // uploads 按 uploaded_at DESC，[0] 最新
       Api.perfExport(this.pf.month, latest.id);
     },
     // 辅助：取最新上传的积分排名行（按累计降序）

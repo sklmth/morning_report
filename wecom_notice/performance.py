@@ -215,42 +215,53 @@ def _cell(ws, row: int, col: int, value=None, bold=False, fill=None,
     return c
 
 
-def export_performance_excel(month: str, upload_id: int,
-                              prev_upload_id: Optional[int] = None) -> bytes:
+def export_performance_excel(
+    month: str,
+    upload_id: int,
+    prev_snapshot: "dict | None" = None,
+) -> bytes:
     """
     生成专项业绩通报 Excel，返回 bytes（可直接发送给前端下载）。
 
-    包含两个 sheet：
-      · 累计数据（积分 + 高套）
-      · 增量数据（与上一轮次对比，若 prev_upload_id=None 则全 0）
-    风格：深蓝标题条 + 浅蓝表头 + 隔行填色，字体微软雅黑。
+    包含两个 sheet（积分排名 + 高套排名），各 4 列：
+      名次 | 客户经理 | 本月累计 | 新增（vs 上次发奖快照，第一次发奖前显示 "-"）
+    仅统计非实习期客户经理（_ACTIVE_MANAGERS）。
+
+    Args:
+        month:         月份，格式 "YYYY-MM"
+        upload_id:     当前完美一单上传记录 id
+        prev_snapshot: get_latest_dispatch_snapshot_map() 的返回值，
+                       格式 {manager_name: {cumulative_points, cumulative_gaotao, dispatch_date}}；
+                       为 None 表示本月尚未发过奖励，新增列全显示 "-"。
     """
     from wecom_notice.db import get_performance_stats, get_performance_uploads
 
-    # ── 获取数据 ──────────────────────────────────────────────────────────────
+    # ── 获取当前数据 ─────────────────────────────────────────────────────────
     cur_rows: list[dict] = get_performance_stats(month, upload_id=upload_id)
-    prev_rows: list[dict] = (
-        get_performance_stats(month, upload_id=prev_upload_id)
-        if prev_upload_id else []
-    )
-    prev_map: dict[str, dict] = {r["manager_name"]: r for r in prev_rows}
-
     uploads = get_performance_uploads(month)
     upload_info = next((u for u in uploads if u["id"] == upload_id), {})
     file_date = upload_info.get("file_date", "")
-    prev_info = next((u for u in uploads if u["id"] == prev_upload_id), {}) if prev_upload_id else {}
-    prev_date = prev_info.get("file_date", "")
 
-    # ── 构建表格数据：按积分降序 ──────────────────────────────────────────────
+    # ── 新增列标题 ───────────────────────────────────────────────────────────
+    if prev_snapshot:
+        sample = next(iter(prev_snapshot.values()), {})
+        snap_date = sample.get("dispatch_date", "上次发奖")
+        inc_col_label = f"新增{{unit}}（vs {snap_date} 发奖）"
+    else:
+        inc_col_label = "新增{unit}（暂无发奖记录）"
+
+    # ── 构建排名数据 ─────────────────────────────────────────────────────────
     rows_pts = sorted(cur_rows, key=lambda x: x["cumulative_points"], reverse=True)
-    rows_gt = sorted(cur_rows, key=lambda x: x["cumulative_gaotao"], reverse=True)
+    rows_gt  = sorted(cur_rows, key=lambda x: x["cumulative_gaotao"],  reverse=True)
 
     wb = Workbook()
 
-    def write_sheet(ws, title: str, sorted_rows: list[dict], metric: str,
-                    cum_key: str, inc_key: str, unit: str):
-        """写入单个维度的 sheet。"""
-        col_headers = ["名次", "客户经理", f"本月累计{unit}", f"新增{unit}（vs {prev_date or '上轮'}）"]
+    def write_sheet(ws, title: str, sorted_rows: list[dict], cum_key: str, unit: str):
+        col_headers = [
+            "名次", "客户经理",
+            f"本月累计{unit}",
+            inc_col_label.replace("{unit}", unit),
+        ]
         ncol = len(col_headers)
         last_col = get_column_letter(ncol)
 
@@ -267,34 +278,39 @@ def export_performance_excel(month: str, upload_id: int,
             _cell(ws, 2, j, h, bold=True, fill=_HEADER_FILL, font_size=11)
 
         # 数据行
+        total_inc = 0.0
         for i, row in enumerate(sorted_rows, 1):
             name = row["manager_name"]
             cum_val = row[cum_key]
-            prev = prev_map.get(name, {cum_key: 0.0})
-            inc_val = row[cum_key] - prev.get(cum_key, 0.0)
             fill = _ALT_FILL if i % 2 == 0 else _WHITE_FILL
             r = i + 2
-            _cell(ws, r, 1, i, fill=fill)
+            _cell(ws, r, 1, i,    fill=fill)
             _cell(ws, r, 2, name, fill=fill, align=_LEFT)
             _cell(ws, r, 3, round(cum_val, 2), fill=fill)
-            inc_str = f"+{round(inc_val, 2)}" if inc_val > 0 else str(round(inc_val, 2))
+            if prev_snapshot is not None:
+                prev = prev_snapshot.get(name, {})
+                inc_val = cum_val - prev.get(cum_key, 0.0)
+                total_inc += inc_val
+                inc_str = f"+{round(inc_val, 2)}" if inc_val > 0 else str(round(inc_val, 2))
+            else:
+                inc_str = "-"
             _cell(ws, r, 4, inc_str, fill=fill)
 
         # 合计行
         total_cum = sum(r[cum_key] for r in sorted_rows)
-        total_inc = total_cum - sum(
-            prev_map.get(r["manager_name"], {cum_key: 0.0}).get(cum_key, 0.0)
-            for r in sorted_rows
-        )
         r_total = len(sorted_rows) + 3
-        _cell(ws, r_total, 1, "合计", bold=True, fill=_HEADER_FILL)
+        _cell(ws, r_total, 1, "合计",              bold=True, fill=_HEADER_FILL)
         _cell(ws, r_total, 2, f"{len(sorted_rows)} 人", bold=True, fill=_HEADER_FILL)
         _cell(ws, r_total, 3, round(total_cum, 2), bold=True, fill=_HEADER_FILL)
-        _cell(ws, r_total, 4, f"+{round(total_inc,2)}" if total_inc >= 0 else str(round(total_inc,2)),
-              bold=True, fill=_HEADER_FILL)
+        if prev_snapshot is not None:
+            _cell(ws, r_total, 4,
+                  f"+{round(total_inc,2)}" if total_inc >= 0 else str(round(total_inc,2)),
+                  bold=True, fill=_HEADER_FILL)
+        else:
+            _cell(ws, r_total, 4, "-", bold=True, fill=_HEADER_FILL)
 
         # 列宽
-        col_widths = [8, 14, 18, 22]
+        col_widths = [8, 14, 18, 28]
         for j, w in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(j)].width = w
         ws.row_dimensions[1].height = 30
@@ -304,13 +320,13 @@ def export_performance_excel(month: str, upload_id: int,
     ws_pts.title = "积分排名"
     write_sheet(ws_pts,
                 f"【专项业绩】{month} 积分统计（截至 {file_date}）",
-                rows_pts, "points", "cumulative_points", "cumulative_points", "积分")
+                rows_pts, "cumulative_points", "积分")
 
     # 高套 sheet
     ws_gt = wb.create_sheet("高套排名")
     write_sheet(ws_gt,
                 f"【专项业绩】{month} 高套统计（截至 {file_date}）",
-                rows_gt, "gaotao", "cumulative_gaotao", "cumulative_gaotao", "高套数")
+                rows_gt, "cumulative_gaotao", "高套数")
 
     buf = io.BytesIO()
     wb.save(buf)
