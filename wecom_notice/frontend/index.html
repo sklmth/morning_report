@@ -384,6 +384,24 @@
         <input type="date" class="inp w-full" x-model="snd.date" @change="onRuleChange()">
       </div>
 
+      <!-- 专项业绩奖励：月份 + 轮次选择器 -->
+      <div x-show="snd.mode==='rule' && snd.rule==='performance_award_notice'" class="flex gap-3">
+        <div class="flex-1">
+          <label class="block text-xs text-stone-500 mb-1">奖励月份</label>
+          <input type="month" class="inp w-full" x-model="snd.perfParams.month" @change="onRuleChange()">
+        </div>
+        <div class="w-28">
+          <label class="block text-xs text-stone-500 mb-1">轮次</label>
+          <select class="inp w-full" x-model.number="snd.perfParams.award_round" @change="onRuleChange()">
+            <option :value="1">第 1 轮</option>
+            <option :value="2">第 2 轮</option>
+            <option :value="3">第 3 轮</option>
+            <option :value="4">第 4 轮</option>
+            <option :value="5">第 5 轮</option>
+          </select>
+        </div>
+      </div>
+
       <!-- 自定义消息选项 -->
       <div x-show="snd.mode==='custom'" class="space-y-4">
         <div>
@@ -877,7 +895,11 @@
     <div class="card">
       <div class="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between">
         <span class="text-sm font-medium text-stone-700">📊 月累计积分排名</span>
-        <button class="btn-s text-xs py-0.5 px-2" @click="exportPerfExcel()">导出 Excel</button>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-stone-400" x-show="pf.uploads.length"
+            x-text="'截至 '+(pf.uploads[0]?.file_date||pf.uploads[0]?.uploaded_at?.slice(0,10)||'—')"></span>
+          <button class="btn-s text-xs py-0.5 px-2" @click="exportPerfExcel()">导出 Excel</button>
+        </div>
       </div>
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -970,12 +992,16 @@
         </select>
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-stone-500">奖品名称</label>
-        <input type="text" class="inp text-sm py-1 w-28" x-model="pf.newConfig.prize_name" placeholder="如：星巴克">
-      </div>
-      <div class="flex flex-col gap-1">
-        <label class="text-xs text-stone-500">金额（元）</label>
-        <input type="number" class="inp text-sm py-1 w-20" x-model.number="pf.newConfig.prize_amount" min="0" placeholder="0">
+        <label class="text-xs text-stone-500">奖品</label>
+        <select class="inp text-sm py-1" x-model="pf.newConfig.prize_name"
+          @change="pf.newConfig.prize_amount = ({聚灵丹:5,护身符:10,筑基丹:15,天罡令:20,金丹圣果:25,天命赦令:30})[pf.newConfig.prize_name]||0">
+          <option value="聚灵丹">聚灵丹（5元）</option>
+          <option value="护身符">护身符（10元）</option>
+          <option value="筑基丹">筑基丹（15元）</option>
+          <option value="天罡令">天罡令（20元）</option>
+          <option value="金丹圣果">金丹圣果（25元）</option>
+          <option value="天命赦令">天命赦令（30元）</option>
+        </select>
       </div>
       <button class="btn text-sm py-1 px-4 self-end" @click="savePerfConfig()">添加</button>
     </div>
@@ -1002,6 +1028,8 @@
     <div class="px-4 py-3 flex flex-wrap items-center gap-3">
       <span class="text-sm font-medium text-stone-700">🚀 下发奖励</span>
       <span class="text-xs text-stone-400">按当前配置和最新数据自动匹配</span>
+      <span class="text-xs badge-n" x-show="pf.uploads.length"
+        x-text="'数据截至 '+(pf.uploads[0]?.file_date||pf.uploads[0]?.uploaded_at?.slice(0,10)||'—')"></span>
       <div class="flex items-center gap-2 ml-auto flex-wrap">
         <label class="text-xs text-stone-500 shrink-0">本期轮次</label>
         <input type="number" class="inp text-sm py-1 w-16" x-model.number="pf.dispatchRound" min="1">
@@ -1345,6 +1373,7 @@ function app(){
     snd:{rules:[],rule:'',date:localDate(),preview:'',original:'',editing:false,edited:false,
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
+         perfParams:{month:localDate().slice(0,7),award_round:1},
          customContent:{
            text:'',
            markdown:'',
@@ -1360,7 +1389,7 @@ function app(){
     lg:{list:[],lim:20,page:1,total:0,pages:1,succ:0,fail:0},
     logModal:{show:false,item:null},
     pf:{month:'',uploads:[],cumulative:{},incremental:{},dispatches:[],configs:[],snapshots:[],loading:false,
-        newConfig:{award_round:1,rank_from:1,rank_to:1,metric:'points',prize_name:'',prize_amount:0,note:''},
+        newConfig:{award_round:1,rank_from:1,rank_to:1,metric:'points',prize_name:'聚灵丹',prize_amount:5,note:''},
         dispatchRound:1},
 
     async init(){
@@ -1449,7 +1478,10 @@ function app(){
         return;
       }
       try{
-        const r=await Api.preview({rule_key:this.snd.rule,target_date:this.snd.date});
+        const body={rule_key:this.snd.rule,target_date:this.snd.date};
+        if(this.snd.rule==='performance_award_notice')
+          body.params={month:this.snd.perfParams.month,award_round:this.snd.perfParams.award_round};
+        const r=await Api.preview(body);
         this.snd.original=r.message||'';
         if(!this.snd.edited) this.snd.preview=this.snd.original;
         this.snd.defaultNames=(r.recipients||[]).map(p=>p.name).filter(Boolean);
@@ -1543,12 +1575,15 @@ function app(){
         if(!await this.confirm(`确认发送此通报到企业微信？${who}`)) return;
         this.loading=true;
         try{
-          await Api.send({
+          const sendBody={
             rule_key:this.snd.rule,
             target_date:this.snd.date,
             message:this.snd.preview,
             recipient_names:this.snd.picked,
-          });
+          };
+          if(this.snd.rule==='performance_award_notice')
+            sendBody.params={month:this.snd.perfParams.month,award_round:this.snd.perfParams.award_round};
+          await Api.send(sendBody);
           this.toast('通报已发送 ✅');
           this.snd.editing=false;
         }catch(e){this.toast(e.message,true);}
@@ -2029,7 +2064,7 @@ function app(){
     },
     async savePerfConfig(){
       const c=this.pf.newConfig;
-      if(!c.prize_name&&c.prize_amount<=0){this.toast('请填写奖品名称或金额',true);return;}
+      if(!c.prize_name){this.toast('请选择奖品',true);return;}
       if(c.rank_from>c.rank_to){this.toast('名次「从」不能大于「至」',true);return;}
       try{
         await Api.saveAwardConfig({

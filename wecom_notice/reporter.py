@@ -343,7 +343,7 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
                 lines.append(f"   · 本月超时填报 {overtime_count} 次（每5次 10 元）= {fine_from_overtime} 元")
 
             if discount > 0:
-                lines.append(f"   · 天命赦令减免：-{discount} 元 🎴")
+                lines.append(f"   · 奖品减免：-{discount} 元 🎁")
                 if final_amount > 0:
                     lines.append(f"   请上交 {final_amount} 元至部门下午茶基金。")
                 else:
@@ -937,9 +937,9 @@ def build_weekly_report() -> dict[str, Any]:
             if f["discount"] > 0:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
                 if f["final_amount"] > 0:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
                 else:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，已全额抵扣 ✨")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，已全额抵扣 ✨")
             else:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:
@@ -1060,9 +1060,9 @@ def build_biweekly_report() -> dict[str, Any]:
             if f["discount"] > 0:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
                 if f["final_amount"] > 0:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
                 else:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，已全额抵扣 ✨")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，已全额抵扣 ✨")
             else:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:
@@ -1184,9 +1184,9 @@ def build_monthly_report() -> dict[str, Any]:
             if f["discount"] > 0:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
                 if f["final_amount"] > 0:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，需缴 {f['final_amount']} 元")
                 else:
-                    lines.append(f"      🎴 天命赦令减免 -{f['discount']} 元，已全额抵扣 ✨")
+                    lines.append(f"      🎁 奖品减免 -{f['discount']} 元，已全额抵扣 ✨")
             else:
                 lines.append(f"   {icon} {f['name']}   {' + '.join(parts)} = {f['total']} 元")
     else:

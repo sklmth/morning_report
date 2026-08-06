@@ -104,4 +104,15 @@ DEFAULT_RULES = [
         "recipient_policy": {"target": "customer_managers_and_management"},
         "template_key": "visit_result_missing",
     },
+    {
+        "key": "performance_award_notice",
+        "name": "专项业绩奖励下发通报",
+        "enabled": False,
+        "trigger_type": "manual",
+        "cron_expr": "",
+        "filter": {},
+        "recipient_policy": {"target": "management"},
+        "template_key": "performance_award_notice",
+        "params": {"month": "", "award_round": 1},
+    },
 ]

@@ -98,6 +98,8 @@ class ReportRequest(BaseModel):
     # 为 None 表示沿用模板生成的默认值。
     message: str | None = None
     recipient_names: list[str] | None = None
+    # 规则专属参数（如 performance_award_notice 的 month / award_round）
+    params: dict[str, Any] | None = None
 
 
 class RuleUpdate(BaseModel):
@@ -119,6 +121,9 @@ def get_report(payload: ReportRequest) -> tuple[dict[str, Any], dict[str, Any]]:
     rule = get_rule(payload.rule_key)
     if not rule:
         raise HTTPException(status_code=404, detail="规则不存在")
+    # 前端传入的 params（如 month、award_round）覆盖规则默认 params
+    if payload.params:
+        rule = {**rule, "params": {**(rule.get("params") or {}), **payload.params}}
     report = build_report(payload.target_date or tomorrow(), rule)
     return rule, report
 
