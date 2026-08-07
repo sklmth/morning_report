@@ -27,6 +27,27 @@ def get_prize_discount(manager_name: str, month: str) -> int:
         return 0
 
 
+def performance_metric_label(metric: str) -> str:
+    """专项业绩奖励类型中文名。"""
+    return {
+        "cumulative_score": "累计综合",
+        "incremental_score": "本期新增综合",
+    }.get(metric or "", metric or "专项业绩")
+
+
+def prize_source_usage_label(prize: dict[str, Any]) -> str:
+    """奖品来源/使用方式文案。"""
+    note = str(prize.get("note") or "")
+    source = prize.get("source") or ""
+    if note.startswith("找零"):
+        return "找零生成｜可继续抵扣"
+    if source == "lottery":
+        return "抽奖获得｜可自行选择使用"
+    if source == "performance":
+        return "专项业绩下发｜系统自动抵扣"
+    return "其他来源｜可用"
+
+
 def compute_fine_for_manager(manager_name: str, month: str) -> int:
     """
     计算指定客户经理在指定月份的应缴罚款总额（税前，未减免奖品）。
@@ -324,47 +345,78 @@ def build_customer_manager_reminder(target_date: str, manager_name: str, require
         if missing_count > 0:
             lines.append(f"   ❌ 漏填：{missing_count} 次")
 
-    # 已产生欠缴的账单（fine_enabled）：算钱，只在真的欠了才显示
+    current_month = date.today().strftime("%Y-%m")
+
+    # 已产生欠缴的账单（fine_enabled）：整合扣罚、已抵扣、可用奖品和是否仍欠缴。
     from wecom_notice.db import get_setting
     if get_setting("fine_enabled", "false") == "true":
         fine_from_missing = missing_count * 10          # 每次漏填 10元
         fine_from_overtime = (overtime_count // 5) * 10 # 每累计5次超时 10元
         total_fine = fine_from_missing + fine_from_overtime
-        if total_fine > 0:
-            # 获取天命赦令奖品减免
-            current_month = date.today().strftime("%Y-%m")
+        discount = 0
+        final_amount = 0
+        available_prizes: list[dict[str, Any]] = []
+        available_total = 0
+        try:
+            from wecom_notice.db import auto_apply_prizes, get_available_prize_total, get_prize_items
+            # 专项业绩下发奖品后台自动抵扣；抽奖奖品保留给客户经理自行选择。
+            if total_fine > 0:
+                auto_apply_prizes(manager_name, current_month, total_fine)
+            discount = get_prize_discount(manager_name, current_month)
+            final_amount = max(0, total_fine - discount)
+            available_prizes = get_prize_items(manager_name, current_month, status="available")
+            available_total = get_available_prize_total(manager_name, current_month)
+        except Exception:
             discount = get_prize_discount(manager_name, current_month)
             final_amount = max(0, total_fine - discount)
 
+        if total_fine > 0:
             lines.append("")
-            lines.append("☕ 下午茶基金提醒：")
+            lines.append("💸 应缴账单：")
             if missing_count >= 1:
                 lines.append(f"   · 本月漏填 {missing_count} 次（× 10 元/次）= {fine_from_missing} 元")
             if overtime_count >= 5:
                 lines.append(f"   · 本月超时填报 {overtime_count} 次（每5次 10 元）= {fine_from_overtime} 元")
+            lines.append(f"   · 扣罚合计：{total_fine} 元")
 
             if discount > 0:
-                lines.append(f"   · 奖品减免：-{discount} 元 🎁")
+                lines.append(f"   · 已抵扣：-{discount} 元 🎁")
                 if final_amount > 0:
-                    lines.append(f"   请上交 {final_amount} 元至部门下午茶基金。")
+                    lines.append(f"   · 仍需上交：{final_amount} 元")
                 else:
-                    lines.append(f"   🎉 已全额抵扣，本月无需上交！")
+                    lines.append(f"   · ✅ 已全额抵扣，本月暂无需上交")
             else:
-                lines.append(f"   请上交 {total_fine} 元至部门下午茶基金。")
+                lines.append(f"   · 已抵扣：0 元")
+                lines.append(f"   · 仍需上交：{total_fine} 元")
+        else:
+            try:
+                from wecom_notice.db import get_available_prize_total, get_prize_items
+                available_prizes = get_prize_items(manager_name, current_month, status="available")
+                available_total = get_available_prize_total(manager_name, current_month)
+            except Exception:
+                available_prizes = []
+                available_total = 0
 
-    # 可用奖品列表（来源：天命赦令 + 专项业绩，均含 available 状态）
-    try:
-        from wecom_notice.db import get_prize_items
-        current_month = date.today().strftime("%Y-%m")
-        available_prizes = get_prize_items(manager_name, current_month, status="available")
+        lines.append("")
         if available_prizes:
-            lines.append("")
-            lines.append("🎁 当前可用奖品：")
+            lines.append(f"🎁 当前可用奖品（合计 {available_total} 元）：")
             for p in available_prizes:
-                src_label = "🎴 天命赦令" if p.get("source") == "lottery" else "🏆 专项业绩"
-                lines.append(f"   · {p['prize_name']}（{p['face_amount']}元）— {src_label}")
-    except Exception:
-        pass
+                lines.append(f"   · {p['prize_name']}（{p['face_amount']}元）— {prize_source_usage_label(p)}")
+        else:
+            lines.append("🎁 当前可用奖品：暂无")
+
+    # 如果账单开关没打开，仍保留轻量可用奖品提示。
+    elif get_setting("fine_enabled", "false") != "true":
+        try:
+            from wecom_notice.db import get_prize_items
+            available_prizes = get_prize_items(manager_name, current_month, status="available")
+            if available_prizes:
+                lines.append("")
+                lines.append("🎁 当前可用奖品：")
+                for p in available_prizes:
+                    lines.append(f"   · {p['prize_name']}（{p['face_amount']}元）— {prize_source_usage_label(p)}")
+        except Exception:
+            pass
 
     lines.extend([
         "",
@@ -860,9 +912,9 @@ def build_weekly_report() -> dict[str, Any]:
         if mgr in manager_stats and status in manager_stats[mgr]:
             manager_stats[mgr][status] += 1
 
-    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items()})
-    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items()})
-    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
+    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items() if s["on_time"] > 0})
+    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items() if s["overtime"] > 0})
+    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items() if s["missing"] > 0})
 
     # 罚款计算（按金额倒序）
     current_month = today.strftime("%Y-%m")
@@ -983,9 +1035,9 @@ def build_biweekly_report() -> dict[str, Any]:
         if mgr in manager_stats and status in manager_stats[mgr]:
             manager_stats[mgr][status] += 1
 
-    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items()})
-    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items()})
-    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
+    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items() if s["on_time"] > 0})
+    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items() if s["overtime"] > 0})
+    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items() if s["missing"] > 0})
 
     # 罚款计算
     current_month = today.strftime("%Y-%m")
@@ -1107,9 +1159,9 @@ def build_monthly_report() -> dict[str, Any]:
         if mgr in manager_stats and status in manager_stats[mgr]:
             manager_stats[mgr][status] += 1
 
-    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items()})
-    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items()})
-    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items()})
+    on_time_top3 = _top3_with_ties({m: s["on_time"] for m, s in manager_stats.items() if s["on_time"] > 0})
+    overtime_top3 = _top3_with_ties({m: s["overtime"] for m, s in manager_stats.items() if s["overtime"] > 0})
+    missing_top3 = _top3_with_ties({m: s["missing"] for m, s in manager_stats.items() if s["missing"] > 0})
 
     # 罚款计算
     current_month = today.strftime("%Y-%m")
@@ -1360,29 +1412,26 @@ def build_performance_award_notice(month: str, award_round: int = 1) -> dict[str
     if not dispatches:
         return {"message": "", "recipients": [], "should_send": False}
 
-    lines = [
-        f"🏆【专项业绩奖励通报】{month} 第 {award_round} 轮",
-        f"📅 下发日期：{dispatches[0].get('dispatch_date', '')}",
-        "",
-        "本次奖励明细如下：",
-    ]
+    lines = [f"[专项业绩] 奖励下发｜{month} 第{award_round}轮", ""]
 
     def _metric_label(metric: str) -> str:
         labels = {
-            "cumulative_score": "🥇 累计综合得分排名",
-            "incremental_score": "📈 本期新增综合得分排名",
-            "points": "🥇 积分排名",
-            "gaotao": "📡 高套排名",
+            "cumulative_score": "累计综合",
+            "incremental_score": "本期新增综合",
         }
-        return labels.get(metric, metric or "综合排名")
+        return labels.get(metric, metric or "综合")
 
     def _score_detail(dispatch: dict[str, Any]) -> dict[str, str]:
         note = dispatch.get("note") or ""
         score_match = re.search(r"综合得分\s*([0-9.]+)", note)
         completion_match = re.search(r"完成率得分\s*([0-9.]+)", note)
-        rank_match = re.search(r"排名修正\s*([0-9.]+)", note)
+        rank_match = re.search(r"(?:排名得分|排名修正)\s*([0-9.]+)", note)
         weights_match = re.search(r"积分系数\s*([0-9.]+)，高套系数\s*([0-9.]+)", note)
         days_match = re.search(r"任务天数\s*([0-9.]+)", note)
+        denominator_match = re.search(r"折算分母\s*([0-9.]+)", note)
+        data_date_match = re.search(r"(?:数据日期|右端点)\s*(\d{4}-\d{2}-\d{2})", note)
+        previous_data_date_match = re.search(r"(?:上轮数据日期|左端点)\s*(\d{4}-\d{2}-\d{2})", note)
+        month_start_match = re.search(r"左端点\s*本月开始", note)
         return {
             "score": score_match.group(1) if score_match else "",
             "completion_score": completion_match.group(1) if completion_match else "",
@@ -1390,21 +1439,27 @@ def build_performance_award_notice(month: str, award_round: int = 1) -> dict[str
             "points_weight": weights_match.group(1) if weights_match else "0.4",
             "gaotao_weight": weights_match.group(2) if weights_match else "0.6",
             "days": days_match.group(1) if days_match else "14",
+            "denominator_days": denominator_match.group(1) if denominator_match else "当月天数",
+            "data_date": data_date_match.group(1) if data_date_match else "",
+            "previous_data_date": previous_data_date_match.group(1) if previous_data_date_match else "",
+            "from_month_start": bool(month_start_match),
         }
 
-    def _formula_line(metric: str, group: list[dict[str, Any]]) -> str:
-        if metric not in {"cumulative_score", "incremental_score"}:
-            return ""
+    def _period_line(metric: str, group: list[dict[str, Any]]) -> str:
         detail = _score_detail(group[0])
-        source = "累计积分、累计高套数" if metric == "cumulative_score" else "本期新增积分、本期新增高套数"
-        target = "高套任务 14、积分任务 2500" if metric == "cumulative_score" else f"按 {detail['days']} 天折算任务值（高套 14×{detail['days']}/14、积分 2500×{detail['days']}/14）"
-        return (
-            f"   计算规则：按{source}计算；{target}；完成率得分 = "
-            f"(积分完成率 × {detail['points_weight']} + 高套完成率 × {detail['gaotao_weight']}) × 70；"
-            f"排名修正最高 30 分、最后 0 分，按客户经理人数线性分配；综合得分 = 完成率得分 + 排名修正。"
-        )
+        if metric == "cumulative_score":
+            return f"累计综合｜统计日期：截至 {detail['data_date']}" if detail["data_date"] else "累计综合｜统计日期：截至本轮数据日期"
+        if metric == "incremental_score":
+            if detail["previous_data_date"] and detail["data_date"]:
+                return f"本期新增综合｜统计区间：{detail['previous_data_date']} 至 {detail['data_date']}"
+            elif detail.get("from_month_start") and detail["data_date"]:
+                return f"本期新增综合｜统计区间：本月开始 至 {detail['data_date']}"
+            elif detail["data_date"]:
+                return f"本期新增综合｜统计区间：截至 {detail['data_date']} 的本期新增"
+            return "本期新增综合｜统计区间：本期新增"
+        return f"{_metric_label(metric)}"
 
-    metric_order = ["cumulative_score", "incremental_score", "points", "gaotao"]
+    metric_order = ["cumulative_score", "incremental_score"]
 
     # 按指标/类型分组展示
     by_metric: dict[str, list] = {}
@@ -1416,24 +1471,16 @@ def build_performance_award_notice(month: str, award_round: int = 1) -> dict[str
         group = by_metric.get(metric_key, [])
         if not group:
             continue
-        lines.append("")
-        lines.append(_metric_label(metric_key) + "：")
-        formula = _formula_line(metric_key, group)
-        if formula:
-            lines.append(formula)
+        lines.append(_period_line(metric_key, group))
         for d in sorted(group, key=lambda x: x.get("rank_position", 99)):
             rank = d.get("rank_position", 0)
             rank_str = f"第{rank}名 " if rank > 0 else ""
-            detail = _score_detail(d)
-            score_str = f"｜得分 {detail['score']}" if detail["score"] else ""
-            if detail["completion_score"] and detail["rank_score"]:
-                score_str += f"（完成率 {detail['completion_score']} + 排名修正 {detail['rank_score']}）"
-            lines.append(f"   {rank_str}{d['manager_name']} — {d['prize_name']}（{d['prize_amount']}元）{score_str}")
+            lines.append(f"· {rank_str}{d['manager_name']}：{d['prize_name']} {d['prize_amount']}元")
+        lines.append("")
 
     lines.extend([
-        "",
-        "以上奖励已入库，奖品将自动抵扣当月下午茶基金欠缴。",
-        "如有疑问请联系管理人员。",
+        "说明：专项业绩下发奖品已进入客户经理奖品池，并由系统自动用于抵扣扣罚。",
+        "规则：综合得分最高100分；完成率得分最高70分，排名得分最高30分；单项完成率最高按100%计。本期新增按新增天数/当月天数折算任务值。",
     ])
 
     return {

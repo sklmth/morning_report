@@ -168,13 +168,15 @@ def compute_incremental_stats(month: str) -> dict:
 
     uploads = get_performance_uploads(month)
     if not uploads:
-        return {"uploads": [], "cumulative": {}, "incremental": {}}
+        return {"uploads": [], "cumulative": {}, "incremental": {}, "latest_incremental": [], "latest_incremental_period": None}
 
+    # get_performance_uploads 按 uploaded_at 倒序返回；增量必须按数据日期/上传时间正序计算。
+    chronological_uploads = sorted(uploads, key=lambda u: (u.get("file_date") or "", u.get("uploaded_at") or "", u.get("id") or 0))
     cumulative: dict[int, list[dict]] = {}
     incremental: dict[int, list[dict]] = {}
     prev_stats: dict[str, dict] = {}
 
-    for upload in uploads:
+    for upload in chronological_uploads:
         uid = upload["id"]
         rows = get_performance_stats(month, upload_id=uid)
 
@@ -197,7 +199,22 @@ def compute_incremental_stats(month: str) -> dict:
         incremental[uid] = inc_rows
         prev_stats = {r["manager_name"]: r for r in rows}
 
-    return {"uploads": uploads, "cumulative": cumulative, "incremental": incremental}
+    latest = uploads[0]
+    latest_uid = latest["id"]
+    latest_idx = next((i for i, u in enumerate(chronological_uploads) if u["id"] == latest_uid), -1)
+    previous_for_latest = chronological_uploads[latest_idx - 1] if latest_idx > 0 else None
+    latest_period = {
+        "from_date": previous_for_latest.get("file_date") if previous_for_latest else "",
+        "to_date": latest.get("file_date") or "",
+    }
+
+    return {
+        "uploads": uploads,
+        "cumulative": cumulative,
+        "incremental": incremental,
+        "latest_incremental": incremental.get(latest_uid, []),
+        "latest_incremental_period": latest_period,
+    }
 
 
 def compute_current_incremental_stats(month: str, upload_id: int | None = None) -> list[dict]:

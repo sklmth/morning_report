@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS performance_dispatch_snapshots (
     cumulative_gaotao REAL NOT NULL DEFAULT 0,
     inc_points REAL NOT NULL DEFAULT 0,
     inc_gaotao REAL NOT NULL DEFAULT 0,
+    data_date TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_perf_snapshot_month ON performance_dispatch_snapshots(month, award_round);
@@ -225,6 +226,9 @@ def init_db() -> None:
             conn.execute("ALTER TABLE performance_award_configs ADD COLUMN points_weight REAL NOT NULL DEFAULT 0.4")
         if "gaotao_weight" not in columns:
             conn.execute("ALTER TABLE performance_award_configs ADD COLUMN gaotao_weight REAL NOT NULL DEFAULT 0.6")
+        snapshot_columns = {row["name"] for row in conn.execute("PRAGMA table_info(performance_dispatch_snapshots)").fetchall()}
+        if "data_date" not in snapshot_columns:
+            conn.execute("ALTER TABLE performance_dispatch_snapshots ADD COLUMN data_date TEXT NOT NULL DEFAULT ''")
         timestamp = now()
         for rule in DEFAULT_RULES:
             conn.execute(
@@ -507,22 +511,92 @@ def get_reminder_logs(date: str = "", manager: str = "", limit: int = 100) -> li
     return [dict(row) for row in rows]
 
 
-def get_manager_history_counts(manager_name: str, before_date: str = "") -> dict[str, int]:
-    """获取客户经理本月累计的准时、超时和漏填次数。"""
+def get_latest_fill_statistics_date(month: str) -> str:
+    """获取指定月份填报统计表中的最新日期。"""
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT MAX(date) AS latest_date FROM fill_statistics WHERE date LIKE ?",
+            (f"{month}-%",),
+        ).fetchone()
+    return row["latest_date"] or ""
+
+
+def get_fill_summary_month(month: str, through_date: str = "") -> list[dict[str, Any]]:
+    """获取指定月份截至 through_date（含）的客户经理准时/超时/漏填汇总。"""
+    from wecom_notice.config import CUSTOMER_MANAGERS
+
+    month_start = f"{month}-01"
+    statistics_start = "2026-08-05" if month_start == "2026-08-01" else month_start
+    month_end_prefix = f"{month}-%"
+    clauses = ["date >= ?", "date LIKE ?", "fill_status IN ('on_time','overtime','missing')"]
+    params: list[Any] = [statistics_start, month_end_prefix]
+    if through_date:
+        clauses.append("date <= ?")
+        params.append(through_date)
+    where = " AND ".join(clauses)
+    with connection() as conn:
+        rows = conn.execute(
+            f"""SELECT manager_name, fill_status, COUNT(*) AS cnt
+                FROM fill_statistics
+                WHERE {where}
+                GROUP BY manager_name, fill_status""",
+            params,
+        ).fetchall()
+    summary: dict[str, dict[str, Any]] = {
+        m["name"]: {
+            "manager_name": m["name"],
+            "on_time_count": 0,
+            "overtime_count": 0,
+            "missing_count": 0,
+        }
+        for m in CUSTOMER_MANAGERS
+        if not m.get("exclude_reminder", False)
+    }
+    for r in rows:
+        name = r["manager_name"]
+        if name not in summary:
+            summary[name] = {
+                "manager_name": name,
+                "on_time_count": 0,
+                "overtime_count": 0,
+                "missing_count": 0,
+            }
+        key = {
+            "on_time": "on_time_count",
+            "overtime": "overtime_count",
+            "missing": "missing_count",
+        }.get(r["fill_status"])
+        if key:
+            summary[name][key] = int(r["cnt"] or 0)
+    return list(summary.values())
+
+
+def get_manager_history_counts(manager_name: str, before_date: str = "", end_date: str = "") -> dict[str, int]:
+    """
+    获取客户经理本月累计的准时、超时和漏填次数。
+
+    兼容两种调用：
+    - get_manager_history_counts(name, before_date)：统计当月第一天至 before_date 前一天；
+    - get_manager_history_counts(name, start_date, end_date)：统计 [start_date, end_date)。
+    """
     from datetime import date as dt_date
 
-    # 计算本月第一天
-    today = dt_date.fromisoformat(before_date) if before_date else dt_date.today()
-    month_start = today.replace(day=1).isoformat()
-
-    # 2026-08-04 是本次系统启用日，整天按准时处理；8月从 08-05 起算。
-    # 这个临时基线只影响 2026 年 8 月，进入下月后恢复按自然月第一天统计。
-    statistics_start = "2026-08-05" if month_start == "2026-08-01" else month_start
-    clauses = ["manager_name = ?", "date >= ?"]
-    params: list[Any] = [manager_name, statistics_start]
-    if before_date:
-        clauses.append("date < ?")
-        params.append(before_date)
+    if end_date:
+        month_start = before_date
+        statistics_start = "2026-08-05" if month_start == "2026-08-01" else month_start
+        clauses = ["manager_name = ?", "date >= ?", "date < ?"]
+        params: list[Any] = [manager_name, statistics_start, end_date]
+    else:
+        today = dt_date.fromisoformat(before_date) if before_date else dt_date.today()
+        month_start = today.replace(day=1).isoformat()
+        # 2026-08-04 是本次系统启用日，整天按准时处理；8月从 08-05 起算。
+        # 这个临时基线只影响 2026 年 8 月，进入下月后恢复按自然月第一天统计。
+        statistics_start = "2026-08-05" if month_start == "2026-08-01" else month_start
+        clauses = ["manager_name = ?", "date >= ?"]
+        params = [manager_name, statistics_start]
+        if before_date:
+            clauses.append("date < ?")
+            params.append(before_date)
     where = " AND ".join(clauses)
     with connection() as conn:
         on_time = conn.execute(
@@ -714,7 +788,9 @@ def auto_apply_prizes(manager_name: str, month: str, total_fine: int) -> dict[st
     返回：
       {"total_covered": int, "events": [...]}
     """
-    available = [p for p in get_prize_items(manager_name, month, status="available")]
+    # 自动抵扣只使用专项业绩下发及其找零奖品。
+    # 抽奖奖品由客户经理在页面中自行选择使用，不在后台自动消耗。
+    available = [p for p in get_prize_items(manager_name, month, status="available") if p.get("source") == "performance"]
     total_covered = get_total_prize_covered(manager_name, month)
 
     events = []
@@ -757,6 +833,37 @@ def get_available_prize_total(manager_name: str, month: str) -> int:
             (manager_name, month),
         ).fetchone()
     return int(row["total"])
+
+
+def get_prize_coverage_map(month: str) -> dict[int, int]:
+    """返回指定月份每个奖品已抵扣金额，key 为 prize_item_id。"""
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT prize_item_id, COALESCE(SUM(covered_amount), 0) AS covered
+               FROM fine_coverage_events
+               WHERE month = ?
+               GROUP BY prize_item_id""",
+            (month,),
+        ).fetchall()
+    return {int(r["prize_item_id"]): int(r["covered"]) for r in rows}
+
+
+def get_prize_change_map(month: str) -> dict[int, list[dict[str, Any]]]:
+    """返回找零奖品映射，key 为原奖品 prize_items.id。"""
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM prize_items
+               WHERE month = ? AND note LIKE '找零%'
+               ORDER BY acquired_at, id""",
+            (month,),
+        ).fetchall()
+    result: dict[int, list[dict[str, Any]]] = {}
+    for row in rows:
+        item = dict(row)
+        source_ref_id = item.get("source_ref_id")
+        if source_ref_id:
+            result.setdefault(int(source_ref_id), []).append(item)
+    return result
 
 
 # ====== 业绩奖励 ======
@@ -960,11 +1067,16 @@ def get_dispatch_by_id(dispatch_id: int) -> dict[str, Any] | None:
 
 
 def save_performance_snapshot(
-    month: str, award_round: int, dispatch_date: str, current_stats: list[dict[str, Any]]
+    month: str,
+    award_round: int,
+    dispatch_date: str,
+    current_stats: list[dict[str, Any]],
+    data_date: str = "",
 ) -> None:
     """
     在下发奖励时保存快照：记录所有客户经理此刻的累计数据，以及较上一轮快照的增量。
     current_stats 每项含 manager_name, cumulative_points, cumulative_gaotao。
+    data_date 为本轮采用的完美一单数据日期，用于后续新增区间计算。
     """
     # 取本月上一轮（award_round-1 及之前）最新那轮的快照，用于计算增量
     with connection() as conn:
@@ -997,12 +1109,13 @@ def save_performance_snapshot(
             conn.execute(
                 """INSERT INTO performance_dispatch_snapshots
                    (month, award_round, dispatch_date, manager_name,
-                    cumulative_points, cumulative_gaotao, inc_points, inc_gaotao, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    cumulative_points, cumulative_gaotao, inc_points, inc_gaotao, data_date, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     month, award_round, dispatch_date, name,
                     s["cumulative_points"], s["cumulative_gaotao"],
                     max(inc_pts, 0), max(inc_gt, 0),
+                    data_date or dispatch_date,
                     timestamp,
                 ),
             )
@@ -1030,6 +1143,8 @@ def get_performance_snapshots(month: str) -> list[dict[str, Any]]:
             groups[key] = {
                 "award_round": r["award_round"],
                 "dispatch_date": r["dispatch_date"],
+                "data_date": r.get("data_date", ""),
+                "created_at": r.get("created_at", ""),
                 "month": r["month"],
                 "rows": [],
             }
@@ -1057,11 +1172,13 @@ def get_latest_dispatch_snapshot_map(month: str) -> dict[str, Any] | None:
     max_round = rows[0]["award_round"]
     latest_rows = [dict(r) for r in rows if r["award_round"] == max_round]
     dispatch_date = latest_rows[0].get("dispatch_date", "")
+    data_date = latest_rows[0].get("data_date", "") or dispatch_date
     return {
         r["manager_name"]: {
             "cumulative_points": r["cumulative_points"],
             "cumulative_gaotao": r["cumulative_gaotao"],
             "dispatch_date": dispatch_date,
+            "data_date": r.get("data_date", "") or data_date,
             "award_round": max_round,
         }
         for r in latest_rows

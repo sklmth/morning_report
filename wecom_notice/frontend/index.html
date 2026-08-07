@@ -402,6 +402,19 @@
         </div>
       </div>
 
+      <!-- 专项业绩奖励：可选先发送图片 -->
+      <div x-show="snd.mode==='rule' && snd.rule==='performance_award_notice'" class="rounded-lg border border-stone-200 bg-stone-50/60 p-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="block text-xs font-medium text-stone-600">可选图片消息</label>
+          <button type="button" class="text-xs text-stone-400 hover:text-stone-600" x-show="snd.perfImage.dataUrl" @click="clearPerfNoticeImage()">清除图片</button>
+        </div>
+        <input type="file" accept="image/*" @change="handlePerfNoticeImageUpload($event)" class="inp w-full text-sm">
+        <p class="text-xs text-stone-400">如上传图片，点击发送时会先发送图片消息，再发送下面这段专项业绩下发通报文字。</p>
+        <div x-show="snd.perfImage.dataUrl">
+          <img :src="snd.perfImage.dataUrl" class="max-w-full max-h-72 h-auto rounded-lg border border-stone-200 bg-white">
+        </div>
+      </div>
+
       <!-- 自定义消息选项 -->
       <div x-show="snd.mode==='custom'" class="space-y-4">
         <div>
@@ -440,12 +453,29 @@
         <div x-show="snd.customType==='image'" class="space-y-3">
           <div>
             <label class="block text-xs text-stone-500 mb-1">上传图片</label>
-            <input type="file" accept="image/*" @change="handleImageUpload($event)" class="inp w-full text-sm">
-            <p class="text-xs text-stone-400 mt-1">支持 JPG、PNG、GIF 格式，最大 10MB</p>
+            <input type="file" accept="image/*" multiple @change="handleImageUpload($event)" class="inp w-full text-sm">
+            <p class="text-xs text-stone-400 mt-1">支持一次选择多张 JPG、PNG、GIF 图片；每张最大 10MB。发送时按下方预览顺序逐张发送。</p>
           </div>
-          <div x-show="snd.customContent.image.dataUrl">
-            <label class="block text-xs text-stone-500 mb-1">图片预览</label>
-            <img :src="snd.customContent.image.dataUrl" class="max-w-full h-auto rounded-lg border border-stone-200">
+          <div x-show="snd.customContent.image.images.length" class="space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="block text-xs text-stone-500">图片预览 / 发送顺序</label>
+              <button type="button" class="text-xs text-stone-400 hover:text-stone-600" @click="snd.customContent.image.images=[]">清空全部</button>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <template x-for="(img,idx) in snd.customContent.image.images" :key="img.id">
+                <div class="rounded-lg border border-stone-200 bg-white p-2 space-y-2">
+                  <div class="text-xs text-stone-500 flex items-center justify-between">
+                    <span x-text="'第 '+(idx+1)+' 张'"></span>
+                    <button type="button" class="text-red-400 hover:text-red-600" @click="removeCustomImage(idx)">移除</button>
+                  </div>
+                  <img :src="img.dataUrl" class="w-full h-32 object-contain rounded border border-stone-100 bg-stone-50">
+                  <div class="flex gap-1">
+                    <button type="button" class="btn-s text-xs flex-1 py-1" :disabled="idx===0" @click="moveCustomImage(idx,-1)">上移</button>
+                    <button type="button" class="btn-s text-xs flex-1 py-1" :disabled="idx===snd.customContent.image.images.length-1" @click="moveCustomImage(idx,1)">下移</button>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
 
@@ -552,12 +582,12 @@
         <!-- @提醒文本（非text类型时，始终显示） -->
         <div x-show="snd.customType!=='text'">
           <label class="block text-xs text-stone-500 mb-1">
-            @ 提醒文本
+            <span x-text="snd.customType==='image'?'图片发送后文本':'@ 提醒文本'"></span>
             <span class="text-stone-400" x-show="snd.picked.length>0">(将发送给 <span x-text="snd.picked.length"></span> 人)</span>
           </label>
           <input type="text" x-model="snd.mentionText" class="inp w-full"
-            placeholder="请及时查看">
-          <p class="text-xs text-stone-400 mt-1">系统将在发送主消息后，额外发送这条文本消息来 @ 选中的接收人</p>
+            :placeholder="snd.customType==='image'?'图片后发送的文本内容':'请及时查看'">
+          <p class="text-xs text-stone-400 mt-1" x-text="snd.customType==='image'?'系统将按预览顺序逐张发送图片，全部发送成功后再发送这条文本消息。':'系统将在发送主消息后，额外发送这条文本消息来 @ 选中的接收人'"></p>
         </div>
       </div>
 
@@ -569,7 +599,7 @@
             x-text="snd.rulesPreviewExpanded?'收起':'展开'"></button>
         </div>
         <div x-show="snd.rulesPreviewExpanded" class="rounded-lg bg-white border border-stone-200 p-3 shadow-sm">
-          <pre class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit">📋【预约填报管理规则】
+          <pre class="text-xs text-stone-700 whitespace-pre-wrap leading-relaxed" style="font-family:inherit">📋【预约填报与奖励抵扣规则】
 
 ━━━━━━ ⏰ 填报时间规则 ━━━━━━
 
@@ -584,10 +614,40 @@
    · 超时：每累计 5 次扣 10 元
    · 按自然月统计，次月清零
 
-🎴 天命赦令减免：
-   · 抽签奖品可抵扣罚款
-   · 不改变超时/漏填次数记录
-   · 减免额度：5-30 元不等
+💸 应缴账单：
+   · 系统会统计本月扣罚合计、已抵扣金额、仍需上交金额
+   · 奖品抵扣只抵扣金额，不改变准时/超时/漏填次数记录
+   · 已全额抵扣时，本月暂无需上交
+
+━━━━━━ 🎁 奖品抵扣规则 ━━━━━━
+
+🏆 专项业绩下发奖品：
+   · 由系统直接进入客户经理奖品池
+   · 系统会自动用于抵扣当月扣罚
+   · 抵扣后如有差额，会自动找零生成小额奖品
+   · 例：筑基丹15元抵扣10元，找零生成聚灵丹5元
+
+🎴 抽奖获得奖品：
+   · 由客户经理在页面中自行选择使用
+   · 未主动使用前，不会被系统自动抵扣
+
+🔁 找零生成奖品：
+   · 找零奖品会继续留在奖品池
+   · 后续可继续用于抵扣扣罚
+
+━━━━━━ 🏆 专项业绩奖励 ━━━━━━
+
+📊 数据来源：完美一单专项业绩上传数据
+🎯 奖励类型：
+   · 累计综合：按右端点数据日期的本月累计业绩排名
+   · 本期新增综合：按页面选择的左端点/右端点新增业绩排名
+
+🧮 综合得分规则：
+   · 综合得分最高 100 分
+   · 完成率得分最高 70 分
+   · 排名得分最高 30 分
+   · 单项完成率最高按 100% 计
+   · 本期新增任务按“新增天数 / 当月天数”折算
 
 ━━━━━━ 🎰 天命赦令 ━━━━━━
 
@@ -615,7 +675,7 @@
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-准时填报，好运相伴！🍀</pre>
+准时填报，好运相伴🍀</pre>
         </div>
       </div>
 
@@ -874,7 +934,26 @@
         <input type="file" accept=".xlsx,.xls" class="hidden"
           @change="uploadPerfFile($event.target.files[0]);$event.target.value=''">
       </label>
-      <button class="btn-s text-xs py-1 px-3 ml-auto" @click="loadPerf()">刷新</button>
+      <div class="flex items-center gap-2 flex-wrap" x-show="pf.uploads.length">
+        <label class="text-xs text-stone-500">左端点</label>
+        <select class="inp text-xs py-1 w-32" x-model="pf.selectedLeftDate" @change="loadPerf()">
+          <option value="">本月开始</option>
+          <template x-for="d in perfUploadDates()" :key="'l'+d">
+            <option :value="d" x-text="d"></option>
+          </template>
+        </select>
+        <label class="text-xs text-stone-500">右端点</label>
+        <select class="inp text-xs py-1 w-32" x-model="pf.selectedRightDate" @change="loadPerf()">
+          <template x-for="d in perfUploadDates()" :key="'r'+d">
+            <option :value="d" x-text="d"></option>
+          </template>
+        </select>
+      </div>
+      <span class="text-xs text-stone-400 ml-auto" x-show="pf.uploads.length"
+        x-text="'累计截至 '+(pf.selectedRightDate||pf.uploads[0]?.file_date||'—')"></span>
+      <span class="text-xs badge-n" x-show="latestPerfPeriodText()" x-text="latestPerfPeriodText()"></span>
+      <button class="btn-s text-xs py-1 px-3" @click="exportPerfExcel()" x-show="pf.uploads.length">导出 Excel</button>
+      <button class="btn-s text-xs py-1 px-3" @click="loadPerf()">刷新</button>
     </div>
     <!-- 上传历史 -->
     <div x-show="pf.uploads.length" class="px-4 py-2 flex flex-wrap gap-2 items-center">
@@ -893,13 +972,8 @@
   <div x-show="pf.uploads.length" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <!-- 积分排名 -->
     <div class="card">
-      <div class="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between">
+      <div class="px-4 py-2.5 border-b border-stone-100">
         <span class="text-sm font-medium text-stone-700">📊 月累计积分排名</span>
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-stone-400" x-show="pf.uploads.length"
-            x-text="'截至 '+(pf.uploads[0]?.file_date||pf.uploads[0]?.uploaded_at?.slice(0,10)||'—')"></span>
-          <button class="btn-s text-xs py-0.5 px-2" @click="exportPerfExcel()">导出 Excel</button>
-        </div>
       </div>
       <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -1022,7 +1096,7 @@
             x-text="'第'+cfg.rank_from+(cfg.rank_to!==cfg.rank_from?'~'+cfg.rank_to:'')+'名'"></span>
           <span class="text-xs badge-n shrink-0" x-text="perfMetricLabel(cfg)"></span>
           <span class="text-xs text-stone-400 shrink-0"
-            x-text="'积分×'+(cfg.points_weight??0.4)+' + 高套×'+(cfg.gaotao_weight??0.6)"></span>
+            x-text="'完成率：积分×'+(cfg.points_weight??0.4)+' + 高套×'+(cfg.gaotao_weight??0.6)"></span>
           <span class="font-medium text-stone-700 flex-1" x-text="cfg.prize_name||'—'"></span>
           <span class="text-stone-500 text-xs" x-show="cfg.prize_amount>0" x-text="cfg.prize_amount+'元'"></span>
           <button class="text-red-400 hover:text-red-600 text-xs px-2 py-0.5 rounded hover:bg-red-50 transition-colors"
@@ -1037,9 +1111,9 @@
   <div class="card" x-show="pf.uploads.length">
     <div class="px-4 py-3 flex flex-wrap items-center gap-3">
       <span class="text-sm font-medium text-stone-700">🚀 下发奖励</span>
-      <span class="text-xs text-stone-400">按当前配置和最新数据自动匹配</span>
+      <span class="text-xs text-stone-400">按当前配置和当前选择端点自动匹配</span>
       <span class="text-xs badge-n" x-show="pf.uploads.length"
-        x-text="'数据截至 '+(pf.uploads[0]?.file_date||pf.uploads[0]?.uploaded_at?.slice(0,10)||'—')"></span>
+        x-text="'按当前端点：'+perfSelectedPeriodText()"></span>
       <div class="flex items-center gap-2 ml-auto flex-wrap">
         <label class="text-xs text-stone-500 shrink-0">本期轮次</label>
         <input type="number" class="inp text-sm py-1 w-16" x-model.number="pf.dispatchRound" min="1">
@@ -1050,42 +1124,238 @@
     </div>
   </div>
 
+  <!-- 手动发放奖励 -->
+  <div class="card">
+    <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
+      <div>
+        <span class="text-sm font-medium text-stone-700">🎁 手动发放专项奖励</span>
+        <span class="text-xs text-stone-400 ml-2">用于临时奖励某个客户经理，发放后进入奖品池并自动抵扣扣罚</span>
+      </div>
+    </div>
+    <div class="p-4 grid md:grid-cols-6 gap-3 items-end">
+      <div>
+        <label class="block text-xs text-stone-500 mb-1">客户经理</label>
+        <input class="inp w-full" list="pf-manager-list" x-model="pf.manualPrize.manager_name" placeholder="选择或输入姓名">
+        <datalist id="pf-manager-list">
+          <template x-for="m in customerManagerNames()" :key="m">
+            <option :value="m"></option>
+          </template>
+        </datalist>
+      </div>
+      <div>
+        <label class="block text-xs text-stone-500 mb-1">奖品</label>
+        <select class="inp w-full" x-model="pf.manualPrize.prize_name" @change="syncManualPrizeAmount()">
+          <option value="聚灵丹">聚灵丹</option>
+          <option value="护身符">护身符</option>
+          <option value="筑基丹">筑基丹</option>
+          <option value="天罡令">天罡令</option>
+          <option value="金丹圣果">金丹圣果</option>
+          <option value="天命赦令">天命赦令</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-stone-500 mb-1">金额</label>
+        <input type="number" class="inp w-full" x-model.number="pf.manualPrize.prize_amount" min="1">
+      </div>
+      <div class="md:col-span-2">
+        <label class="block text-xs text-stone-500 mb-1">备注</label>
+        <input class="inp w-full" x-model="pf.manualPrize.note" placeholder="如：专项表现突出 / 临时激励">
+      </div>
+      <div>
+        <button class="btn-p w-full" @click="manualPerfPrize()" :disabled="pf.loading||!pf.manualPrize.manager_name||!pf.manualPrize.prize_name||!pf.manualPrize.prize_amount">发放奖励</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 下发记录 -->
   <div class="card" x-show="pf.dispatches.length">
     <div class="px-4 py-2.5 border-b border-stone-100">
       <span class="text-sm font-medium text-stone-700">📋 下发记录</span>
+      <span class="text-xs text-stone-400 ml-2">按轮次分组，累计综合和本期新增综合连续显示</span>
+    </div>
+    <div class="divide-y divide-stone-100">
+      <template x-for="group in dispatchGroups()" :key="group.key">
+        <div class="p-3">
+          <div class="flex flex-wrap items-center gap-2 mb-2">
+            <span class="text-sm font-medium text-stone-700" x-text="'第 '+group.award_round+' 轮'"></span>
+            <span class="badge-y text-xs" x-text="fmt(group.created_at)"></span>
+            <span class="text-xs text-stone-400" x-text="group.period"></span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-stone-50">
+                <tr>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">客户经理</th>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">类型</th>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">名次</th>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">奖励</th>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">状态</th>
+                  <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="d in group.items" :key="d.id">
+                  <tr class="border-b border-stone-100 hover:bg-stone-50/50">
+                    <td class="px-3 py-2 font-medium text-stone-700" x-text="d.manager_name"></td>
+                    <td class="px-3 py-2 text-xs text-stone-600" x-text="perfMetricLabel(d)"></td>
+                    <td class="px-3 py-2 text-xs text-stone-500" x-text="d.rank_position?'第'+d.rank_position+'名':'—'"></td>
+                    <td class="px-3 py-2 text-stone-700" x-text="(d.prize_name||'奖励')+(d.prize_amount>0?' '+d.prize_amount+'元':'')"></td>
+                    <td class="px-3 py-2">
+                      <span x-show="d.status==='active'" class="badge-g">有效</span>
+                      <span x-show="d.status==='revoked'" class="badge-r">已撤回</span>
+                    </td>
+                    <td class="px-3 py-2">
+                      <button x-show="d.status==='active'"
+                        class="text-xs text-amber-600 hover:text-amber-800 px-2 py-0.5 rounded hover:bg-amber-50 transition-colors"
+                        @click="revokeDispatch(d.id)">撤回</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- 客户经理填报与扣罚统计 -->
+  <div class="card" x-show="pf.fineSummary.length">
+    <div class="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between">
+      <div>
+        <span class="text-sm font-medium text-stone-700">📌 客户经理填报与扣罚统计</span>
+        <span class="text-xs text-stone-400 ml-2" x-text="pf.fineSummaryThroughDate?'统计最新日期：'+pf.fineSummaryThroughDate:'暂无填报统计日期'"></span>
+      </div>
+      <span class="text-xs text-stone-400">漏填10元/次，超时每满5次10元</span>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-sm">
         <thead class="bg-stone-50">
           <tr>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">时间</th>
             <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">客户经理</th>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">奖励</th>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">名次</th>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">轮次</th>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">状态</th>
-            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">操作</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">准时</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">超时</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">漏填</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">扣罚</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">已抵扣</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">可用奖品</th>
+            <th class="px-3 py-2 text-right text-xs text-stone-500 font-medium">应缴</th>
           </tr>
         </thead>
         <tbody>
-          <template x-for="d in pf.dispatches" :key="d.id">
+          <template x-for="r in fineSummaryRows()" :key="r.manager_name">
             <tr class="border-b border-stone-100 hover:bg-stone-50/50">
-              <td class="px-3 py-2 text-xs text-stone-400" x-text="fmt(d.dispatched_at||d.dispatch_date)"></td>
-              <td class="px-3 py-2 font-medium text-stone-700" x-text="d.manager_name"></td>
-              <td class="px-3 py-2 text-stone-700"
-                x-text="(d.prize_name||'奖励')+(d.prize_amount>0?' ('+d.prize_amount+'元)':'')"></td>
-              <td class="px-3 py-2 text-xs text-stone-500" x-text="d.rank_position?'第'+d.rank_position+'名':'—'"></td>
-              <td class="px-3 py-2 text-xs text-stone-500" x-text="'第'+d.award_round+'轮'"></td>
+              <td class="px-3 py-2 font-medium text-stone-700" x-text="r.manager_name"></td>
+              <td class="px-3 py-2 text-right text-emerald-600" x-text="r.on_time_count"></td>
+              <td class="px-3 py-2 text-right text-amber-600" x-text="r.overtime_count"></td>
+              <td class="px-3 py-2 text-right text-red-500" x-text="r.missing_count"></td>
+              <td class="px-3 py-2 text-right text-stone-700" x-text="r.total_fine+'元'"></td>
+              <td class="px-3 py-2 text-right text-blue-600" x-text="r.covered_amount+'元'"></td>
+              <td class="px-3 py-2 text-right text-purple-600 font-medium" x-text="r.available_prize_amount+'元'"></td>
+              <td class="px-3 py-2 text-right font-medium" :class="r.payable_amount>0?'text-red-600':'text-emerald-600'" x-text="r.payable_amount+'元'"></td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-t border-stone-100 bg-stone-50/40 px-4 py-3" x-show="availablePrizeManagers().length">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs font-medium text-stone-600">可用奖品来源明细</div>
+        <div class="text-[11px] text-stone-400">专项业绩下发自动抵扣；抽奖奖品由客户经理自行选择使用</div>
+      </div>
+      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <template x-for="r in availablePrizeManagers()" :key="r.manager_name">
+          <div class="rounded-lg border border-stone-200 bg-white p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium text-sm text-stone-700" x-text="r.manager_name"></span>
+              <span class="text-xs font-medium text-purple-600" x-text="r.available_prize_amount+'元'"></span>
+            </div>
+            <div class="space-y-1.5">
+              <template x-for="p in r.available_prizes" :key="p.id">
+                <div class="text-xs leading-5 text-stone-600 border-t border-stone-100 first:border-t-0 pt-1.5 first:pt-0">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-medium text-stone-700" x-text="p.prize_name+p.face_amount+'元'"></span>
+                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px]"
+                          :class="p.source_type==='performance'?'bg-blue-50 text-blue-600':(p.source_type==='lottery'?'bg-amber-50 text-amber-600':(p.source_type==='change'?'bg-emerald-50 text-emerald-600':'bg-stone-100 text-stone-500'))"
+                          x-text="availablePrizeSourceTag(p)"></span>
+                  </div>
+                  <div class="text-stone-500" x-text="availablePrizeSourceText(p)"></div>
+                  <div class="text-[11px]" :class="p.source_type==='lottery'?'text-amber-600':'text-blue-600'" x-text="p.usage_text"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <div class="border-t border-stone-100 bg-emerald-50/30 px-4 py-3" x-show="coveredPrizeManagers().length">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-xs font-medium text-stone-600">已抵扣奖品来源明细</div>
+        <div class="text-[11px] text-stone-400">已被系统用于抵扣的专项/手动发放/找零奖品会在这里展示</div>
+      </div>
+      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <template x-for="r in coveredPrizeManagers()" :key="r.manager_name">
+          <div class="rounded-lg border border-emerald-100 bg-white p-3">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium text-sm text-stone-700" x-text="r.manager_name"></span>
+              <span class="text-xs font-medium text-emerald-600" x-text="r.covered_amount+'元'"></span>
+            </div>
+            <div class="space-y-1.5">
+              <template x-for="p in r.covered_prizes" :key="p.id">
+                <div class="text-xs leading-5 text-stone-600 border-t border-stone-100 first:border-t-0 pt-1.5 first:pt-0">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-medium text-stone-700" x-text="p.prize_name+p.face_amount+'元'"></span>
+                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] bg-emerald-50 text-emerald-600" x-text="'已抵扣 '+p.covered_amount+'元'"></span>
+                  </div>
+                  <div class="text-stone-500" x-text="availablePrizeSourceText(p)"></div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- 客户经理奖品明细 -->
+  <div class="card" x-show="pf.prizeDetails.length">
+    <div class="px-4 py-2.5 border-b border-stone-100 flex items-center justify-between">
+      <div>
+        <span class="text-sm font-medium text-stone-700">🎁 客户经理奖品明细</span>
+        <span class="text-xs text-stone-400 ml-2">奖品会进入客户经理可用奖品池，用于抵扣扣罚</span>
+      </div>
+      <span class="text-xs text-stone-400" x-text="'共 '+pf.prizeDetails.length+' 条'"></span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-stone-50">
+          <tr>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">客户经理</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">奖品</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">面值</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">来源</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">获得时间</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">状态</th>
+            <th class="px-3 py-2 text-left text-xs text-stone-500 font-medium">抵扣/找零</th>
+          </tr>
+        </thead>
+        <tbody>
+          <template x-for="p in prizeDetailRows()" :key="p.id">
+            <tr class="border-b border-stone-100 hover:bg-stone-50/50">
+              <td class="px-3 py-2 font-medium text-stone-700" x-text="p.manager_name"></td>
+              <td class="px-3 py-2 text-stone-700" x-text="p.prize_name"></td>
+              <td class="px-3 py-2 text-stone-700" x-text="p.face_amount+'元'"></td>
+              <td class="px-3 py-2 text-xs text-stone-600" x-text="prizeSourceText(p)"></td>
+              <td class="px-3 py-2 text-xs text-stone-400" x-text="fmt(p.acquired_at)"></td>
               <td class="px-3 py-2">
-                <span x-show="d.status==='active'" class="badge-g">有效</span>
-                <span x-show="d.status==='revoked'" class="badge-r">已撤回</span>
+                <span x-show="p.status==='available'" class="badge-g">可抵扣</span>
+                <span x-show="p.status==='exhausted'" class="badge-n">已抵扣</span>
+                <span x-show="p.status==='revoked'" class="badge-r">已撤回</span>
               </td>
-              <td class="px-3 py-2">
-                <button x-show="d.status==='active'"
-                  class="text-xs text-amber-600 hover:text-amber-800 px-2 py-0.5 rounded hover:bg-amber-50 transition-colors"
-                  @click="revokeDispatch(d.id)">撤回</button>
-              </td>
+              <td class="px-3 py-2 text-xs text-stone-500" x-text="prizeCoverageText(p)"></td>
             </tr>
           </template>
         </tbody>
@@ -1105,7 +1375,8 @@
         <div class="px-4 py-2.5 border-b border-stone-100 flex items-center gap-3">
           <span class="text-sm font-medium text-stone-700"
             x-text="'第 '+snap.award_round+' 轮'"></span>
-          <span class="badge-y text-xs" x-text="snap.dispatch_date+' 发放'"></span>
+          <span class="badge-y text-xs" x-text="fmt(snap.created_at||snap.dispatch_date)"></span>
+          <span class="text-xs text-stone-400" x-text="snapshotPeriod(snap)"></span>
           <span class="text-xs text-stone-400 ml-auto"
             x-text="snap.rows.length+' 人'"></span>
         </div>
@@ -1114,7 +1385,7 @@
           <!-- 积分快照 -->
           <div>
             <div class="px-4 py-2 bg-stone-50/50 border-b border-stone-100">
-              <span class="text-xs font-medium text-stone-500">📊 积分（区间累计 / 本轮新增）</span>
+              <span class="text-xs font-medium text-stone-500">📊 积分（累计 / 本轮新增）</span>
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -1144,7 +1415,7 @@
           <!-- 高套快照 -->
           <div>
             <div class="px-4 py-2 bg-stone-50/50 border-b border-stone-100">
-              <span class="text-xs font-medium text-stone-500">📦 高套（区间累计 / 本轮新增）</span>
+              <span class="text-xs font-medium text-stone-500">📦 高套（累计 / 本轮新增）</span>
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full text-sm">
@@ -1384,10 +1655,11 @@ function app(){
          groups:[],defaultNames:[],picked:[],pickedTouched:false,
          mode:'',customType:'text',rulesPreviewExpanded:false,mentionText:'请及时查看',
          perfParams:{month:localDate().slice(0,7),award_round:1},
+         perfImage:{base64:'',md5:'',dataUrl:''},
          customContent:{
            text:'',
            markdown:'',
-           image:{base64:'',md5:'',dataUrl:''},
+           image:{images:[]},
            news:{title:'',description:'',picurl:'',picPreview:'',url:''},
            template_card_text:{source:'',main_title:'',emphasis_content:'',sub_title_text:'',url:'',btn_text:'查看详情'},
            template_card_news:{source:'',main_title:'',image_url:'',image_preview:'',desc:'',image_url_link:'',url:'',btn_text:'查看详情'}
@@ -1398,9 +1670,10 @@ function app(){
     // lg.page 从 1 开始；total/succ/fail 为全量统计，不随分页变化
     lg:{list:[],lim:20,page:1,total:0,pages:1,succ:0,fail:0},
     logModal:{show:false,item:null},
-    pf:{month:'',uploads:[],cumulative:{},incremental:{},currentIncremental:[],dispatches:[],configs:[],snapshots:[],loading:false,
+    pf:{month:'',uploads:[],cumulative:{},incremental:{},latestIncremental:[],latestIncrementalPeriod:null,currentIncremental:[],selectedLeftDate:'',selectedRightDate:'',selectedRightUploadId:null,selectedPeriod:null,dispatches:[],configs:[],snapshots:[],prizeDetails:[],fineSummary:[],fineSummaryThroughDate:'',loading:false,
         newConfig:{award_round:1,rank_from:1,rank_to:1,metric:'cumulative_score',points_weight:0.4,gaotao_weight:0.6,prize_name:'聚灵丹',prize_amount:5,note:''},
-        dispatchRound:1},
+        dispatchRound:1,
+        manualPrize:{manager_name:'',prize_name:'聚灵丹',prize_amount:5,note:''}},
 
     async init(){
       const tom=()=>{const d=new Date();d.setDate(d.getDate()+1);return localDate(d)};
@@ -1417,6 +1690,7 @@ function app(){
       await this.pollSched();
       if(this.tab==='sys') await this.loadSys();
       if(this.tab==='logs') await this.loadLogs();
+      if(this.tab==='perf') await this.loadPerf();
       setInterval(()=>this.pollSched(),30000);
     },
 
@@ -1546,7 +1820,7 @@ function app(){
       this.snd.customContent={
         text:'',
         markdown:'',
-        image:{base64:'',md5:'',dataUrl:''},
+        image:{images:[]},
         news:{title:'',description:'',picurl:'',picPreview:'',url:''},
         template_card_text:{source:'',main_title:'',emphasis_content:'',sub_title_text:'',url:'',btn_text:'查看详情'},
         template_card_news:{source:'',main_title:'',image_url:'',image_preview:'',desc:'',image_url_link:'',url:'',btn_text:'查看详情'}
@@ -1565,7 +1839,7 @@ function app(){
         }else if(this.snd.customType==='markdown'){
           return this.snd.customContent.markdown.trim();
         }else if(this.snd.customType==='image'){
-          return this.snd.customContent.image.base64.trim() && this.snd.customContent.image.md5.trim();
+          return (this.snd.customContent.image.images||[]).length>0 && this.snd.mentionText.trim();
         }else if(this.snd.customType==='news'){
           return this.snd.customContent.news.title.trim() && this.snd.customContent.news.url.trim();
         }else if(this.snd.customType==='template_card_text'){
@@ -1593,8 +1867,16 @@ function app(){
           };
           if(this.snd.rule==='performance_award_notice')
             sendBody.params={month:this.snd.perfParams.month,award_round:this.snd.perfParams.award_round};
+          if(this.snd.rule==='performance_award_notice' && this.snd.perfImage.base64 && this.snd.perfImage.md5){
+            await Api.sendCustom({
+              message_type:'image',
+              content:{base64:this.snd.perfImage.base64,md5:this.snd.perfImage.md5},
+              recipient_names:[],
+              mention_text:''
+            });
+          }
           await Api.send(sendBody);
-          this.toast('通报已发送 ✅');
+          this.toast(this.snd.rule==='performance_award_notice' && this.snd.perfImage.base64 ? '图片和通报已发送 ✅' : '通报已发送 ✅');
           this.snd.editing=false;
         }catch(e){this.toast(e.message,true);}
         finally{this.loading=false;}
@@ -1622,7 +1904,7 @@ function app(){
           }else if(this.snd.customType==='markdown'){
             content={content:this.snd.customContent.markdown};
           }else if(this.snd.customType==='image'){
-            content={base64:this.snd.customContent.image.base64,md5:this.snd.customContent.image.md5};
+            content={images:this.snd.customContent.image.images};
           }else if(this.snd.customType==='news'){
             // 发送前去掉 picPreview（仅用于本地预览，不发给企业微信）
             const {picPreview, ...newsPayload} = this.snd.customContent.news;
@@ -1672,13 +1954,32 @@ function app(){
               }];
             }
           }
-          await Api.sendCustom({
-            message_type:this.snd.customType.startsWith('template_card')?'template_card':this.snd.customType,
-            content:content,
-            recipient_names:this.snd.picked,
-            mention_text:this.snd.mentionText||'请及时查看'
-          });
-          this.toast('自定义消息已发送 ✅');
+          if(this.snd.customType==='image'){
+            const images=this.snd.customContent.image.images||[];
+            for(let i=0;i<images.length;i++){
+              await Api.sendCustom({
+                message_type:'image',
+                content:{base64:images[i].base64,md5:images[i].md5},
+                recipient_names:[],
+                mention_text:''
+              });
+            }
+            await Api.sendCustom({
+              message_type:'text',
+              content:{text:this.snd.mentionText},
+              recipient_names:this.snd.picked,
+              mention_text:''
+            });
+            this.toast(`已按顺序发送 ${images.length} 张图片和文本 ✅`);
+          }else{
+            await Api.sendCustom({
+              message_type:this.snd.customType.startsWith('template_card')?'template_card':this.snd.customType,
+              content:content,
+              recipient_names:this.snd.picked,
+              mention_text:this.snd.mentionText||'请及时查看'
+            });
+            this.toast('自定义消息已发送 ✅');
+          }
         }catch(e){this.toast(e.message,true);}
         finally{this.loading=false;}
       }
@@ -1724,26 +2025,62 @@ function app(){
       finally{this.loading=false;}
     },
 
-    // 图片上传处理
-    async handleImageUpload(event){
+    // 专项业绩通报图片上传处理：发送时先发图片，再发文字通报。
+    async handlePerfNoticeImageUpload(event){
       const file = event.target.files[0];
       if(!file) return;
-
       if(file.size > 10*1024*1024){
         this.toast('图片大小不能超过 10MB',true);
         return;
       }
-
       try{
-        const base64 = await this.readFileAsBase64(file);
-        const base64Data = base64.split(',')[1];
+        const dataUrl = await this.readFileAsBase64(file);
+        const base64Data = dataUrl.split(',')[1];
         const md5 = this.calcMD5Base64(base64Data);
-        this.snd.customContent.image.base64 = base64Data;
-        this.snd.customContent.image.md5 = md5;
-        this.snd.customContent.image.dataUrl = base64;
+        this.snd.perfImage = {base64:base64Data, md5, dataUrl};
       }catch(e){
         this.toast('图片处理失败: '+e.message,true);
       }
+    },
+    clearPerfNoticeImage(){
+      this.snd.perfImage={base64:'',md5:'',dataUrl:''};
+    },
+
+    // 自定义图片上传处理：支持多图，保留选择顺序。
+    async handleImageUpload(event){
+      const files = Array.from(event.target.files||[]);
+      if(!files.length) return;
+      for(const file of files){
+        if(file.size > 10*1024*1024){
+          this.toast(`${file.name} 超过 10MB，已跳过`,true);
+          continue;
+        }
+        try{
+          const dataUrl = await this.readFileAsBase64(file);
+          const base64Data = dataUrl.split(',')[1];
+          const md5 = this.calcMD5Base64(base64Data);
+          this.snd.customContent.image.images.push({
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            name: file.name,
+            base64: base64Data,
+            md5,
+            dataUrl
+          });
+        }catch(e){
+          this.toast(`${file.name} 处理失败: ${e.message}`,true);
+        }
+      }
+      event.target.value='';
+    },
+    removeCustomImage(idx){
+      this.snd.customContent.image.images.splice(idx,1);
+    },
+    moveCustomImage(idx,delta){
+      const arr=this.snd.customContent.image.images;
+      const ni=idx+delta;
+      if(ni<0||ni>=arr.length) return;
+      const [item]=arr.splice(idx,1);
+      arr.splice(ni,0,item);
     },
 
     // 图文封面上传处理
@@ -2023,7 +2360,11 @@ function app(){
     showLogDetail(l){this.logModal={show:true,item:l};},
     fmt(str){
       if(!str) return '';
-      const d=new Date(str),p=n=>String(n).padStart(2,'0');
+      const p=n=>String(n).padStart(2,'0');
+      const s=String(str);
+      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2}))?/);
+      if(m) return `${m[1]}/${m[2]}/${m[3]} ${m[4]||'00'}:${m[5]||'00'}`;
+      const d=new Date(str);
       return d.getFullYear()+'/'+p(d.getMonth()+1)+'/'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
     },
     fmtSchedule(str){
@@ -2049,14 +2390,23 @@ function app(){
       if(!this.pf.month) return;
       this.pf.loading=true;
       try{
-        const data=await Api.perfStats(this.pf.month);
+        const data=await Api.perfStats(this.pf.month,{left_date:this.pf.selectedLeftDate,right_date:this.pf.selectedRightDate});
         this.pf.uploads   = data.uploads      || [];
         this.pf.cumulative= data.cumulative   || {};
         this.pf.incremental=data.incremental  || {};
+        this.pf.latestIncremental=data.latest_incremental || [];
+        this.pf.latestIncrementalPeriod=data.latest_incremental_period || null;
         this.pf.currentIncremental=data.current_incremental || [];
+        this.pf.selectedLeftDate=data.selected_left_date || '';
+        this.pf.selectedRightDate=data.selected_right_date || '';
+        this.pf.selectedRightUploadId=data.selected_right_upload_id || null;
+        this.pf.selectedPeriod=data.selected_period || null;
         this.pf.dispatches= data.dispatches   || [];
         this.pf.configs   = data.award_configs|| [];
         this.pf.snapshots = data.snapshots    || [];
+        this.pf.prizeDetails = data.prize_details || [];
+        this.pf.fineSummary = data.fine_summary || [];
+        this.pf.fineSummaryThroughDate = data.fine_summary_through_date || '';
       }catch(e){this.toast(e.message,true);}
       finally{this.pf.loading=false;}
     },
@@ -2103,16 +2453,44 @@ function app(){
       }catch(e){this.toast(e.message,true);}
     },
     async dispatchPerfAwards(){
-      if(!await this.confirm(`确认下发第 ${this.pf.dispatchRound} 轮专项业绩奖励？`)) return;
+      if(!await this.confirm(`确认按「${this.perfSelectedPeriodText()}」下发第 ${this.pf.dispatchRound} 轮专项业绩奖励？`)) return;
       try{
         const res=await Api.dispatchPerf({
           month:         this.pf.month,
           award_round:   this.pf.dispatchRound,
           dispatch_date: localDate(),
+          left_date:     this.pf.selectedLeftDate,
+          right_date:    this.pf.selectedRightDate,
         });
         this.toast(`下发成功，共 ${res.dispatched} 条`);
         await this.loadPerf();
       }catch(e){this.toast(e.message,true);}
+    },
+    customerManagerNames(){
+      return (this.sys.roster?.customer_managers||[]).map(m=>m.name).filter(Boolean);
+    },
+    syncManualPrizeAmount(){
+      const map={'聚灵丹':5,'护身符':10,'筑基丹':15,'天罡令':20,'金丹圣果':25,'天命赦令':30};
+      if(map[this.pf.manualPrize.prize_name]) this.pf.manualPrize.prize_amount=map[this.pf.manualPrize.prize_name];
+    },
+    async manualPerfPrize(){
+      const p=this.pf.manualPrize;
+      if(!p.manager_name||!p.prize_name||!p.prize_amount){this.toast('请填写客户经理、奖品和金额',true);return;}
+      if(!await this.confirm(`确认给 ${p.manager_name} 手动发放 ${p.prize_name} ${p.prize_amount}元？`)) return;
+      this.pf.loading=true;
+      try{
+        const res=await Api.manualPerfPrize({
+          month:this.pf.month,
+          manager_name:p.manager_name,
+          prize_name:p.prize_name,
+          prize_amount:p.prize_amount,
+          note:p.note||''
+        });
+        this.toast(res.apply_result?.total_covered>0?'已发放并自动抵扣':'已发放到奖品池');
+        this.pf.manualPrize.note='';
+        await this.loadPerf();
+      }catch(e){this.toast(e.message,true);}
+      finally{this.pf.loading=false;}
     },
     async revokeDispatch(id){
       if(!await this.confirm('确认撤回此下发记录？奖品将同步作废。')) return;
@@ -2124,8 +2502,134 @@ function app(){
     },
     exportPerfExcel(){
       if(!this.pf.uploads.length){this.toast('暂无数据可导出',true);return;}
-      const latest=this.pf.uploads[0]; // uploads 按 uploaded_at DESC，[0] 最新
-      Api.perfExport(this.pf.month, latest.id);
+      const selectedId=this.pf.selectedRightUploadId || this.pf.uploads[0].id;
+      Api.perfExport(this.pf.month, selectedId);
+    },
+    noteDate(note, label){
+      const aliases={数据日期:'(?:数据日期|右端点)', 上轮数据日期:'(?:上轮数据日期|左端点)'};
+      const pattern=aliases[label]||label;
+      const m=String(note||'').match(new RegExp(pattern+'\\s*(\\d{4}-\\d{2}-\\d{2})'));
+      return m?m[1]:'';
+    },
+    noteFromMonthStart(note){
+      return /左端点\s*本月开始/.test(String(note||''));
+    },
+    perfUploadDates(){
+      return [...new Set((this.pf.uploads||[]).map(u=>u.file_date||u.uploaded_at?.slice(0,10)).filter(Boolean))].sort();
+    },
+    perfSelectedPeriodText(){
+      const right=this.pf.selectedRightDate||'';
+      const left=this.pf.selectedLeftDate||'';
+      if(!right) return '—';
+      return left ? `${left} 至 ${right}` : `本月开始 至 ${right}`;
+    },
+    latestPerfPeriodText(){
+      const right=this.pf.selectedRightDate||'';
+      const left=this.pf.selectedLeftDate||'';
+      if(!right) return '';
+      return left ? `本期新增：${left} 至 ${right}` : `本期新增：本月开始 至 ${right}`;
+    },
+    snapshotPeriod(snap){
+      const dates=(snap.rows||[]).map(r=>r.data_date).filter(Boolean);
+      const to=dates[0]||'';
+      if(!to) return '';
+      const prev=this.pf.snapshots.filter(s=>s.award_round<snap.award_round).slice(-1)[0];
+      const prevDates=prev?(prev.rows||[]).map(r=>r.data_date).filter(Boolean):[];
+      const from=prevDates[0]||'';
+      return snap.award_round>1&&from ? `数据截至 ${to}｜本轮新增：${from} 至 ${to}` : `数据截至 ${to}`;
+    },
+    dispatchGroups(){
+      const groups={};
+      for(const d of this.pf.dispatches||[]){
+        const key=[d.award_round,d.created_at||d.dispatch_date].join('|');
+        if(!groups[key]) groups[key]={key,award_round:d.award_round,created_at:d.created_at||d.dispatch_date,items:[],rowsMap:{},period:''};
+        const g=groups[key];
+        g.items.push(d);
+        const name=d.manager_name||'—';
+        if(!g.rowsMap[name]) g.rowsMap[name]={manager_name:name,cumulative:null,incremental:null,items:[]};
+        const row=g.rowsMap[name];
+        row.items.push(d);
+        if(d.metric==='cumulative_score') row.cumulative=d;
+        else if(d.metric==='incremental_score') row.incremental=d;
+      }
+      return Object.values(groups).sort((a,b)=>(b.award_round-a.award_round)||String(b.created_at).localeCompare(String(a.created_at))).map(g=>{
+        const all=g.items||[];
+        const to=all.map(d=>this.noteDate(d.note,'数据日期')).find(Boolean)||'';
+        const from=all.map(d=>this.noteDate(d.note,'上轮数据日期')).find(Boolean)||'';
+        const fromMonthStart=all.some(d=>this.noteFromMonthStart(d.note));
+        g.period=from&&to?`本期新增：${from} 至 ${to}`:(fromMonthStart&&to?`本期新增：本月开始 至 ${to}`:(to?`数据截至 ${to}`:''));
+        g.items.sort((a,b)=>{
+          const ar=g.rowsMap[a.manager_name]?.cumulative?.rank_position||g.rowsMap[a.manager_name]?.incremental?.rank_position||99;
+          const br=g.rowsMap[b.manager_name]?.cumulative?.rank_position||g.rowsMap[b.manager_name]?.incremental?.rank_position||99;
+          const nameCmp=String(a.manager_name||'').localeCompare(String(b.manager_name||''),'zh-Hans-CN');
+          const metricOrder={cumulative_score:0, incremental_score:1};
+          return (ar-br)||nameCmp||((metricOrder[a.metric]??9)-(metricOrder[b.metric]??9));
+        });
+        g.rows=Object.values(g.rowsMap).sort((a,b)=>{
+          const ar=Math.min(a.cumulative?.rank_position||99,a.incremental?.rank_position||99);
+          const br=Math.min(b.cumulative?.rank_position||99,b.incremental?.rank_position||99);
+          return ar-br;
+        });
+        return g;
+      });
+    },
+    dispatchCell(d){
+      if(!d) return '<span class="text-stone-300">—</span>';
+      const status=d.status==='revoked'?'已撤回':'有效';
+      return `${this.perfMetricLabel(d)}｜第${d.rank_position||'—'}名｜${d.prize_name||'奖励'}${d.prize_amount>0?' '+d.prize_amount+'元':''}<br><span class="text-stone-400">${status}</span>`;
+    },
+    availablePrizeManagers(){
+      return this.fineSummaryRows().filter(r=>(r.available_prizes||[]).length);
+    },
+    coveredPrizeManagers(){
+      return this.fineSummaryRows().filter(r=>(r.covered_prizes||[]).length);
+    },
+    availablePrizeSourceTag(p){
+      if(p.source_type==='performance') return '专项下发';
+      if(p.source_type==='performance_manual') return '手动发放';
+      if(p.source_type==='lottery') return '抽奖';
+      if(p.source_type==='change') return '找零';
+      return '其他';
+    },
+    availablePrizeSourceText(p){
+      if(p.source_type==='performance'){
+        let text=`专项业绩下发｜第${p.award_round||'—'}轮｜${this.perfMetricLabel(p)}`;
+        if(p.rank_position) text+=`｜第${p.rank_position}名`;
+        return text;
+      }
+      if(p.source_type==='performance_manual') return p.note||p.source_text||'手动发放专项业绩奖励';
+      if(p.source_type==='lottery') return '抽奖获得';
+      if(p.source_type==='change') return p.note||p.source_text||'找零生成';
+      return p.source_text||p.source||'其他来源';
+    },
+    fineSummaryRows(){
+      return [...(this.pf.fineSummary||[])].sort((a,b)=>{
+        return (b.payable_amount-a.payable_amount)||(b.total_fine-a.total_fine)||(b.missing_count-a.missing_count)||(b.overtime_count-a.overtime_count)||String(a.manager_name||'').localeCompare(String(b.manager_name||''),'zh-Hans-CN');
+      });
+    },
+    prizeDetailRows(){
+      return [...(this.pf.prizeDetails||[])].sort((a,b)=>{
+        const nameCmp=String(a.manager_name||'').localeCompare(String(b.manager_name||''),'zh-Hans-CN');
+        return nameCmp || String(b.acquired_at||'').localeCompare(String(a.acquired_at||'')) || ((b.id||0)-(a.id||0));
+      });
+    },
+    prizeSourceText(p){
+      if(String(p.note||'').startsWith('找零')) return p.note;
+      if(String(p.note||'').startsWith('手动发放')) return p.note;
+      if(p.source==='performance'){
+        const metric=p.metric?this.perfMetricLabel(p):'专项业绩';
+        return `专项业绩奖励｜第${p.award_round||'—'}轮｜${metric}${p.rank_position?'｜第'+p.rank_position+'名':''}`;
+      }
+      if(p.source==='lottery') return '抽签奖励';
+      return p.source_label||p.source||'—';
+    },
+    prizeCoverageText(p){
+      const covered=p.covered_amount||0;
+      const changes=(p.change_prizes||[]).map(c=>`${c.prize_name}${c.face_amount}元`).join('、');
+      if(covered>0 && changes) return `已抵扣 ${covered}元，找零 ${changes}`;
+      if(covered>0) return `已抵扣 ${covered}元，无找零`;
+      if(String(p.note||'').startsWith('找零')) return '找零生成，可继续抵扣';
+      return '未抵扣';
     },
     perfMetricLabel(cfg){
       const labels={
@@ -2136,23 +2640,23 @@ function app(){
       };
       return labels[cfg.metric]||cfg.metric||'综合';
     },
-    // 辅助：取最新上传的积分排名行（按累计降序）
+    // 辅助：取当前右端点的积分排名行（按累计降序）
     perfPointsRows(){
       if(!this.pf.uploads.length) return [];
-      const uid=String(this.pf.uploads[0].id);  // uploads 按 uploaded_at DESC，[0] 最新
+      const uid=String(this.pf.selectedRightUploadId || this.pf.uploads[0].id)
       const cum=this.pf.cumulative[uid]||[];
-      const inc=this.pf.currentIncremental||[];
+      const inc=this.pf.latestIncremental||[];
       const incMap=Object.fromEntries(inc.map(r=>[r.manager_name, r.inc_points??0]));
       return cum
         .map(r=>({name:r.manager_name, total:r.cumulative_points??0, inc:incMap[r.manager_name]??0}))
         .sort((a,b)=>b.total-a.total);
     },
-    // 辅助：取最新上传的高套排名行（按累计降序）
+    // 辅助：取当前右端点的高套排名行（按累计降序）
     perfGaotaoRows(){
       if(!this.pf.uploads.length) return [];
-      const uid=String(this.pf.uploads[0].id);  // uploads 按 uploaded_at DESC，[0] 最新
+      const uid=String(this.pf.selectedRightUploadId || this.pf.uploads[0].id)
       const cum=this.pf.cumulative[uid]||[];
-      const inc=this.pf.currentIncremental||[];
+      const inc=this.pf.latestIncremental||[];
       const incMap=Object.fromEntries(inc.map(r=>[r.manager_name, r.inc_gaotao??0]));
       return cum
         .map(r=>({name:r.manager_name, total:r.cumulative_gaotao??0, inc:incMap[r.manager_name]??0}))

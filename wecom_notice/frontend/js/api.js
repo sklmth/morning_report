@@ -60,7 +60,13 @@ const Api = (() => {
     saveSettings: (body) => post('/config/settings', body),
 
     // 专项业绩
-    perfStats:       (month) => req(`/performance/stats/${encodeURIComponent(month)}`),
+    perfStats:       (month, p = {}) => {
+      const q = new URLSearchParams();
+      if (p.left_date) q.set('left_date', p.left_date);
+      if (p.right_date) q.set('right_date', p.right_date);
+      const qs = q.toString();
+      return req(`/performance/stats/${encodeURIComponent(month)}${qs?'?'+qs:''}`);
+    },
     perfUpload:      (formData) => fetch('/api/performance/upload', {method:'POST', body:formData})
                        .then(r => r.json().then(b => { if (!r.ok) throw new Error(b.detail || `上传失败 ${r.status}`); return b; })),
     perfExport:      (month, uploadId) => { window.open(`/api/performance/stats/${encodeURIComponent(month)}/export?upload_id=${uploadId}`, '_blank'); },
@@ -68,6 +74,7 @@ const Api = (() => {
     saveAwardConfig: (body) => post('/performance/award-configs', body),
     deleteAwardConfig:(id)  => req(`/performance/award-configs/${id}`, {method:'DELETE'}),
     dispatchPerf:    (body) => post('/performance/dispatch', body),
+    manualPerfPrize: (body) => post('/performance/manual-prize', body),
     revokeDispatch:  (id)   => post(`/performance/dispatch/${id}/revoke`, {}),
     perfDispatches:  (month) => req(`/performance/dispatches/${encodeURIComponent(month)}`),
   };

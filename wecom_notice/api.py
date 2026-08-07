@@ -1,5 +1,6 @@
 import logging
 import base64
+import calendar
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -639,7 +640,7 @@ def send_rules_introduction(payload: SendRulesRequest):
     """发送规则介绍消息到企业微信"""
 
     # 规则介绍消息内容
-    message = """📋【预约填报管理规则】
+    message = """📋【预约填报与奖励抵扣规则】
 
 ━━━━━━ ⏰ 填报时间规则 ━━━━━━
 
@@ -654,10 +655,40 @@ def send_rules_introduction(payload: SendRulesRequest):
    · 超时：每累计 5 次扣 10 元
    · 按自然月统计，次月清零
 
-🎴 天命赦令减免：
-   · 抽签奖品可抵扣罚款
-   · 不改变超时/漏填次数记录
-   · 减免额度：5-30 元不等
+💸 应缴账单：
+   · 系统会统计本月扣罚合计、已抵扣金额、仍需上交金额
+   · 奖品抵扣只抵扣金额，不改变准时/超时/漏填次数记录
+   · 已全额抵扣时，本月暂无需上交
+
+━━━━━━ 🎁 奖品抵扣规则 ━━━━━━
+
+🏆 专项业绩下发奖品：
+   · 由系统直接进入客户经理奖品池
+   · 系统会自动用于抵扣当月扣罚
+   · 抵扣后如有差额，会自动找零生成小额奖品
+   · 例：筑基丹15元抵扣10元，找零生成聚灵丹5元
+
+🎴 抽奖获得奖品：
+   · 由客户经理在页面中自行选择使用
+   · 未主动使用前，不会被系统自动抵扣
+
+🔁 找零生成奖品：
+   · 找零奖品会继续留在奖品池
+   · 后续可继续用于抵扣扣罚
+
+━━━━━━ 🏆 专项业绩奖励 ━━━━━━
+
+📊 数据来源：完美一单专项业绩上传数据
+🎯 奖励类型：
+   · 累计综合：按右端点数据日期的本月累计业绩排名
+   · 本期新增综合：按页面选择的左端点/右端点新增业绩排名
+
+🧮 综合得分规则：
+   · 综合得分最高 100 分
+   · 完成率得分最高 70 分
+   · 排名得分最高 30 分
+   · 单项完成率最高按 100% 计
+   · 本期新增任务按“新增天数 / 当月天数”折算
 
 ━━━━━━ 🎰 天命赦令 ━━━━━━
 
@@ -685,7 +716,7 @@ def send_rules_introduction(payload: SendRulesRequest):
 
 ━━━━━━━━━━━━━━━━━━━━━━
 
-准时填报，好运相伴！🍀"""
+准时填报，好运相伴🍀"""
 
     # 查找接收人
     recipients = find_recipients(payload.recipient_names) if payload.recipient_names else []
@@ -724,6 +755,16 @@ class DispatchPayload(BaseModel):
     month: str
     award_round: int = 1
     dispatch_date: str        # YYYY-MM-DD
+    left_date: str = ""       # 空表示本月开始
+    right_date: str = ""      # 空表示最新上传日期
+
+
+class ManualPerformancePrizePayload(BaseModel):
+    month: str
+    manager_name: str
+    prize_name: str
+    prize_amount: int
+    note: str = ""
 
 
 @app.post("/api/performance/upload")
@@ -767,26 +808,173 @@ async def performance_upload(file: UploadFile = File(...), month: str = Query(""
 
 
 @app.get("/api/performance/stats/{month}")
-def performance_stats(month: str):
+def performance_stats(month: str, left_date: str = Query(""), right_date: str = Query("")):
     """返回本月各轮次的累计 + 增量数据，以及本月已下发的奖励明细。"""
-    from wecom_notice.performance import compute_current_incremental_stats, compute_incremental_stats
-    from wecom_notice.db import get_dispatches, get_award_configs
-
-    from wecom_notice.db import get_performance_snapshots
+    from wecom_notice.performance import compute_incremental_stats
+    from wecom_notice.db import (
+        auto_apply_prizes,
+        get_all_prize_items_month,
+        get_award_configs,
+        get_available_prize_total,
+        get_dispatches,
+        get_fill_summary_month,
+        get_latest_fill_statistics_date,
+        get_performance_snapshots,
+        get_performance_stats,
+        get_prize_change_map,
+        get_prize_coverage_map,
+        get_total_prize_covered,
+    )
     result = compute_incremental_stats(month)
+    uploads = result["uploads"]
+    chronological_uploads = sorted(uploads, key=lambda u: (u.get("file_date") or "", u.get("uploaded_at") or "", u.get("id") or 0))
+    def _upload_by_date(d: str) -> dict[str, Any] | None:
+        matches = [u for u in chronological_uploads if (u.get("file_date") or "") == d]
+        return matches[-1] if matches else None
+    right_upload = _upload_by_date(right_date) if right_date else (chronological_uploads[-1] if chronological_uploads else None)
+    if right_date and not right_upload:
+        raise HTTPException(status_code=400, detail=f"右端点日期 {right_date} 没有对应上传数据")
+    left_upload = _upload_by_date(left_date) if left_date else None
+    if left_date and not left_upload:
+        raise HTTPException(status_code=400, detail=f"左端点日期 {left_date} 没有对应上传数据")
+    if left_date and right_upload and left_date > (right_upload.get("file_date") or ""):
+        raise HTTPException(status_code=400, detail="左端点不能晚于右端点")
+    selected_cumulative = []
+    selected_incremental = []
+    if right_upload:
+        right_rows = get_performance_stats(month, upload_id=right_upload["id"])
+        left_map = {}
+        if left_upload:
+            left_map = {r["manager_name"]: r for r in get_performance_stats(month, upload_id=left_upload["id"])}
+        selected_cumulative = [
+            {"manager_name": r["manager_name"], "cumulative_points": r["cumulative_points"], "cumulative_gaotao": r["cumulative_gaotao"]}
+            for r in right_rows
+        ]
+        selected_incremental = [
+            {
+                "manager_name": r["manager_name"],
+                "inc_points": r["cumulative_points"] - left_map.get(r["manager_name"], {}).get("cumulative_points", 0.0),
+                "inc_gaotao": r["cumulative_gaotao"] - left_map.get(r["manager_name"], {}).get("cumulative_gaotao", 0.0),
+            }
+            for r in right_rows
+        ]
     dispatches = get_dispatches(month, include_revoked=True)
     configs = get_award_configs(month)
     snapshots = get_performance_snapshots(month)
-    latest_upload_id = result["uploads"][0]["id"] if result["uploads"] else None
+    dispatch_by_id = {d["id"]: d for d in dispatches}
+    latest_upload_id = right_upload["id"] if right_upload else None
+    through_date = get_latest_fill_statistics_date(month)
+    fine_rows = get_fill_summary_month(month, through_date=through_date)
+
+    # 查询统计时同步一次自动抵扣，确保后补/回填的扣罚也能被已下发奖品抵扣。
+    for row in fine_rows:
+        missing_count = int(row.get("missing_count") or 0)
+        overtime_count = int(row.get("overtime_count") or 0)
+        total_fine = missing_count * 10 + (overtime_count // 5) * 10
+        if total_fine > 0:
+            auto_apply_prizes(row["manager_name"], month, total_fine)
+
+    # 自动抵扣可能产生找零奖品，因此在同步抵扣后重新读取奖品明细和映射。
+    prize_items = get_all_prize_items_month(month)
+    covered_map = get_prize_coverage_map(month)
+    change_map = get_prize_change_map(month)
+    prize_details = []
+    for item in prize_items:
+        d = dispatch_by_id.get(item.get("source_ref_id")) if item.get("source") == "performance" else None
+        covered = covered_map.get(item["id"], 0)
+        prize_details.append({
+            **item,
+            "covered_amount": covered,
+            "change_prizes": change_map.get(item["id"], []),
+            "source_label": "专项业绩奖励" if item.get("source") == "performance" else item.get("source", ""),
+            "award_round": d.get("award_round") if d else None,
+            "metric": d.get("metric") if d else "",
+            "rank_position": d.get("rank_position") if d else None,
+        })
+
+    fine_summary = []
+    def _prize_source_info(p: dict[str, Any]) -> tuple[str, str, str]:
+        is_change = str(p.get("note") or "").startswith("找零")
+        is_manual = str(p.get("note") or "").startswith("手动发放")
+        if is_change:
+            return "change", p.get("note") or "找零生成", "找零生成，可继续抵扣"
+        if is_manual:
+            return "performance_manual", p.get("note") or "手动发放专项业绩奖励", "系统直接抵扣"
+        if p.get("source") == "performance":
+            return "performance", f"专项业绩下发｜第{p.get('award_round') or '—'}轮｜{p.get('metric') or ''}", "系统直接抵扣"
+        if p.get("source") == "lottery":
+            return "lottery", "抽奖获得", "可在页面自行选择使用"
+        return p.get("source") or "other", p.get("source_label") or p.get("source") or "其他来源", "可用"
+
+    for row in fine_rows:
+        missing_count = int(row.get("missing_count") or 0)
+        overtime_count = int(row.get("overtime_count") or 0)
+        missing_fine = missing_count * 10
+        overtime_fine = (overtime_count // 5) * 10
+        total_fine = missing_fine + overtime_fine
+        covered = get_total_prize_covered(row["manager_name"], month)
+        available = get_available_prize_total(row["manager_name"], month)
+        available_prizes = []
+        covered_prizes = []
+        for p in prize_details:
+            if p.get("manager_name") != row["manager_name"]:
+                continue
+            source_type, source_text, usage_text = _prize_source_info(p)
+            prize_summary = {
+                "id": p.get("id"),
+                "prize_name": p.get("prize_name"),
+                "face_amount": p.get("face_amount"),
+                "covered_amount": p.get("covered_amount") or 0,
+                "source": p.get("source"),
+                "source_type": source_type,
+                "source_text": source_text,
+                "usage_text": usage_text,
+                "award_round": p.get("award_round"),
+                "metric": p.get("metric"),
+                "rank_position": p.get("rank_position"),
+                "note": p.get("note") or "",
+                "acquired_at": p.get("acquired_at") or "",
+            }
+            if p.get("status") == "available":
+                available_prizes.append(prize_summary)
+            elif p.get("status") == "exhausted" and (p.get("covered_amount") or 0) > 0:
+                covered_prizes.append(prize_summary)
+        fine_summary.append({
+            **row,
+            "missing_fine": missing_fine,
+            "overtime_fine": overtime_fine,
+            "total_fine": total_fine,
+            "covered_amount": covered,
+            "available_prize_amount": available,
+            "available_prizes": available_prizes,
+            "covered_prizes": covered_prizes,
+            "payable_amount": max(0, total_fine - covered),
+        })
+    fine_summary.sort(key=lambda r: (-(r["payable_amount"]), -(r["total_fine"]), -(r["missing_count"]), -(r["overtime_count"]), r["manager_name"]))
     return {
         "month": month,
         "uploads": result["uploads"],
         "cumulative": result["cumulative"],
         "incremental": result["incremental"],
-        "current_incremental": compute_current_incremental_stats(month, latest_upload_id),
+        "selected_right_upload_id": latest_upload_id,
+        "selected_left_date": left_date,
+        "selected_right_date": right_upload.get("file_date") if right_upload else "",
+        "selected_cumulative": selected_cumulative,
+        "selected_incremental": selected_incremental,
+        "selected_period": {
+            "from_date": left_date,
+            "to_date": right_upload.get("file_date") if right_upload else "",
+            "from_label": left_date or "本月开始",
+        },
+        "latest_incremental": selected_incremental,
+        "latest_incremental_period": {"from_date": left_date, "to_date": right_upload.get("file_date") if right_upload else ""},
+        "current_incremental": selected_incremental,
         "dispatches": dispatches,
         "award_configs": configs,
         "snapshots": snapshots,
+        "prize_details": prize_details,
+        "fine_summary": fine_summary,
+        "fine_summary_through_date": through_date,
     }
 
 
@@ -851,6 +1039,70 @@ def delete_award_config_api(config_id: int):
     return {"ok": True}
 
 
+@app.post("/api/performance/manual-prize")
+def manual_performance_prize(payload: ManualPerformancePrizePayload):
+    """手动给客户经理发放专项业绩奖励。"""
+    month = payload.month.strip()
+    manager_name = payload.manager_name.strip()
+    prize_name = payload.prize_name.strip()
+    prize_amount = int(payload.prize_amount or 0)
+    if not month or len(month) != 7:
+        raise HTTPException(status_code=400, detail="月份格式应为 YYYY-MM")
+    if not manager_name:
+        raise HTTPException(status_code=400, detail="请选择客户经理")
+    valid_managers = {m.get("name") for m in CUSTOMER_MANAGERS}
+    if manager_name not in valid_managers:
+        raise HTTPException(status_code=400, detail=f"客户经理「{manager_name}」不在系统名单中，请检查姓名是否完全一致")
+    if not prize_name:
+        raise HTTPException(status_code=400, detail="请输入奖品名称")
+    if prize_amount <= 0:
+        raise HTTPException(status_code=400, detail="奖品金额必须大于 0")
+
+    from wecom_notice.db import (
+        add_prize_item,
+        auto_apply_prizes,
+        get_fill_summary_month,
+        get_latest_fill_statistics_date,
+    )
+
+    raw_note = payload.note.strip() or "专项业绩奖励"
+    prize_id = add_prize_item(
+        manager_name=manager_name,
+        month=month,
+        prize_name=prize_name,
+        face_amount=prize_amount,
+        source="performance",
+        source_ref_id=None,
+        note=f"手动发放：{raw_note}",
+    )
+
+    through_date = get_latest_fill_statistics_date(month)
+    total_fine = 0
+    for row in get_fill_summary_month(month, through_date=through_date):
+        if row.get("manager_name") == manager_name:
+            missing_count = int(row.get("missing_count") or 0)
+            overtime_count = int(row.get("overtime_count") or 0)
+            total_fine = missing_count * 10 + (overtime_count // 5) * 10
+            break
+    apply_result = auto_apply_prizes(manager_name, month, total_fine) if total_fine > 0 else {"total_covered": 0, "events": []}
+
+    msg = (
+        f"[专项业绩] 手动发放奖励｜{month}\n"
+        f"· 客户经理：{manager_name}\n"
+        f"· 奖励：{prize_name} {prize_amount}元\n"
+        f"· 备注：{raw_note}\n"
+        f"说明：手动发放的专项业绩奖励已进入客户经理奖品池，并由系统自动用于抵扣扣罚。"
+    )
+    add_send_log(
+        rule_key="performance_manual_prize",
+        status="success",
+        message_text=msg,
+        mentioned=[],
+        record_ids=[],
+    )
+    return {"ok": True, "prize_id": prize_id, "apply_result": apply_result, "message": msg}
+
+
 @app.post("/api/performance/dispatch")
 def dispatch_awards_api(payload: DispatchPayload):
     """
@@ -860,10 +1112,8 @@ def dispatch_awards_api(payload: DispatchPayload):
     from datetime import date as dt_date
 
     from wecom_notice.db import (
-        get_award_configs, get_latest_performance_upload,
-        get_latest_dispatch_snapshot_map, get_performance_stats, dispatch_awards,
+        get_award_configs, get_performance_uploads, get_performance_stats, dispatch_awards,
     )
-    from wecom_notice.performance import compute_current_incremental_stats
 
     month = payload.month
     award_round = payload.award_round
@@ -872,15 +1122,34 @@ def dispatch_awards_api(payload: DispatchPayload):
     if not configs:
         raise HTTPException(status_code=400, detail="本轮次暂无奖励配置，请先配置")
 
-    latest = get_latest_performance_upload(month)
-    if not latest:
+    uploads = get_performance_uploads(month)
+    if not uploads:
         raise HTTPException(status_code=400, detail="本月暂无上传数据，请先上传完美一单")
+    chronological_uploads = sorted(uploads, key=lambda u: (u.get("file_date") or "", u.get("uploaded_at") or "", u.get("id") or 0))
+    def _upload_by_date(d: str) -> dict[str, Any] | None:
+        matches = [u for u in chronological_uploads if (u.get("file_date") or "") == d]
+        return matches[-1] if matches else None
+    latest = _upload_by_date(payload.right_date) if payload.right_date else chronological_uploads[-1]
+    if payload.right_date and not latest:
+        raise HTTPException(status_code=400, detail=f"右端点日期 {payload.right_date} 没有对应上传数据")
+    left_upload = _upload_by_date(payload.left_date) if payload.left_date else None
+    if payload.left_date and not left_upload:
+        raise HTTPException(status_code=400, detail=f"左端点日期 {payload.left_date} 没有对应上传数据")
+    if payload.left_date and payload.left_date > (latest.get("file_date") or ""):
+        raise HTTPException(status_code=400, detail="左端点不能晚于右端点")
 
-    # 本期新增 = 最新上传数据 - 上一次实际发奖快照
+    # 本期新增 = 选定右端点累计 - 选定左端点累计；左端点为空表示从本月开始（即从0开始）。
     latest_uid = latest["id"]
     cum_rows = get_performance_stats(month, upload_id=latest_uid)
-    inc_rows_latest = compute_current_incremental_stats(month, latest_uid)
-    previous_snapshot = get_latest_dispatch_snapshot_map(month) or {}
+    left_map = {r["manager_name"]: r for r in get_performance_stats(month, upload_id=left_upload["id"])} if left_upload else {}
+    inc_rows_latest = [
+        {
+            "manager_name": r["manager_name"],
+            "inc_points": r["cumulative_points"] - left_map.get(r["manager_name"], {}).get("cumulative_points", 0.0),
+            "inc_gaotao": r["cumulative_gaotao"] - left_map.get(r["manager_name"], {}).get("cumulative_gaotao", 0.0),
+        }
+        for r in cum_rows
+    ]
 
     def _parse_date(value: str) -> dt_date | None:
         try:
@@ -889,12 +1158,9 @@ def dispatch_awards_api(payload: DispatchPayload):
             return None
 
     latest_date = _parse_date(latest.get("file_date", "")) or _parse_date(payload.dispatch_date) or dt_date.today()
-    previous_dates = [
-        parsed for row in previous_snapshot.values()
-        if (parsed := _parse_date(row.get("dispatch_date", ""))) is not None
-    ]
-    previous_date = max(previous_dates) if previous_dates else None
-    incremental_days = max((latest_date - previous_date).days, 1) if previous_date else 14
+    previous_date = _parse_date(payload.left_date) if payload.left_date else None
+    month_days = calendar.monthrange(latest_date.year, latest_date.month)[1]
+    incremental_days = max((latest_date - previous_date).days, 1) if previous_date else latest_date.day
 
     def _score_rows(
         rows: list[dict],
@@ -903,16 +1169,21 @@ def dispatch_awards_api(payload: DispatchPayload):
         points_weight: float,
         gaotao_weight: float,
         days: int,
+        denominator_days: int = 31,
     ) -> list[dict]:
-        points_target = 2500 * days / 14
-        gaotao_target = 14 * days / 14
+        points_target = 2500 * days / denominator_days
+        gaotao_target = 14 * days / denominator_days
         base_rows = []
         for row in rows:
-            completion_score = (
-                (row.get(points_key, 0) / points_target * points_weight)
-                + (row.get(gaotao_key, 0) / gaotao_target * gaotao_weight)
-            ) * 70
-            base_rows.append({**row, "completion_score": completion_score})
+            points_rate = min(max(row.get(points_key, 0) / points_target, 0), 1) if points_target else 0
+            gaotao_rate = min(max(row.get(gaotao_key, 0) / gaotao_target, 0), 1) if gaotao_target else 0
+            completion_score = (points_rate * points_weight + gaotao_rate * gaotao_weight) * 70
+            base_rows.append({
+                **row,
+                "points_rate": points_rate,
+                "gaotao_rate": gaotao_rate,
+                "completion_score": completion_score,
+            })
 
         total = len(base_rows)
         ranked_by_completion = sorted(base_rows, key=lambda x: x.get("completion_score", 0), reverse=True)
@@ -935,16 +1206,15 @@ def dispatch_awards_api(payload: DispatchPayload):
         gaotao_weight = cfg.get("gaotao_weight", 0.6)
 
         if metric == "incremental_score":
-            source_rows = _score_rows(inc_rows_latest, "inc_points", "inc_gaotao", points_weight, gaotao_weight, incremental_days)
+            month_days = calendar.monthrange(latest_date.year, latest_date.month)[1]
+            source_rows = _score_rows(inc_rows_latest, "inc_points", "inc_gaotao", points_weight, gaotao_weight, incremental_days, month_days)
             days = incremental_days
         elif metric == "cumulative_score":
-            source_rows = _score_rows(cum_rows, "cumulative_points", "cumulative_gaotao", points_weight, gaotao_weight, 14)
-            days = 14
+            month_days = calendar.monthrange(latest_date.year, latest_date.month)[1]
+            source_rows = _score_rows(cum_rows, "cumulative_points", "cumulative_gaotao", points_weight, gaotao_weight, month_days, month_days)
+            days = month_days
         else:
-            # 兼容旧配置：points/gaotao 仍按对应单项排名。
-            points_key = "cumulative_points" if metric == "points" else "cumulative_gaotao"
-            source_rows = _score_rows(cum_rows, points_key, points_key, 1.0, 0.0, 14)
-            days = 14
+            raise HTTPException(status_code=400, detail=f"不支持的专项业绩奖励类型：{metric}。请使用累计综合或本期新增综合。")
 
         ranked = _rank_by_score(source_rows)
         for rank, row in ranked:
@@ -957,8 +1227,10 @@ def dispatch_awards_api(payload: DispatchPayload):
                     "rank_position": rank,
                     "note": (
                         f"综合得分 {row.get('score', 0):.2f}"
-                        f"（完成率得分 {row.get('completion_score', 0):.2f}，排名修正 {row.get('rank_score', 0):.2f}，"
-                        f"积分系数 {points_weight:g}，高套系数 {gaotao_weight:g}，任务天数 {days}）"
+                        f"（完成率得分 {row.get('completion_score', 0):.2f}，排名得分 {row.get('rank_score', 0):.2f}，"
+                        f"积分系数 {points_weight:g}，高套系数 {gaotao_weight:g}，任务天数 {days}，"
+                        f"折算分母 {calendar.monthrange(latest_date.year, latest_date.month)[1]}，"
+                        f"右端点 {latest_date.isoformat()}，左端点 {previous_date.isoformat() if previous_date else '本月开始'}）"
                     ),
                 })
 
@@ -967,20 +1239,37 @@ def dispatch_awards_api(payload: DispatchPayload):
 
     ids = dispatch_awards(month, award_round, payload.dispatch_date, dispatches_to_save)
 
-    # 下发完成后保存快照（取当前最新上传的所有经理累计数据）
+    # 下发完成后保存快照（取当前右端点上传的所有经理累计数据）
     try:
         from wecom_notice.db import save_performance_snapshot
         snapshot_stats = get_performance_stats(month, upload_id=latest_uid)
-        save_performance_snapshot(month, award_round, payload.dispatch_date, snapshot_stats)
+        save_performance_snapshot(month, award_round, payload.dispatch_date, snapshot_stats, data_date=latest_date.isoformat())
     except Exception:
         pass  # 快照失败不影响下发主流程
 
-    # 下发操作写日志
-    detail_lines = [f"   · {d['manager_name']} {d['prize_name']}（{d['prize_amount']}元）第{d['rank_position']}名" for d in dispatches_to_save]
+    # 下发操作写日志：按累计综合/本期新增综合分组，带统计日期/区间，避免同一客户经理多条奖励看不出来源。
+    metric_labels = {"cumulative_score": "累计综合", "incremental_score": "本期新增综合"}
+    detail_lines = [f"[专项业绩] 奖励下发｜{month} 第{award_round}轮", ""]
+    grouped: dict[str, list[dict]] = {}
+    for d in dispatches_to_save:
+        grouped.setdefault(d.get("metric", ""), []).append(d)
+    for metric in ["cumulative_score", "incremental_score"]:
+        rows = grouped.get(metric, [])
+        if not rows:
+            continue
+        if metric == "cumulative_score":
+            detail_lines.append(f"{metric_labels[metric]}｜统计日期：截至 {latest_date.isoformat()}")
+        else:
+            start_label = previous_date.isoformat() if previous_date else month + "-01"
+            detail_lines.append(f"{metric_labels[metric]}｜统计区间：{start_label} 至 {latest_date.isoformat()}")
+        for d in sorted(rows, key=lambda x: x.get("rank_position", 0)):
+            detail_lines.append(f"· 第{d['rank_position']}名 {d['manager_name']}：{d['prize_name']} {d['prize_amount']}元")
+        detail_lines.append("")
+    detail_lines.append("说明：专项业绩下发奖品已进入客户经理奖品池，并由系统自动用于抵扣扣罚。")
     add_send_log(
         rule_key="performance_dispatch",
         status="success",
-        message_text=f"[专项业绩] 下发奖励 {month} 第{award_round}轮 | 共 {len(ids)} 人\n" + "\n".join(detail_lines),
+        message_text="\n".join(detail_lines).strip(),
         mentioned=[],
         record_ids=[],
         webhook_response=f"dispatch_date={payload.dispatch_date}",
