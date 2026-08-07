@@ -335,11 +335,16 @@ def export_performance_excel(
         else:
             _cell(ws, r_total, 4, "-", bold=True, fill=_HEADER_FILL)
 
-        # 列宽
+        # 列宽 & 行高
         col_widths = [8, 14, 18, 28]
         for j, w in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(j)].width = w
-        ws.row_dimensions[1].height = 30
+        ws.row_dimensions[1].height = 26   # 标题行
+        ws.row_dimensions[2].height = 22   # 表头行
+        for i in range(len(sorted_rows) + 1):  # 数据行 + 合计行
+            ws.row_dimensions[i + 3].height = 20
+        # 冻结表头（与企业走访通报 Excel 保持一致）
+        ws.freeze_panes = "A3"
 
     # 积分 sheet
     ws_pts = wb.active
