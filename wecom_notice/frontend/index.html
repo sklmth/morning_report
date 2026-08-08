@@ -1042,7 +1042,7 @@
   <div class="card">
     <div class="px-4 py-2.5 border-b border-stone-100 flex items-center gap-2">
       <span class="text-sm font-medium text-stone-700">🎁 奖励配置</span>
-      <span class="text-xs text-stone-400">按名次范围设置奖品</span>
+      <span class="text-xs text-stone-400">按综合得分名次范围设置奖品</span>
     </div>
     <!-- 新增表单 -->
     <div class="px-4 py-3 border-b border-stone-100 flex flex-wrap gap-2 items-end">
@@ -1066,11 +1066,11 @@
         </select>
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-stone-500">积分系数</label>
+        <label class="text-xs text-stone-500">积分完成率权重</label>
         <input type="number" class="inp text-sm py-1 w-20" x-model.number="pf.newConfig.points_weight" min="0" step="0.1">
       </div>
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-stone-500">高套系数</label>
+        <label class="text-xs text-stone-500">高套完成率权重</label>
         <input type="number" class="inp text-sm py-1 w-20" x-model.number="pf.newConfig.gaotao_weight" min="0" step="0.1">
       </div>
       <div class="flex flex-col gap-1">
@@ -1087,6 +1087,9 @@
       </div>
       <button class="btn text-sm py-1 px-4 self-end" @click="savePerfConfig()">添加</button>
     </div>
+    <div class="px-4 py-2 text-xs text-stone-500 bg-stone-50 border-b border-stone-100 leading-relaxed">
+      综合得分 = 完成率得分（最高 70 分）+ 排名得分（最高 30 分）。完成率得分 =（积分完成率 × 积分权重 + 高套完成率 × 高套权重）× 70；积分完成率最高按 2500 分计，高套完成率最高按 14 套计。
+    </div>
     <!-- 配置列表 -->
     <div x-show="pf.configs.length" class="divide-y divide-stone-100">
       <template x-for="cfg in pf.configs" :key="cfg.id">
@@ -1096,7 +1099,8 @@
             x-text="'第'+cfg.rank_from+(cfg.rank_to!==cfg.rank_from?'~'+cfg.rank_to:'')+'名'"></span>
           <span class="text-xs badge-n shrink-0" x-text="perfMetricLabel(cfg)"></span>
           <span class="text-xs text-stone-400 shrink-0"
-            x-text="'完成率：积分×'+(cfg.points_weight??0.4)+' + 高套×'+(cfg.gaotao_weight??0.6)"></span>
+            :title="'完成率得分 =（积分完成率 × '+(cfg.points_weight??0.4)+' + 高套完成率 × '+(cfg.gaotao_weight??0.6)+'）× 70；另加排名得分（最高 30 分）'"
+            x-text="'完成率权重：积分 '+(cfg.points_weight??0.4)+' + 高套 '+(cfg.gaotao_weight??0.6)+'｜另加排名分'"></span>
           <span class="font-medium text-stone-700 flex-1" x-text="cfg.prize_name||'—'"></span>
           <span class="text-stone-500 text-xs" x-show="cfg.prize_amount>0" x-text="cfg.prize_amount+'元'"></span>
           <button class="text-red-400 hover:text-red-600 text-xs px-2 py-0.5 rounded hover:bg-red-50 transition-colors"
@@ -1405,7 +1409,7 @@
                       <td class="px-3 py-1.5 text-right text-stone-700 text-sm" x-text="row.cumulative_points"></td>
                       <td class="px-3 py-1.5 text-right text-xs"
                         :class="row.inc_points>0?'text-emerald-600':'text-stone-400'"
-                        x-text="row.inc_points>0?'+'+row.inc_points:(row.inc_points||'—')"></td>
+                        x-text="row.inc_points>0?'+'+row.inc_points:row.inc_points"></td>
                     </tr>
                   </template>
                 </tbody>
@@ -1435,7 +1439,7 @@
                       <td class="px-3 py-1.5 text-right text-stone-700 text-sm" x-text="row.cumulative_gaotao"></td>
                       <td class="px-3 py-1.5 text-right text-xs"
                         :class="row.inc_gaotao>0?'text-emerald-600':'text-stone-400'"
-                        x-text="row.inc_gaotao>0?'+'+row.inc_gaotao:(row.inc_gaotao||'—')"></td>
+                        x-text="row.inc_gaotao>0?'+'+row.inc_gaotao:row.inc_gaotao"></td>
                     </tr>
                   </template>
                 </tbody>
@@ -2530,12 +2534,12 @@ function app(){
       return left ? `本期新增：${left} 至 ${right}` : `本期新增：本月开始 至 ${right}`;
     },
     snapshotPeriod(snap){
-      const dates=(snap.rows||[]).map(r=>r.data_date).filter(Boolean);
-      const to=dates[0]||'';
+      const to=snap.data_date||(snap.rows||[]).map(r=>r.data_date).find(Boolean)||'';
       if(!to) return '';
-      const prev=this.pf.snapshots.filter(s=>s.award_round<snap.award_round).slice(-1)[0];
-      const prevDates=prev?(prev.rows||[]).map(r=>r.data_date).filter(Boolean):[];
-      const from=prevDates[0]||'';
+      const prev=this.pf.snapshots
+        .filter(s=>s.award_round<snap.award_round&&((s.data_date||(s.rows||[]).map(r=>r.data_date).find(Boolean)||'')<=to))
+        .sort((a,b)=>String(b.data_date||(b.rows||[]).map(r=>r.data_date).find(Boolean)||'').localeCompare(String(a.data_date||(a.rows||[]).map(r=>r.data_date).find(Boolean)||''))||b.award_round-a.award_round)[0];
+      const from=prev?(prev.data_date||(prev.rows||[]).map(r=>r.data_date).find(Boolean)||''):'';
       return snap.award_round>1&&from ? `数据截至 ${to}｜本轮新增：${from} 至 ${to}` : `数据截至 ${to}`;
     },
     dispatchGroups(){

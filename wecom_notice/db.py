@@ -1078,13 +1078,14 @@ def save_performance_snapshot(
     current_stats 每项含 manager_name, cumulative_points, cumulative_gaotao。
     data_date 为本轮采用的完美一单数据日期，用于后续新增区间计算。
     """
-    # 取本月上一轮（award_round-1 及之前）最新那轮的快照，用于计算增量
+    # 按数据日期取前一个快照，而非机械按轮次取上一轮。补录历史数据时，
+    # 文件上传时间可能晚于新日期的数据，按轮次会得到倒序区间和错误增量。
     with connection() as conn:
         prev_rows = conn.execute(
             """SELECT * FROM performance_dispatch_snapshots
-               WHERE month = ? AND award_round < ?
-               ORDER BY award_round DESC""",
-            (month, award_round),
+               WHERE month = ? AND award_round < ? AND data_date <= ?
+               ORDER BY data_date DESC, award_round DESC""",
+            (month, award_round, data_date or dispatch_date),
         ).fetchall()
 
     prev_map: dict[str, dict[str, Any]] = {}

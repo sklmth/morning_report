@@ -1138,6 +1138,18 @@ def dispatch_awards_api(payload: DispatchPayload):
     if payload.left_date and payload.left_date > (latest.get("file_date") or ""):
         raise HTTPException(status_code=400, detail="左端点不能晚于右端点")
 
+    # 下发轮次必须按数据日期递进，避免后来补录的旧数据覆盖到新一轮之后，
+    # 造成历史看板出现倒序区间及负新增。
+    from wecom_notice.db import get_performance_snapshots
+    existing_snapshots = get_performance_snapshots(month)
+    previous_dates = [snapshot.get("data_date") or "" for snapshot in existing_snapshots if snapshot.get("award_round", 0) < award_round]
+    latest_previous_date = max((value for value in previous_dates if value), default="")
+    if latest_previous_date and (latest.get("file_date") or "") < latest_previous_date:
+        raise HTTPException(
+            status_code=400,
+            detail=f"右端点日期不能早于第 {award_round - 1} 轮已下发数据日期 {latest_previous_date}",
+        )
+
     # 本期新增 = 选定右端点累计 - 选定左端点累计；左端点为空表示从本月开始（即从0开始）。
     latest_uid = latest["id"]
     cum_rows = get_performance_stats(month, upload_id=latest_uid)
